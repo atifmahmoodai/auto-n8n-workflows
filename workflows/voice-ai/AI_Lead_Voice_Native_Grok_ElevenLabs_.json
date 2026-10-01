@@ -1,0 +1,829 @@
+{
+  "name": "AI Lead Voice (Native Grok + ElevenLabs)",
+  "nodes": [
+    {
+      "id": "1b7998e8-e204-485f-8349-36930c960531",
+      "name": "Lead Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        240,
+        304
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-voice-bot",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "21676ff6-8c2a-4c36-88af-94933b966cd7"
+    },
+    {
+      "id": "b8bda96e-4d68-47e6-bcce-c0222d0b11ba",
+      "name": "Lead Qualifier Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        464,
+        304
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Qualify this lead and write a short voice script: {{ JSON.stringify($json.body || $json) }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a ruthless lead qualifier for a service business. Analyze the incoming lead data. Be direct and realistic. Return ONLY structured JSON matching the required schema with: qualified (boolean), score (0-100), reason (string), personalized_script (short natural voice message offering value), next_action (string)."
+        }
+      }
+    },
+    {
+      "id": "550c6849-b22b-4695-98ae-f36794dd82dd",
+      "name": "Grok Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatXAiGrok",
+      "typeVersion": 1,
+      "position": [
+        432,
+        528
+      ],
+      "parameters": {
+        "model": "grok-3-latest",
+        "options": {
+          "temperature": 0.3
+        }
+      }
+    },
+    {
+      "id": "4f047a86-c8fe-4494-bde6-db923f5d0058",
+      "name": "Qualification Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        624,
+        528
+      ],
+      "parameters": {
+        "jsonSchemaExample": "{\"qualified\":true,\"score\":85,\"reason\":\"Strong fit for automation services\",\"personalized_script\":\"Hi Jane, we help agencies automate lead workflows with AI.\",\"next_action\":\"Send personalized voice follow-up\"}"
+      }
+    },
+    {
+      "id": "67238250-d410-4855-8323-8b2f74a9c670",
+      "name": "Attach Lead Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        688,
+        304
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "qualified",
+              "name": "qualified",
+              "value": "={{ $json.output.qualified }}",
+              "type": "boolean"
+            },
+            {
+              "id": "score",
+              "name": "score",
+              "value": "={{ $json.output.score }}",
+              "type": "number"
+            },
+            {
+              "id": "reason",
+              "name": "reason",
+              "value": "={{ $json.output.reason }}",
+              "type": "string"
+            },
+            {
+              "id": "script",
+              "name": "personalized_script",
+              "value": "={{ $json.output.personalized_script }}",
+              "type": "string"
+            },
+            {
+              "id": "next",
+              "name": "next_action",
+              "value": "={{ $json.output.next_action }}",
+              "type": "string"
+            },
+            {
+              "id": "lname",
+              "name": "lead_name",
+              "value": "={{ ($(\"Lead Webhook\").item.json.body || $(\"Lead Webhook\").item.json).name || \"Unknown\" }}",
+              "type": "string"
+            },
+            {
+              "id": "lemail",
+              "name": "lead_email",
+              "value": "={{ ($(\"Lead Webhook\").item.json.body || $(\"Lead Webhook\").item.json).email || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "lquery",
+              "name": "lead_query",
+              "value": "={{ ($(\"Lead Webhook\").item.json.body || $(\"Lead Webhook\").item.json).query || \"\" }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a8b3fbc5-beeb-488a-86b6-34107ad105b8",
+      "name": "IF Qualified?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        912,
+        304
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "qualify-check",
+              "leftValue": "={{ $json.qualified }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "b44b3fd1-5279-413a-88b9-b71f052e5d16",
+      "name": "Upload Audio to Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1344,
+        192
+      ],
+      "parameters": {
+        "name": "={{ 'lead_voice_' + $now.toFormat('yyyyMMdd_HHmmss') + '.mp3' }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "root",
+          "cachedResultName": "/ (Root folder)"
+        },
+        "options": {},
+        "resource": "file",
+        "operation": "upload",
+        "inputDataFieldName": "data"
+      }
+    },
+    {
+      "id": "23f0280f-b96c-4046-b50a-2972bd892e62",
+      "name": "Prepare Qualified Record",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1568,
+        192
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "name",
+              "name": "name",
+              "value": "={{ $(\"Attach Lead Data\").item.json.lead_name }}",
+              "type": "string"
+            },
+            {
+              "id": "email",
+              "name": "email",
+              "value": "={{ $(\"Attach Lead Data\").item.json.lead_email }}",
+              "type": "string"
+            },
+            {
+              "id": "query",
+              "name": "query",
+              "value": "={{ $(\"Attach Lead Data\").item.json.lead_query }}",
+              "type": "string"
+            },
+            {
+              "id": "qualified",
+              "name": "qualified",
+              "value": "={{ $(\"Attach Lead Data\").item.json.qualified }}",
+              "type": "boolean"
+            },
+            {
+              "id": "score",
+              "name": "score",
+              "value": "={{ $(\"Attach Lead Data\").item.json.score }}",
+              "type": "number"
+            },
+            {
+              "id": "reason",
+              "name": "reason",
+              "value": "={{ $(\"Attach Lead Data\").item.json.reason }}",
+              "type": "string"
+            },
+            {
+              "id": "script",
+              "name": "script",
+              "value": "={{ $(\"Attach Lead Data\").item.json.personalized_script }}",
+              "type": "string"
+            },
+            {
+              "id": "audio",
+              "name": "audio_url",
+              "value": "={{ $json.webViewLink || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "status",
+              "name": "status",
+              "value": "processed",
+              "type": "string"
+            },
+            {
+              "id": "created",
+              "name": "created_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "next",
+              "name": "next_action",
+              "value": "={{ $(\"Attach Lead Data\").item.json.next_action }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "3b87c0ee-7a2b-47a8-a723-f3d12bd22529",
+      "name": "Log to Supabase",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1792,
+        192
+      ],
+      "parameters": {
+        "tableId": "leads",
+        "dataToSend": "autoMapInputData",
+        "resource": "row",
+        "operation": "create"
+      }
+    },
+    {
+      "id": "ff9db9f1-4276-4a6b-9f1d-ecd033cf7934",
+      "name": "Prepare Sheet Row",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2000,
+        192
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "name",
+              "name": "Name",
+              "value": "={{ $(\"Prepare Qualified Record\").item.json.name }}",
+              "type": "string"
+            },
+            {
+              "id": "email",
+              "name": "Email",
+              "value": "={{ $(\"Prepare Qualified Record\").item.json.email }}",
+              "type": "string"
+            },
+            {
+              "id": "query",
+              "name": "Query",
+              "value": "={{ $(\"Prepare Qualified Record\").item.json.query }}",
+              "type": "string"
+            },
+            {
+              "id": "qualified",
+              "name": "Qualified",
+              "value": "={{ $(\"Prepare Qualified Record\").item.json.qualified }}",
+              "type": "boolean"
+            },
+            {
+              "id": "score",
+              "name": "Score",
+              "value": "={{ $(\"Prepare Qualified Record\").item.json.score }}",
+              "type": "number"
+            },
+            {
+              "id": "reason",
+              "name": "Reason",
+              "value": "={{ $(\"Prepare Qualified Record\").item.json.reason }}",
+              "type": "string"
+            },
+            {
+              "id": "status",
+              "name": "Status",
+              "value": "={{ $(\"Prepare Qualified Record\").item.json.status }}",
+              "type": "string"
+            },
+            {
+              "id": "audio",
+              "name": "Audio URL",
+              "value": "={{ $(\"Prepare Qualified Record\").item.json.audio_url }}",
+              "type": "string"
+            },
+            {
+              "id": "created",
+              "name": "Created At",
+              "value": "={{ $(\"Prepare Qualified Record\").item.json.created_at }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "5881e41f-8131-443a-a7bf-134be2a224fe",
+      "name": "Update Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2224,
+        192
+      ],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1LOXhOxHGtE_DHUSKsdB6xCE-iYlMN7kt4rCdKOA_siE",
+          "mode": "list",
+          "cachedResultName": "Daily Update",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1LOXhOxHGtE_DHUSKsdB6xCE-iYlMN7kt4rCdKOA_siE/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1LOXhOxHGtE_DHUSKsdB6xCE-iYlMN7kt4rCdKOA_siE/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {}
+        }
+      }
+    },
+    {
+      "id": "77d9abd8-128a-4af6-923b-18f8031ebcdb",
+      "name": "Push Notification to Team",
+      "type": "n8n-nodes-base.pushover",
+      "typeVersion": 1,
+      "position": [
+        2448,
+        192
+      ],
+      "parameters": {
+        "userKey": "<__PLACEHOLDER_VALUE__Your Pushover user key from pushover.net dashboard__>",
+        "message": "={{ \"New qualified lead: \" + $(\"Prepare Qualified Record\").item.json.name + \" (Score: \" + $(\"Prepare Qualified Record\").item.json.score + \"). Audio saved to Drive.\" }}",
+        "additionalFields": {
+          "title": "Lead Voice Bot Alert",
+          "priority": 0
+        },
+        "resource": "message",
+        "operation": "push"
+      }
+    },
+    {
+      "id": "b176450c-3354-4e9f-8bf0-34e1e4b6d8ab",
+      "name": "Respond Qualified",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2672,
+        192
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": true, \"qualified\": true, \"score\": $(\"Prepare Qualified Record\").item.json.score, \"message\": \"Lead qualified, voice generated and logged\", \"audio_url\": $(\"Prepare Qualified Record\").item.json.audio_url } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "fdaba8f8-54de-4cce-9206-1c115c578028",
+      "name": "Prepare Not Qualified Record",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1120,
+        432
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "name",
+              "name": "name",
+              "value": "={{ $json.lead_name }}",
+              "type": "string"
+            },
+            {
+              "id": "email",
+              "name": "email",
+              "value": "={{ $json.lead_email }}",
+              "type": "string"
+            },
+            {
+              "id": "query",
+              "name": "query",
+              "value": "={{ $json.lead_query }}",
+              "type": "string"
+            },
+            {
+              "id": "qualified",
+              "name": "qualified",
+              "value": "={{ $json.qualified }}",
+              "type": "boolean"
+            },
+            {
+              "id": "score",
+              "name": "score",
+              "value": "={{ $json.score }}",
+              "type": "number"
+            },
+            {
+              "id": "reason",
+              "name": "reason",
+              "value": "={{ $json.reason }}",
+              "type": "string"
+            },
+            {
+              "id": "status",
+              "name": "status",
+              "value": "not_qualified",
+              "type": "string"
+            },
+            {
+              "id": "audio",
+              "name": "audio_url",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "created",
+              "name": "created_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "6a0f3867-93b7-4670-8377-12b409b3ba5f",
+      "name": "Log Not Qualified to Supabase",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1344,
+        432
+      ],
+      "parameters": {
+        "tableId": "leads",
+        "dataToSend": "autoMapInputData",
+        "resource": "row",
+        "operation": "create"
+      }
+    },
+    {
+      "id": "5b9d82b9-1cd0-402c-8bea-ef8e89828298",
+      "name": "Prepare Sheet Row Not Qualified",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1568,
+        432
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "name",
+              "name": "Name",
+              "value": "={{ $(\"Prepare Not Qualified Record\").item.json.name }}",
+              "type": "string"
+            },
+            {
+              "id": "email",
+              "name": "Email",
+              "value": "={{ $(\"Prepare Not Qualified Record\").item.json.email }}",
+              "type": "string"
+            },
+            {
+              "id": "query",
+              "name": "Query",
+              "value": "={{ $(\"Prepare Not Qualified Record\").item.json.query }}",
+              "type": "string"
+            },
+            {
+              "id": "qualified",
+              "name": "Qualified",
+              "value": "={{ $(\"Prepare Not Qualified Record\").item.json.qualified }}",
+              "type": "boolean"
+            },
+            {
+              "id": "score",
+              "name": "Score",
+              "value": "={{ $(\"Prepare Not Qualified Record\").item.json.score }}",
+              "type": "number"
+            },
+            {
+              "id": "reason",
+              "name": "Reason",
+              "value": "={{ $(\"Prepare Not Qualified Record\").item.json.reason }}",
+              "type": "string"
+            },
+            {
+              "id": "status",
+              "name": "Status",
+              "value": "={{ $(\"Prepare Not Qualified Record\").item.json.status }}",
+              "type": "string"
+            },
+            {
+              "id": "audio",
+              "name": "Audio URL",
+              "value": "={{ $(\"Prepare Not Qualified Record\").item.json.audio_url }}",
+              "type": "string"
+            },
+            {
+              "id": "created",
+              "name": "Created At",
+              "value": "={{ $(\"Prepare Not Qualified Record\").item.json.created_at }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "21ffb4c5-f54d-4007-8c3f-6d397acbf4e1",
+      "name": "Update Sheets Not Qualified",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1792,
+        432
+      ],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "1LOXhOxHGtE_DHUSKsdB6xCE-iYlMN7kt4rCdKOA_siE",
+          "cachedResultName": "Daily Update",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1LOXhOxHGtE_DHUSKsdB6xCE-iYlMN7kt4rCdKOA_siE/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gid=0",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1LOXhOxHGtE_DHUSKsdB6xCE-iYlMN7kt4rCdKOA_siE/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {}
+        }
+      }
+    },
+    {
+      "id": "02e56d06-aa82-42af-a6b5-0ab6dfc53825",
+      "name": "Respond Not Qualified",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2000,
+        432
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": true, \"qualified\": false, \"score\": $(\"Prepare Not Qualified Record\").item.json.score, \"message\": \"Lead logged as not qualified\", \"reason\": $(\"Prepare Not Qualified Record\").item.json.reason } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Lead Webhook": {
+      "main": [
+        [
+          {
+            "node": "Lead Qualifier Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Qualifier Agent": {
+      "main": [
+        [
+          {
+            "node": "Attach Lead Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Grok Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Lead Qualifier Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qualification Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Lead Qualifier Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attach Lead Data": {
+      "main": [
+        [
+          {
+            "node": "IF Qualified?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Qualified?": {
+      "main": [
+        null,
+        [
+          {
+            "node": "Prepare Not Qualified Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Audio to Drive": {
+      "main": [
+        [
+          {
+            "node": "Prepare Qualified Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Qualified Record": {
+      "main": [
+        [
+          {
+            "node": "Log to Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Supabase": {
+      "main": [
+        [
+          {
+            "node": "Prepare Sheet Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Sheet Row": {
+      "main": [
+        [
+          {
+            "node": "Update Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "Push Notification to Team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Push Notification to Team": {
+      "main": [
+        [
+          {
+            "node": "Respond Qualified",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Not Qualified Record": {
+      "main": [
+        [
+          {
+            "node": "Log Not Qualified to Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Not Qualified to Supabase": {
+      "main": [
+        [
+          {
+            "node": "Prepare Sheet Row Not Qualified",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Sheet Row Not Qualified": {
+      "main": [
+        [
+          {
+            "node": "Update Sheets Not Qualified",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Sheets Not Qualified": {
+      "main": [
+        [
+          {
+            "node": "Respond Not Qualified",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

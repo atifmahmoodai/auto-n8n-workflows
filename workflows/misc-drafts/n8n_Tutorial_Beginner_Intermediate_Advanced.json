@@ -1,0 +1,757 @@
+{
+  "name": "n8n Tutorial: Beginner, Intermediate & Advanced",
+  "nodes": [
+    {
+      "id": "a32b6d02-0619-4be9-b396-9c93406cea0d",
+      "name": "Start Beginner Workflow",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        464
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "4ac74b9e-1e0c-423a-aa82-4cf279a83401",
+      "name": "Fetch User Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        464,
+        464
+      ],
+      "parameters": {
+        "url": "<__PLACEHOLDER_VALUE__API URL (e.g., https://jsonplaceholder.typicode.com/users/1)__>",
+        "options": {}
+      }
+    },
+    {
+      "id": "90768a54-b38f-4216-a77d-2fa87d74ebda",
+      "name": "Extract Name and Email",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        688,
+        464
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "userName",
+              "value": "={{ $json.name }}",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "userEmail",
+              "value": "={{ $json.email }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "fae5c910-6f04-421a-a1e3-e31594c2f153",
+      "name": "Send to Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        912,
+        464
+      ],
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "text": "=New user processed: {{ $json.userName }} ({{ $json.userEmail }})",
+        "otherOptions": {}
+      },
+      "webhookId": "7cdf1bd0-b35b-480d-844c-a40b1085f942"
+    },
+    {
+      "id": "d2be4f69-dd3d-449d-80d3-fa88bfe73125",
+      "name": "Daily at 9 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        240,
+        784
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "04e01736-c189-468b-98cb-43a644134ef2",
+      "name": "Fetch Tasks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        464,
+        784
+      ],
+      "parameters": {
+        "url": "<__PLACEHOLDER_VALUE__Tasks API URL (e.g., https://api.example.com/tasks)__>",
+        "options": {}
+      }
+    },
+    {
+      "id": "5abb26ec-3e21-4331-9495-c1c65257990d",
+      "name": "Only Pending Tasks",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        688,
+        784
+      ],
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.status }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "pending"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "c45c1ca6-4750-4310-ba84-24dee442aaca",
+      "name": "Check Priority",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        912,
+        784
+      ],
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.priority }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "high"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "e03ef62b-c8cc-4a4f-8c56-54cb086ed84f",
+      "name": "Send Urgent Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1136,
+        688
+      ],
+      "parameters": {
+        "sendTo": "<__PLACEHOLDER_VALUE__your-email@example.com__>",
+        "subject": "=🚨 URGENT: {{ $json.title }}",
+        "emailType": "text",
+        "message": "=High priority task requires attention:\n\nTask: {{ $json.title }}\nID: {{ $json.id }}",
+        "options": {}
+      },
+      "webhookId": "b477a1db-1e98-4faf-9596-0e5478c632d4"
+    },
+    {
+      "id": "fc46a135-9d58-4f3f-a6e6-19cb0bc84feb",
+      "name": "Send Normal Notification",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        1136,
+        880
+      ],
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "text": "=📋 Task reminder: {{ $json.title }} (ID: {{ $json.id }})",
+        "otherOptions": {}
+      },
+      "webhookId": "72d8650e-2b51-481f-87e2-271de7ac1f85"
+    },
+    {
+      "id": "ce15095a-16fb-4869-97e9-9c4f42268c7e",
+      "name": "Webhook Endpoint",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        240,
+        1344
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "<__PLACEHOLDER_VALUE__webhook-path__>",
+        "options": {}
+      },
+      "webhookId": "50c4495c-0a1e-4652-b062-1b6963959015"
+    },
+    {
+      "id": "78f9f482-6c68-492e-be38-38d19f8eda1e",
+      "name": "Route by Category",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        688,
+        1328
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.category }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "urgent"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Urgent"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.category }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "normal"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Normal"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.category }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "low"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Low"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "61b0f314-f08e-413a-bfda-585198bd32fc",
+      "name": "Email Urgent Items",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        912,
+        1104
+      ],
+      "parameters": {
+        "sendTo": "<__PLACEHOLDER_VALUE__urgent-team@example.com__>",
+        "subject": "=🚨 URGENT: {{ $json.name }}",
+        "emailType": "text",
+        "message": "=Urgent item received:\n\nName: {{ $json.name }}\nValue: {{ $json.value }}\nID: {{ $json.id }}",
+        "options": {}
+      },
+      "webhookId": "aa3b0fa2-a5f9-4e7b-93b9-e97c33b81b7a"
+    },
+    {
+      "id": "6d6f5cff-d60d-4b25-a6c0-d2e4493af0e6",
+      "name": "Combine All Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1136,
+        1280
+      ],
+      "parameters": {
+        "numberInputs": 3
+      }
+    },
+    {
+      "id": "2f31b9de-24b4-4ee0-8f25-71b0738b7b28",
+      "name": "Slack Normal Items",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        912,
+        1296
+      ],
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "text": "=📦 Normal item: {{ $json.name }} (Value: {{ $json.value }})",
+        "otherOptions": {}
+      },
+      "webhookId": "b5395147-1c06-475f-88aa-df71ed6659c2"
+    },
+    {
+      "id": "2fd5aca6-8318-4013-b863-e9f0cd792e3f",
+      "name": "Log Low Priority",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        912,
+        1488
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "processed",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "2",
+              "name": "category",
+              "value": "low",
+              "type": "string"
+            },
+            {
+              "id": "3",
+              "name": "logMessage",
+              "value": "=Low priority item logged: {{ $json.name }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "f4eae5e9-416c-4266-bc3b-9a866b885374",
+      "name": "Create Summary",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        1360,
+        1296
+      ],
+      "parameters": {
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {
+              "fieldToAggregate": "category",
+              "renameField": true,
+              "outputFieldName": "categories"
+            },
+            {
+              "fieldToAggregate": "processed",
+              "renameField": true,
+              "outputFieldName": "processedFlags"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "43b40ea3-5aa6-4030-a05d-46e8d9cc941c",
+      "name": "Send Summary",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        1808,
+        1200
+      ],
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "text": "=✅ Batch processing complete!\n\nCategories processed: {{ $json.categories.length }}\nTimestamp: {{ $json.timestamp }}",
+        "otherOptions": {}
+      },
+      "webhookId": "4bd578c1-2171-4ba8-97fe-5b5abd5529e4"
+    },
+    {
+      "id": "8e161f92-5394-4848-8a0b-34dd7f6f5889",
+      "name": "Process Batch",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1808,
+        1392
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "batchProcessed",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "2",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "f916e397-73cb-4040-9f6e-d8c7953f9e56",
+      "name": "Process in Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1584,
+        1296
+      ],
+      "parameters": {
+        "batchSize": 10,
+        "options": {}
+      }
+    },
+    {
+      "id": "314a612b-239a-4f08-b846-97423e730519",
+      "name": "Split Out Items",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        464,
+        1344
+      ],
+      "parameters": {
+        "fieldToSplitOut": "body.items",
+        "options": {}
+      }
+    },
+    {
+      "id": "8a30d120-095c-4743-ad24-84b0bdbdb121",
+      "name": "Sticky Note 5041acdd",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        208,
+        112
+      ],
+      "parameters": {
+        "content": "## 🟢 BEGINNER WORKFLOW\n\n**Concept:** Linear data flow\n\n**What it does:**\n1. Manual trigger starts the workflow\n2. HTTP Request fetches user data from an API\n3. Edit Fields transforms the data (extracts name and email)\n4. Slack sends a notification with the processed data\n\n**Key Learning:**\n- Basic node chaining with .to()\n- Using expressions with expr() to access data\n- Simple data transformation\n- Sending notifications",
+        "height": 280,
+        "width": 400,
+        "color": 2
+      }
+    },
+    {
+      "id": "65749450-b7d1-41cb-a130-841b79bcf1db",
+      "name": "Sticky Note 47ba1489",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        208,
+        752
+      ],
+      "parameters": {
+        "content": "## 🟡 INTERMEDIATE WORKFLOW\n\n**Concept:** Conditional branching and filtering\n\n**What it does:**\n1. Schedule Trigger runs every day at 9 AM\n2. HTTP Request fetches a list of tasks\n3. Filter removes completed tasks\n4. IF node checks priority level\n   - High priority → Send urgent email via Gmail\n   - Normal priority → Send regular Slack message\n\n**Key Learning:**\n- Scheduled automation\n- Filtering data to reduce items\n- Conditional branching with IF node\n- Different actions per branch",
+        "height": 320,
+        "width": 400,
+        "color": 4
+      }
+    },
+    {
+      "id": "00f5e12c-6702-425e-9119-817a812f7778",
+      "name": "Sticky Note 43894131",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        208,
+        1552
+      ],
+      "parameters": {
+        "content": "## 🔴 ADVANCED WORKFLOW\n\n**Concept:** Multi-way routing, parallel execution, and batch processing\n\n**What it does:**\n1. Webhook receives incoming data\n2. Switch routes items by category (urgent/normal/low)\n3. Each category processes differently:\n   - Urgent: Immediate email notification\n   - Normal: Slack notification\n   - Low: Just log the data\n4. Merge combines all results\n5. Aggregate creates summary statistics\n6. Split in Batches processes in groups of 10\n7. Final notification with batch summary\n\n**Key Learning:**\n- Webhook triggers for external integrations\n- Multi-way routing with Switch node\n- Parallel branch execution\n- Merging data from multiple sources\n- Batch processing for large datasets\n- Aggregating data for summaries",
+        "height": 420,
+        "width": 400,
+        "color": 5
+      }
+    }
+  ],
+  "connections": {
+    "Start Beginner Workflow": {
+      "main": [
+        [
+          {
+            "node": "Fetch User Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch User Data": {
+      "main": [
+        [
+          {
+            "node": "Extract Name and Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Name and Email": {
+      "main": [
+        [
+          {
+            "node": "Send to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily at 9 AM": {
+      "main": [
+        [
+          {
+            "node": "Fetch Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Tasks": {
+      "main": [
+        [
+          {
+            "node": "Only Pending Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Only Pending Tasks": {
+      "main": [
+        [
+          {
+            "node": "Check Priority",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Priority": {
+      "main": [
+        [
+          {
+            "node": "Send Urgent Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Normal Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Endpoint": {
+      "main": [
+        [
+          {
+            "node": "Split Out Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Category": {
+      "main": [
+        [
+          {
+            "node": "Email Urgent Items",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Slack Normal Items",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Low Priority",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Urgent Items": {
+      "main": [
+        [
+          {
+            "node": "Combine All Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine All Results": {
+      "main": [
+        [
+          {
+            "node": "Create Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack Normal Items": {
+      "main": [
+        [
+          {
+            "node": "Combine All Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Log Low Priority": {
+      "main": [
+        [
+          {
+            "node": "Combine All Results",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Create Summary": {
+      "main": [
+        [
+          {
+            "node": "Process in Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Batch": {
+      "main": [
+        [
+          {
+            "node": "Process in Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process in Batches": {
+      "main": [
+        [
+          {
+            "node": "Send Summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Process Batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out Items": {
+      "main": [
+        [
+          {
+            "node": "Route by Category",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

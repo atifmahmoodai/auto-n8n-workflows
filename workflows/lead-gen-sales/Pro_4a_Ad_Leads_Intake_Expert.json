@@ -1,0 +1,665 @@
+{
+  "name": "Pro 4a | Ad Leads: Intake | Expert",
+  "nodes": [
+    {
+      "id": "6a72ae34-d518-419c-aa3c-9a782fa267e7",
+      "name": "Meta Verify (GET)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "lead-in-7c31a9",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "80d306a4-956c-47bb-aeab-c72b2e3f98c7"
+    },
+    {
+      "id": "2bfc6661-d440-4108-ab6d-e1fefda0011f",
+      "name": "Verify Token",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b338dc01-3338-4064-9ab3-1d6c8f86ae53",
+              "name": "verify_token",
+              "value": "CHANGE_ME_verify_token",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "63fbb84a-381c-44c5-a6bb-602ae91f7958",
+      "name": "Answer Challenge",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.query['hub.verify_token'] === $json.verify_token ? $json.query['hub.challenge'] : 'forbidden' }}",
+        "options": {
+          "responseCode": "={{ $json.query['hub.verify_token'] === $json.verify_token ? 200 : 403 }}"
+        }
+      }
+    },
+    {
+      "id": "bb142c63-278a-44e8-8fd3-6207013e429d",
+      "name": "Lead In",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-in-7c31a9",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "webhookId": "efae5263-fabe-4a80-97ea-a9c98d96f619"
+    },
+    {
+      "id": "a3bcee4f-2a92-4a88-aab3-10e7108b86d6",
+      "name": "Read Lead Webhook",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// ===== Read Lead Webhook =====\n// Accepts two shapes: Meta's leadgen webhook (which carries only an id) and a plain\n// JSON post from a web form. Emits one item per lead so the loop can take them singly.\nconst out = [];\nconst S = (v) => (v == null ? '' : String(v));\n\nfor (const it of $input.all()) {\n  const j = it.json || {};\n  const body = (j.body && typeof j.body === 'object') ? j.body : j;\n\n  // ---- Meta lead ads ----\n  if (S(body.object) === 'page' && Array.isArray(body.entry)) {\n    for (const entry of body.entry) {\n      for (const change of (entry.changes || [])) {\n        if (S(change.field) !== 'leadgen') continue;\n        const v = change.value || {};\n        const leadgenId = S(v.leadgen_id);\n        if (!leadgenId) continue;\n        out.push({ json: {\n          source: 'facebook',\n          source_key: S(v.form_id),\n          page_id: S(v.page_id),\n          leadgen_id: leadgenId,\n          ad_id: S(v.ad_id), adgroup_id: S(v.adgroup_id),\n          created_time: v.created_time || null,\n          needsFetch: true,\n          dedupe_key: 'fb:' + leadgenId,\n          formData: {},\n          sql: 'SELECT campaign_for($1) AS campaign, claim_once($2) AS fresh, $3::jsonb AS lead',\n        } });\n      }\n    }\n    // Meta sends one webhook per batch; every lead in it is emitted above\n  } else {\n    // ---- web form ----\n    const key = S(body.source_key || body.form_key || body.form || j.query && j.query.form);\n    const ref = S(body.id || body.submission_id || body.entry_id);\n    out.push({ json: {\n      source: S(body.source) || 'web',\n      source_key: key,\n      page_id: '',\n      leadgen_id: '',\n      created_time: null,\n      needsFetch: false,\n      dedupe_key: ref ? 'web:' + key + ':' + ref : '',\n      formData: body,\n      sql: 'SELECT campaign_for($1) AS campaign, claim_once($2) AS fresh, $3::jsonb AS lead',\n    } });\n  }\n}\n\n// a blank dedupe key would collide across leads, so give those one of their own\nreturn out.map((o) => {\n  const d = o.json.dedupe_key || ('nokey:' + Date.now() + ':' + Math.random().toString(36).slice(2));\n  return { json: { ...o.json, dedupe_key: d, params: [o.json.source_key, d, JSON.stringify(o.json)] } };\n});\n"
+      }
+    },
+    {
+      "id": "2c505862-b3ec-4b79-895c-b41fab59b3c8",
+      "name": "Load Campaign",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        660,
+        300
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.sql }}",
+        "options": {
+          "queryReplacement": "={{ $json.params }}"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2500
+    },
+    {
+      "id": "b2721082-b523-4419-b1c4-0dd35852ecf4",
+      "name": "Ours, and new?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "186936b5-034d-43a2-bd9c-5ae1761f93a1",
+              "leftValue": "={{ !!$json.campaign && $json.fresh === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "6dc124b7-8665-4eed-81cb-cda6cbaa0ad4",
+      "name": "From Facebook?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1100,
+        200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "23bc149c-9d68-412e-ae53-65e9dcd983d1",
+              "leftValue": "={{ $json.lead.needsFetch }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "78bd8bd9-9fab-4d92-b486-eddd52e32d41",
+      "name": "Fetch Lead from Meta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        120
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.facebook.com/{{ $json.campaign.graph_version }}/{{ $json.lead.leadgen_id }}?fields=id,created_time,ad_id,form_id,field_data",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.campaign.fb_page_token }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2500
+    },
+    {
+      "id": "5b4727a7-7c6a-4dc5-9753-e9ae550cf94a",
+      "name": "Normalize Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        200
+      ],
+      "parameters": {
+        "jsCode": "// ===== Normalize Lead =====\n// Turns whatever arrived into one clean lead. The phone number is the important part:\n// without a valid E.164 number there is nobody to message.\nconst loaded = $('Load Campaign').first().json;\nconst campaign = loaded.campaign || {};\nconst inbound = loaded.lead || {};\nconst fetched = $input.first().json || {};\nconst S = (v) => (v == null ? '' : String(v));\nconst flags = [];\n\n// ---- phone -> E.164 ----\nfunction toE164(raw, defaultCc) {\n  let s = S(raw).trim();\n  if (!s) return null;\n  s = s.replace(/[^\\d+]/g, '');\n  if (s.slice(0, 2) === '00') s = '+' + s.slice(2);\n  const cc = S(defaultCc).replace(/\\D/g, '');\n  if (s[0] === '+') {\n    const d = s.slice(1);\n    return /^[1-9]\\d{7,14}$/.test(d) ? '+' + d : null;\n  }\n  let d = s.replace(/\\D/g, '');\n  if (!d) return null;\n  if (d[0] === '0') {                                   // national format: 07700 900123\n    if (!cc) return null;\n    d = cc + d.replace(/^0+/, '');\n  } else if (cc && d.slice(0, cc.length) === cc && d.length >= cc.length + 7) {\n    // already carries the country code, just missing the +\n  } else if (cc) {\n    d = cc + d;\n  }\n  return /^[1-9]\\d{7,14}$/.test(d) ? '+' + d : null;\n}\n\n// ---- pull the fields out of whichever source this came from ----\nconst raw = {};\nlet name = '', email = '', phone = '';\n\nif (inbound.needsFetch) {                                // Meta returns field_data pairs\n  for (const f of (fetched.field_data || [])) {\n    const key = S(f.name).toLowerCase();\n    const val = S((f.values || [])[0]).trim();\n    if (!key) continue;\n    raw[key] = val;\n  }\n  const first = raw.first_name || '';\n  const last = raw.last_name || '';\n  name = S(raw.full_name || (first + ' ' + last)).trim();\n  email = S(raw.email || raw.email_address).trim().toLowerCase();\n  phone = S(raw.phone_number || raw.phone || raw.mobile_number);\n  raw.__meta = { leadgen_id: inbound.leadgen_id, ad_id: inbound.ad_id, form_id: inbound.source_key, page_id: inbound.page_id };\n  if (!fetched.field_data) flags.push('META_LEAD_EMPTY');\n} else {\n  const f = inbound.formData || {};\n  for (const k of Object.keys(f)) if (typeof f[k] !== 'object') raw[String(k).toLowerCase()] = S(f[k]);\n  name = S(f.name || f.full_name || ((S(f.first_name) + ' ' + S(f.last_name)).trim()));\n  email = S(f.email || f.email_address).trim().toLowerCase();\n  phone = S(f.phone || f.phone_number || f.mobile || f.telephone);\n}\n\nconst e164 = toE164(phone, campaign.default_country);\nif (!e164) flags.push(phone ? 'PHONE_UNUSABLE' : 'PHONE_MISSING');\nif (email && !/^[^@\\s]+@[^@\\s]+\\.[^@\\s]{2,}$/.test(email)) { flags.push('EMAIL_INVALID'); email = ''; }\n\nconst clean = S(name).replace(/\\s+/g, ' ').trim().slice(0, 80);\nconst parts = clean ? clean.split(' ') : [];\n\nreturn [{\n  json: {\n    campaign,\n    ok: !!e164,\n    flags,\n    lead: {\n      phone: e164 || '',\n      wa_id: e164 ? e164.slice(1) : '',\n      name: clean,\n      firstName: parts.length > 1 ? parts.slice(0, -1).join(' ') : (parts[0] || ''),\n      lastName: parts.length > 1 ? parts[parts.length - 1] : '',\n      email,\n      source: inbound.source,\n      source_ref: inbound.leadgen_id || inbound.dedupe_key,\n      raw,\n    },\n    // the welcome template's variables, in the order the template declares them\n    templateParams: [clean ? (parts[0] || clean) : 'there', S(campaign.name)],\n    // A lead has not messaged us, so the first contact must be an approved template.\n    // Their reply to it is what opens the 24-hour window for everything after.\n    welcomePayload: e164 ? {\n      messaging_product: 'whatsapp', recipient_type: 'individual', to: e164.slice(1), type: 'template',\n      template: { name: S(campaign.welcome_template), language: { code: S(campaign.template_lang) || 'en' },\n        components: [{ type: 'body', parameters: [\n          { type: 'text', text: (clean ? (parts[0] || clean) : 'there').slice(0, 60) },\n          { type: 'text', text: S(campaign.name).slice(0, 60) }] }] },\n    } : null,\n  },\n}];\n"
+      }
+    },
+    {
+      "id": "c96c67a5-9489-4c5a-94bc-b205354c376f",
+      "name": "Loop Over Leads",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "69cf3e26-837a-4cf3-89ff-4e9fb6369944",
+      "name": "Usable phone?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1760,
+        200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "1805cdfc-aa65-4f5f-87e0-d7f8da9b3a82",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "a022c157-163c-4308-8676-beee5ba2202e",
+      "name": "Capture Lead",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1980,
+        120
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT capture_lead($1::int,$2,$3,$4,$5,$6,$7,$8::jsonb) AS r",
+        "options": {
+          "queryReplacement": "={{ [$json.campaign.id, $json.lead.phone, $json.lead.wa_id, $json.lead.name, $json.lead.email, $json.lead.source, $json.lead.source_ref, JSON.stringify($json.lead.raw)] }}"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2500
+    },
+    {
+      "id": "0a8aebc4-ffb7-49df-ab30-3c4e44d9ca91",
+      "name": "First time we have seen them?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2200,
+        120
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "23f07e70-03fe-4790-838a-730a11f09d84",
+              "leftValue": "={{ $json.r.is_new }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "a1808a4b-4621-4737-bc1d-f1102d2acc4c",
+      "name": "Send Welcome Template",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2420,
+        40
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/{{ $('Normalize Lead').first().json.campaign.graph_version }}/{{ $('Normalize Lead').first().json.campaign.phone_number_id }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Normalize Lead').first().json.campaign.wa_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Normalize Lead').first().json.welcomePayload) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2500
+    },
+    {
+      "id": "a6149ed7-b74e-4dfd-848d-983bc7794a76",
+      "name": "Mark Contacted",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2640,
+        40
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT mark_contacted($1::int,$2::boolean,$3)",
+        "options": {
+          "queryReplacement": "={{ [ $('Capture Lead').first().json.r.lead.id, !$json.error, $json.error ? JSON.stringify($json.error).slice(0,200) : \"welcome template sent\" ] }}"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2500,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "7d9641d8-c348-4b99-b875-261f70b4672a",
+      "name": "Log Unusable Lead",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1980,
+        340
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO events(kind, detail) VALUES ('lead_unusable', $1)",
+        "options": {
+          "queryReplacement": "={{ [ $json.flags.join(\",\") + \" | \" + JSON.stringify($json.lead).slice(0,300) ] }}"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2500,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "cf459509-886b-4573-aebc-1b04a12f2454",
+      "name": "Sticky Note ec908081",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -60,
+        -340
+      ],
+      "parameters": {
+        "content": "## 1. A lead lands, and is messaged within seconds\n**Meta sends an id, not a lead.** The webhook carries only `leadgen_id`, so\n**Fetch Lead from Meta** reads the answers back with the page token. Miss that and\nevery lead arrives blank. Web forms post straight in and skip that step.\n\n**Setup**\n1. Run `schema.sql` then `seed.sql` against Postgres, and fill in the campaign row.\n2. Meta app > Webhooks > Page > subscribe to **leadgen**, callback = the production\n   URL of *Lead In*, verify token = the one in **Verify Token**.\n3. Then, once: `POST /{page_id}/subscribed_apps?subscribed_fields=leadgen` with the\n   page token, and add the app under Business Settings > Leads Access.\n4. Test with Meta's **Lead Ads Testing Tool**.\n\nA repeat delivery, an unknown form and an unusable phone number all stop here.",
+        "color": 4,
+        "width": 860,
+        "height": 320
+      }
+    },
+    {
+      "id": "d6bc7375-4ab7-460c-a923-1d7080951129",
+      "name": "Sticky Note 68117f3d",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2360,
+        240
+      ],
+      "parameters": {
+        "content": "## Why a template, not a message\nThe lead has never messaged you, so WhatsApp will not carry a free-form message to\nthem. The first contact must be an **approved template**. Give it two variables\n(first name, campaign) and a quick-reply button such as \"Yes, I'm interested\".\n\nTheir tap on that button is what opens the 24-hour window - and that is when\nworkflow 2 takes over and can ask anything.",
+        "color": 3,
+        "width": 560,
+        "height": 240
+      }
+    }
+  ],
+  "connections": {
+    "Meta Verify (GET)": {
+      "main": [
+        [
+          {
+            "node": "Verify Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Token": {
+      "main": [
+        [
+          {
+            "node": "Answer Challenge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead In": {
+      "main": [
+        [
+          {
+            "node": "Read Lead Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Lead Webhook": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Campaign": {
+      "main": [
+        [
+          {
+            "node": "Ours, and new?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ours, and new?": {
+      "main": [
+        [
+          {
+            "node": "From Facebook?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Over Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "From Facebook?": {
+      "main": [
+        [
+          {
+            "node": "Fetch Lead from Meta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Normalize Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Lead from Meta": {
+      "main": [
+        [
+          {
+            "node": "Normalize Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Lead": {
+      "main": [
+        [
+          {
+            "node": "Usable phone?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Leads": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Load Campaign",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Usable phone?": {
+      "main": [
+        [
+          {
+            "node": "Capture Lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Unusable Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Capture Lead": {
+      "main": [
+        [
+          {
+            "node": "First time we have seen them?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "First time we have seen them?": {
+      "main": [
+        [
+          {
+            "node": "Send Welcome Template",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Over Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Welcome Template": {
+      "main": [
+        [
+          {
+            "node": "Mark Contacted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Contacted": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Unusable Lead": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

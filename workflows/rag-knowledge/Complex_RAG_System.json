@@ -1,0 +1,343 @@
+{
+  "name": "Complex RAG System",
+  "nodes": [
+    {
+      "id": "93aca2fc-81c5-4c27-8642-17d2ee7997a3",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        548
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "ecfebf4b-611e-401c-9670-93af81f31135",
+      "name": "Fetch Documents",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        664,
+        400
+      ],
+      "parameters": {
+        "url": "https://api.example.com/documents",
+        "options": {}
+      }
+    },
+    {
+      "id": "f44cfb55-c33e-4b33-8183-03c02967f04e",
+      "name": "Insert into Pinecone",
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1.3,
+      "position": [
+        1120,
+        400
+      ],
+      "parameters": {
+        "mode": "insert",
+        "pineconeIndex": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "options": {
+          "clearNamespace": false,
+          "pineconeNamespace": "rag-documents"
+        }
+      }
+    },
+    {
+      "id": "72d22210-7763-4a14-bc61-2d8cc66a42eb",
+      "name": "OpenAI Embeddings",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        1088,
+        624
+      ],
+      "parameters": {
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "41bba380-e1fe-4e67-82e2-8519a86a185e",
+      "name": "Document Loader",
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        1216,
+        624
+      ],
+      "parameters": {
+        "textSplittingMode": "custom",
+        "options": {}
+      }
+    },
+    {
+      "id": "8e7b7e3c-15ba-4e35-b195-98567f128786",
+      "name": "Recursive Text Splitter",
+      "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
+      "typeVersion": 1,
+      "position": [
+        1296,
+        832
+      ],
+      "parameters": {
+        "chunkOverlap": 200,
+        "options": {}
+      }
+    },
+    {
+      "id": "eddfad13-a46b-42b1-8b4e-6ccb172fef9e",
+      "name": "RAG AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        520,
+        696
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.query ?? \"What can you tell me about the documents?\" }}",
+        "options": {
+          "systemMessage": "You are a helpful AI assistant with access to a knowledge base. Use the Pinecone Retrieval Tool to search for relevant information when answering questions. Always cite the sources you find and provide accurate, detailed answers based on the retrieved documents.",
+          "maxIterations": 15,
+          "returnIntermediateSteps": true,
+          "enableStreaming": true
+        }
+      }
+    },
+    {
+      "id": "faa05722-4e19-47ac-b231-5f800ff552eb",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        464,
+        920
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "49ecb1a7-1baf-42d4-8772-bd5843dab808",
+      "name": "Conversation Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        592,
+        920
+      ],
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.sessionId ?? \"default-session\" }}",
+        "contextWindowLength": 10
+      }
+    },
+    {
+      "id": "84a08639-3ebf-42b0-80d0-88a016d47256",
+      "name": "Pinecone Retrieval Tool",
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1.3,
+      "position": [
+        720,
+        920
+      ],
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolDescription": "Search through the document knowledge base to find relevant information about AI, machine learning, and related topics",
+        "pineconeIndex": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "topK": 5,
+        "options": {
+          "pineconeNamespace": "rag-documents"
+        }
+      }
+    },
+    {
+      "id": "1e8beeb9-c481-4455-8d45-9d9e9879d5a8",
+      "name": "Sticky Note 9ece6340",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        128,
+        428
+      ],
+      "parameters": {
+        "content": "## 🎯 RAG System Overview\n\n**Use Case:** Intelligent document Q&A system\n\nThis workflow enables AI to answer questions using your own documents as a knowledge source, rather than relying solely on its training data.\n\n**Perfect for:**\n- Company knowledge bases\n- Technical documentation search\n- Customer support with product manuals\n- Research paper analysis",
+        "height": 280,
+        "width": 320,
+        "color": 4
+      }
+    },
+    {
+      "id": "d433f9bc-7240-4ff4-887a-a3d284197102",
+      "name": "Sticky Note e8dab852",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        542,
+        300
+      ],
+      "parameters": {
+        "content": "## 📚 Document Indexing Pipeline\n\n**What happens here:**\n1. Fetch documents from your API\n2. Split text into chunks (1000 chars, 200 overlap)\n3. Convert chunks to embeddings (vectors)\n4. Store in Pinecone vector database\n\n**Run this once** to populate your knowledge base, then again when documents update.",
+        "height": 260,
+        "width": 340,
+        "color": 2
+      }
+    },
+    {
+      "id": "73579eee-15f8-4a3c-b725-d940898eb18e",
+      "name": "Sticky Note e9947b8a",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        462,
+        556
+      ],
+      "parameters": {
+        "content": "## 💬 Query & Retrieval\n\n**How RAG works:**\n1. User asks a question\n2. AI agent uses Pinecone tool to search relevant document chunks\n3. Retrieved context is added to the prompt\n4. AI generates answer based on YOUR documents\n\n**Benefits:**\n✓ Up-to-date information\n✓ Source citations\n✓ Domain-specific accuracy\n✓ Conversation memory (10 messages)",
+        "height": 300,
+        "width": 340,
+        "color": 3
+      }
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Fetch Documents",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RAG AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Documents": {
+      "main": [
+        [
+          {
+            "node": "Insert into Pinecone",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Embeddings": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Insert into Pinecone",
+            "type": "ai_embedding",
+            "index": 0
+          },
+          {
+            "node": "Pinecone Retrieval Tool",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Document Loader": {
+      "ai_document": [
+        [
+          {
+            "node": "Insert into Pinecone",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recursive Text Splitter": {
+      "ai_textSplitter": [
+        [
+          {
+            "node": "Document Loader",
+            "type": "ai_textSplitter",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "RAG AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Conversation Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "RAG AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pinecone Retrieval Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "RAG AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

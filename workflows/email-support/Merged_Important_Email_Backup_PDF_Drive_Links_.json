@@ -1,0 +1,297 @@
+{
+  "name": "Merged Important Email Backup (PDF + Drive Links)",
+  "nodes": [
+    {
+      "id": "65120b2e-e520-4ace-9082-00d8e5896e24",
+      "name": "Gmail Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -1120,
+        0
+      ],
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "event": "messageReceived",
+        "simple": true,
+        "filters": {
+          "readStatus": "unread"
+        }
+      }
+    },
+    {
+      "id": "12810b6f-b2a1-478a-923e-f1389086a841",
+      "name": "Is Important Sender?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -880,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "or",
+          "conditions": [
+            {
+              "leftValue": "={{ ($json.from || '').toLowerCase() }}",
+              "rightValue": "boss@gmail.com",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "leftValue": "={{ ($json.from || '').toLowerCase() }}",
+              "rightValue": "client@gmail.com",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "leftValue": "={{ ($json.from || '').toLowerCase() }}",
+              "rightValue": "manager@company.com",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "d99090ff-4497-4073-861e-79442a70c912",
+      "name": "Get Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -640,
+        0
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "get",
+        "messageId": "={{ $json.id }}",
+        "simple": false
+      },
+      "webhookId": "a4eed455-09b7-43b3-91ff-7855456c976e"
+    },
+    {
+      "id": "47764a52-0899-4c4b-90d6-0ed3cc86940a",
+      "name": "Build Email PDF + Extract Drive",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const email = $input.item.json;\n\nconst from = email.headers?.from || email.from?.text || (typeof email.from === 'string' ? email.from : 'Unknown sender');\nconst subject = email.subject || 'No subject';\nconst date = email.date || email.headers?.date || new Date().toISOString();\nconst body = email.text || email.snippet || '';\nconst bodyHtml = email.textAsHtml || email.html || '';\n\nfunction stripHtml(html) {\n  return html.replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim();\n}\n\nconst bodyText = body || stripHtml(bodyHtml) || 'No content';\nconst textForLink = (email.html || email.textAsHtml || email.text || email.snippet || '').toString();\nconst driveMatch = textForLink.match(/drive\\.google\\.com\\/(?:file\\/d\\/|open\\?id=|uc\\?id=)([a-zA-Z0-9_-]+)/i);\nconst driveFileId = driveMatch ? driveMatch[1] : null;\n\nconst plain = [\n  'IMPORTANT EMAIL BACKUP',\n  '======================',\n  '',\n  'From: ' + from,\n  'Subject: ' + subject,\n  'Date: ' + date,\n  'Message ID: ' + (email.id || ''),\n  '',\n  '--- Message ---',\n  '',\n  bodyText,\n].join('\\n');\n\nfunction escapePdf(text) {\n  return String(text)\n    .replace(/\\\\/g, '\\\\\\\\')\n    .replace(/\\(/g, '\\\\(')\n    .replace(/\\)/g, '\\\\)')\n    .replace(/[^\\x00-\\x7F]/g, '?');\n}\n\nfunction wrapLines(text, maxLen = 95) {\n  const lines = [];\n  for (const raw of text.split(/\\r?\\n/)) {\n    let part = raw;\n    while (part.length > maxLen) {\n      lines.push(part.slice(0, maxLen));\n      part = part.slice(maxLen);\n    }\n    lines.push(part);\n  }\n  return lines.slice(0, 55);\n}\n\nfunction buildPdfBuffer(text) {\n  const lines = wrapLines(text);\n  let stream = 'BT\\n/F1 11 Tf\\n';\n  stream += '50 750 Td\\n';\n  lines.forEach((line, i) => {\n    if (i > 0) stream += '0 -14 Td\\n';\n    stream += '(' + escapePdf(line) + ') Tj\\n';\n  });\n  stream += 'ET';\n\n  const streamLen = Buffer.byteLength(stream, 'binary');\n  const parts = [\n    '1 0 obj\\n<< /Type /Catalog /Pages 2 0 R >>\\nendobj\\n',\n    '2 0 obj\\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\\nendobj\\n',\n    '3 0 obj\\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\\nendobj\\n',\n    '4 0 obj\\n<< /Length ' + streamLen + ' >>\\nstream\\n' + stream + 'endstream\\nendobj\\n',\n    '5 0 obj\\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\\nendobj\\n',\n  ];\n\n  let pdf = '%PDF-1.4\\n';\n  const offsets = [0];\n  for (const part of parts) {\n    offsets.push(Buffer.byteLength(pdf, 'binary'));\n    pdf += part;\n  }\n  const xrefPos = Buffer.byteLength(pdf, 'binary');\n  pdf += 'xref\\n0 ' + (parts.length + 1) + '\\n';\n  pdf += '0000000000 65535 f \\n';\n  for (let i = 1; i <= parts.length; i++) {\n    pdf += String(offsets[i]).padStart(10, '0') + ' 00000 n \\n';\n  }\n  pdf += 'trailer\\n<< /Size ' + (parts.length + 1) + ' /Root 1 0 R >>\\nstartxref\\n' + xrefPos + '\\n%%EOF';\n\n  return Buffer.from(pdf, 'binary');\n}\n\nconst datePrefix = new Date().toISOString().split('T')[0];\nconst pdfFileName = datePrefix + '_' + (email.id || 'email') + '_important.pdf';\nconst pdfBuffer = buildPdfBuffer(plain);\n\nreturn {\n  json: {\n    ...email,\n    pdfFileName,\n    emailFrom: from,\n    emailSubject: subject,\n    emailPreview: bodyText.slice(0, 200),\n    driveFileId,\n  },\n  binary: {\n    data: {\n      data: pdfBuffer.toString('base64'),\n      mimeType: 'application/pdf',\n      fileName: pdfFileName,\n    },\n  },\n};"
+      }
+    },
+    {
+      "id": "621ee07e-cd56-4334-8ccd-99e4aa26ff93",
+      "name": "Has Drive PDF Link?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -160,
+        -128
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.driveFileId }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "b4895ae5-d1e3-4f04-afec-502e5533cbc7",
+      "name": "Copy PDF to Backup",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        80,
+        -208
+      ],
+      "parameters": {
+        "resource": "file",
+        "operation": "copy",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.driveFileId }}"
+        },
+        "name": "={{ $now.format('yyyy-MM-dd') + '_backup_' + ($json.driveFileId || 'drive') }}",
+        "sameFolder": false,
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "12I-wB38Ka3U0ljla5JOSYUXI0s7YrLON",
+          "cachedResultName": "Untitled folder"
+        }
+      }
+    },
+    {
+      "id": "0467b3a7-7b4d-4d6b-a536-7d16513f7fe6",
+      "name": "Save PDF to Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -160,
+        128
+      ],
+      "parameters": {
+        "resource": "file",
+        "operation": "upload",
+        "inputDataFieldName": "data",
+        "name": "={{ $json.pdfFileName }}",
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "12I-wB38Ka3U0ljla5JOSYUXI0s7YrLON",
+          "cachedResultName": "Untitled folder"
+        },
+        "options": {
+          "simplifyOutput": true
+        }
+      }
+    },
+    {
+      "id": "c40bd2d0-a3d7-402d-9f09-8d57548cc7fe",
+      "name": "Push Notification",
+      "type": "n8n-nodes-base.pushover",
+      "typeVersion": 1,
+      "position": [
+        80,
+        128
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "push",
+        "userKey": "ubyhbyuai8zi9qemokb1dyour151f9",
+        "message": "={{ $('Build Email PDF + Extract Drive').item.json.emailFrom + ' - ' + $('Build Email PDF + Extract Drive').item.json.emailSubject + '\\n' + $('Build Email PDF + Extract Drive').item.json.emailPreview + ($('Build Email PDF + Extract Drive').item.json.driveFileId ? '\\nDrive PDF copied: yes' : '\\nDrive PDF copied: no') }}",
+        "priority": 0,
+        "additionalFields": {
+          "title": "Important Email Saved as PDF",
+          "sound": "intermission",
+          "url": "={{ $json.webViewLink || '' }}",
+          "url_title": "Open PDF in Drive"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Is Important Sender?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Important Sender?": {
+      "main": [
+        [
+          {
+            "node": "Get Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Email": {
+      "main": [
+        [
+          {
+            "node": "Build Email PDF + Extract Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Email PDF + Extract Drive": {
+      "main": [
+        [
+          {
+            "node": "Has Drive PDF Link?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Save PDF to Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Drive PDF Link?": {
+      "main": [
+        [
+          {
+            "node": "Copy PDF to Backup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save PDF to Drive": {
+      "main": [
+        [
+          {
+            "node": "Push Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

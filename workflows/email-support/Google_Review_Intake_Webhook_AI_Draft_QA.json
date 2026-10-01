@@ -1,0 +1,400 @@
+{
+  "name": "Google Review Intake: Webhook -> AI Draft -> QA",
+  "nodes": [
+    {
+      "id": "1b285218-6249-4e89-9722-99cba62b6fbd",
+      "name": "Sticky Note 19563665",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        528,
+        688
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "Review Intake Architecture",
+            "position": [
+              -220,
+              60
+            ],
+            "parameters": {
+              "width": 520,
+              "height": 260,
+              "content": "GOOGLE REVIEW RESPONSE (HUMAN POST)\n\n1. Webhook POST /reviews/new (rating, text, author, location)\n2. AI drafts on-brand response\n3. Append Review_QA sheet status=pending_approval\n4. Slack posts draft for owner approval\n\nNo GBP API - owner pastes approved reply manually."
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "4e51eafe-0c9e-4af7-9a8e-f6009ecc5495",
+      "name": "Webhook: New Review",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "reviews/new",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "webhookId": "e7bb1179-3089-4d93-a5dd-9529ae3bfa4f"
+    },
+    {
+      "id": "3b468326-20a1-40c5-8d92-8df497fcab48",
+      "name": "Normalize Review Payload",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "rating",
+              "name": "rating",
+              "value": "={{ Number($json.rating || $json.body?.rating || 0) }}",
+              "type": "number"
+            },
+            {
+              "id": "review-text",
+              "name": "review_text",
+              "value": "={{ $json.text || $json.review_text || $json.body?.text || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "author",
+              "name": "author",
+              "value": "={{ $json.author || $json.reviewer || $json.body?.author || \"Anonymous\" }}",
+              "type": "string"
+            },
+            {
+              "id": "location",
+              "name": "location",
+              "value": "={{ $json.location || $json.body?.location || \"Main Location\" }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "78ccd306-0836-46ad-83e5-52cce62cf254",
+      "name": "AI: Draft Review Response",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ \"Brand: REPLACE_WITH_BRAND_NAME\\nLocation: \" + $json.location + \"\\nReviewer: \" + $json.author + \"\\nRating: \" + $json.rating + \"/5\\nReview: \" + $json.review_text }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You write on-brand Google Business Profile review responses. Be concise and HIPAA-safe.",
+          "maxIterations": 2
+        }
+      }
+    },
+    {
+      "id": "441ecff3-2ff4-4a5a-841f-6ef453ebd121",
+      "name": "GPT-5 Mini",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        528,
+        640
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "options": {
+          "temperature": 0.4
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "1cf4d7dd-610c-49f6-be9e-dbdb369d4ed3",
+      "name": "Review Response Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        560,
+        432
+      ],
+      "parameters": {
+        "schemaType": "fromJson",
+        "autoFix": true,
+        "jsonSchemaExample": {
+          "draft_response": "Thank you for your kind words, Sarah!",
+          "tone": "warm_professional",
+          "needs_escalation": false,
+          "escalation_reason": ""
+        }
+      }
+    },
+    {
+      "id": "91004d15-e8ab-4830-909c-f08c5bb7f6bf",
+      "name": "Build Review QA Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const src = $('Normalize Review Payload').item.json;\nconst out = $input.item.json.output || $input.item.json;\nconst reviewId = 'REV-' + $now.toFormat('yyyyLLdd-HHmmss') + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();\nreturn { json: { review_id: reviewId, received_at: $now.toISO(), rating: src.rating, review_text: src.review_text, author: src.author, location: src.location, draft_response: out.draft_response || '', tone: out.tone || 'warm_professional', needs_escalation: Boolean(out.needs_escalation), escalation_reason: out.escalation_reason || '', status: 'pending_approval', approved_by: '', approved_at: '', posted_at: '', posted_by: '' } };"
+      }
+    },
+    {
+      "id": "5f729c98-2545-4878-a243-44a6f300f57f",
+      "name": "Sheet: Append Review QA",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        960,
+        300
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_REVIEW_QA_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Review_QA"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "schema": [
+            {
+              "id": "review_id",
+              "displayName": "review_id",
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "received_at",
+              "displayName": "received_at",
+              "type": "string"
+            },
+            {
+              "id": "rating",
+              "displayName": "rating",
+              "type": "number"
+            },
+            {
+              "id": "review_text",
+              "displayName": "review_text",
+              "type": "string"
+            },
+            {
+              "id": "author",
+              "displayName": "author",
+              "type": "string"
+            },
+            {
+              "id": "location",
+              "displayName": "location",
+              "type": "string"
+            },
+            {
+              "id": "draft_response",
+              "displayName": "draft_response",
+              "type": "string"
+            },
+            {
+              "id": "tone",
+              "displayName": "tone",
+              "type": "string"
+            },
+            {
+              "id": "needs_escalation",
+              "displayName": "needs_escalation",
+              "type": "boolean"
+            },
+            {
+              "id": "escalation_reason",
+              "displayName": "escalation_reason",
+              "type": "string"
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "type": "string"
+            },
+            {
+              "id": "approved_by",
+              "displayName": "approved_by",
+              "type": "string"
+            },
+            {
+              "id": "approved_at",
+              "displayName": "approved_at",
+              "type": "string"
+            },
+            {
+              "id": "posted_at",
+              "displayName": "posted_at",
+              "type": "string"
+            },
+            {
+              "id": "posted_by",
+              "displayName": "posted_by",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "45a67b3d-38c6-4781-9d3a-f607cf6f21a9",
+      "name": "Slack: Review Draft for Approval",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.5,
+      "position": [
+        1200,
+        300
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SLACK_CHANNEL_ID"
+        },
+        "messageType": "text",
+        "text": "={{ \"*New Google Review* (\" + $json.rating + \"/5)\\n*Draft:* \" + $json.draft_response + \"\\n*ID:* \" + $json.review_id }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": true,
+          "mrkdwn": true
+        }
+      },
+      "webhookId": "b011dcd4-2b4c-462e-b65c-f53b1f4ef5ec"
+    }
+  ],
+  "connections": {
+    "Webhook: New Review": {
+      "main": [
+        [
+          {
+            "node": "Normalize Review Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Review Payload": {
+      "main": [
+        [
+          {
+            "node": "AI: Draft Review Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Draft Review Response": {
+      "main": [
+        [
+          {
+            "node": "Build Review QA Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT-5 Mini": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI: Draft Review Response",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Review Response Schema",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Review Response Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI: Draft Review Response",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Review QA Row": {
+      "main": [
+        [
+          {
+            "node": "Sheet: Append Review QA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheet: Append Review QA": {
+      "main": [
+        [
+          {
+            "node": "Slack: Review Draft for Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

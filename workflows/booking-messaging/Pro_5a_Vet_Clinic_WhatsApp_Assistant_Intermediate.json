@@ -1,0 +1,1262 @@
+{
+  "name": "Pro 5a | Vet Clinic WhatsApp Assistant | Intermediate",
+  "nodes": [
+    {
+      "id": "3657997b-0c7c-4dbe-9bf2-f55405a74106",
+      "name": "WhatsApp Verify (GET)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "vet-wa-2d81f0",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "de038615-b843-4974-89c9-1cced9b3b433"
+    },
+    {
+      "id": "843bccfa-2b05-429b-8fb8-c43f50c5d8bc",
+      "name": "Verify Token",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1f42a48-4362-4135-bee4-bb8babfe661b",
+              "name": "verify_token",
+              "value": "CHANGE_ME_verify_token",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "8dde043c-7aab-4369-9890-cbfc78de69f5",
+      "name": "Answer Challenge",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.query['hub.verify_token'] === $json.verify_token ? $json.query['hub.challenge'] : 'forbidden' }}",
+        "options": {
+          "responseCode": "={{ $json.query['hub.verify_token'] === $json.verify_token ? 200 : 403 }}"
+        }
+      }
+    },
+    {
+      "id": "25e59fb9-cd99-4377-92c5-bab59c723a25",
+      "name": "Message In",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        500
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vet-wa-2d81f0",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "webhookId": "5298c259-4eef-49f7-aaf7-397f2e28a972"
+    },
+    {
+      "id": "5a27934c-e896-4434-a5f2-14f82feba9a3",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        500
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f9d19e59-919d-4c3e-8ce4-562238c40886",
+              "name": "clinic_name",
+              "value": "Greenway Vets",
+              "type": "string"
+            },
+            {
+              "id": "46b95cef-1b00-45cb-87e4-b3f3dd600713",
+              "name": "sheet_id",
+              "value": "PASTE_GOOGLE_SHEET_ID",
+              "type": "string"
+            },
+            {
+              "id": "8741571f-84e0-4f5a-b4b6-16170a451b18",
+              "name": "calendar_id",
+              "value": "PASTE_CALENDAR_ID@group.calendar.google.com",
+              "type": "string"
+            },
+            {
+              "id": "4bb20ad4-fbd1-48f3-af9e-df290846d320",
+              "name": "timezone",
+              "value": "Europe/London",
+              "type": "string"
+            },
+            {
+              "id": "13ff46f9-c1d6-4ef5-831b-bc97bbde2f23",
+              "name": "phone_number_id",
+              "value": "PASTE_WHATSAPP_PHONE_NUMBER_ID",
+              "type": "string"
+            },
+            {
+              "id": "610edcdb-e286-4e13-b46c-b172131f3e06",
+              "name": "wa_token",
+              "value": "PASTE_PERMANENT_WHATSAPP_TOKEN",
+              "type": "string"
+            },
+            {
+              "id": "4ce81b4d-0906-4772-9f0b-52db2b178e1c",
+              "name": "graph_version",
+              "value": "v25.0",
+              "type": "string"
+            },
+            {
+              "id": "b977c68b-8949-42bb-a51d-f45acfc293f2",
+              "name": "clinic_phone",
+              "value": "01632 960123",
+              "type": "string"
+            },
+            {
+              "id": "67aab23f-cee4-473d-ad8d-ff6dbc169a7f",
+              "name": "emergency_phone",
+              "value": "01632 960123",
+              "type": "string"
+            },
+            {
+              "id": "20a06eb4-1660-4335-ae6d-1ac4ac2e23aa",
+              "name": "out_of_hours",
+              "value": "Vets Now 01632 960999",
+              "type": "string"
+            },
+            {
+              "id": "d9e67544-d65c-4c3d-8369-69606402ce94",
+              "name": "team_hours",
+              "value": "Mon-Fri 8:30-18:00, Sat 9-12",
+              "type": "string"
+            },
+            {
+              "id": "c5b9033b-d386-43eb-8963-f69344b1b83c",
+              "name": "opening_hours",
+              "value": "{\"1\":[\"08:30-12:30\",\"13:30-18:00\"],\"2\":[\"08:30-12:30\",\"13:30-18:00\"],\"3\":[\"08:30-12:30\",\"13:30-18:00\"],\"4\":[\"08:30-12:30\",\"13:30-18:00\"],\"5\":[\"08:30-12:30\",\"13:30-17:00\"],\"6\":[\"09:00-12:00\"],\"0\":[]}",
+              "type": "string"
+            },
+            {
+              "id": "2914491f-d505-47f2-be1c-6b46079e68b6",
+              "name": "slot_step_min",
+              "value": 15,
+              "type": "number"
+            },
+            {
+              "id": "68145fbf-ba19-469e-be8a-56dd274353d6",
+              "name": "min_notice_min",
+              "value": 60,
+              "type": "number"
+            },
+            {
+              "id": "1efe0777-f236-4c34-85b6-357c15259079",
+              "name": "buffer_min",
+              "value": 0,
+              "type": "number"
+            },
+            {
+              "id": "7e854671-8a2d-46e0-8ab6-8bd83f2f1f0b",
+              "name": "booking_days",
+              "value": 14,
+              "type": "number"
+            },
+            {
+              "id": "27f73395-35bf-4065-abbc-ec54ad3e8ccb",
+              "name": "session_hours",
+              "value": 6,
+              "type": "number"
+            },
+            {
+              "id": "b99baded-307a-47ca-9195-8910100c6a27",
+              "name": "date_order",
+              "value": "DMY",
+              "type": "string"
+            },
+            {
+              "id": "b7f1c492-e61c-4926-b2f5-7b7ede6f75d4",
+              "name": "vaccination_interval_months",
+              "value": 12,
+              "type": "number"
+            },
+            {
+              "id": "055555e4-9f34-47a8-ac94-01b5697a23fd",
+              "name": "reminder_template",
+              "value": "vaccination_reminder",
+              "type": "string"
+            },
+            {
+              "id": "52ed4f90-bf28-46da-81b1-3501132a78aa",
+              "name": "template_lang",
+              "value": "en_GB",
+              "type": "string"
+            },
+            {
+              "id": "1efb4ef4-63b1-44ad-ba8c-dd9915e3d7e7",
+              "name": "reminder_offsets",
+              "value": "[14,0,-14]",
+              "type": "string"
+            },
+            {
+              "id": "6e971ca7-44b2-410d-8f92-9295a24a3e63",
+              "name": "reminder_grace_days",
+              "value": 3,
+              "type": "number"
+            },
+            {
+              "id": "f2658fd3-3bbc-4d67-8c19-af369ae05dca",
+              "name": "pushover_user_key",
+              "value": "PASTE_PUSHOVER_USER_KEY",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "f3ef08e5-cf11-4f77-9737-10b1b5db1d53",
+      "name": "Read Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        500
+      ],
+      "parameters": {
+        "jsCode": "// ===== Read Message =====\n// One item per customer message. Delivery receipts carry no .messages and are dropped.\nconst out = [];\nconst digitsOnly = (s) => String(s == null ? '' : s).replace(/\\D/g, '');\nfor (const it of $input.all()) {\n  const j = it.json || {};\n  const body = (j.body && j.body.entry) ? j.body : (j.entry ? j : null);\n  if (!body) continue;\n  for (const entry of body.entry || []) {\n    for (const change of entry.changes || []) {\n      const v = change.value || {};\n      const pnid = (v.metadata || {}).phone_number_id;\n      if (!pnid) continue;\n      const contacts = v.contacts || [];\n      for (const m of v.messages || []) {\n        const wa = digitsOnly(m.from);\n        if (!wa) continue;\n        let kind = 'other', id = '', text = '';\n        if (m.type === 'text') { kind = 'text'; text = String((m.text || {}).body || '').trim(); }\n        else if (m.type === 'interactive') {\n          const r = (m.interactive || {}).list_reply || (m.interactive || {}).button_reply;\n          if (r) { kind = 'choice'; id = String(r.id || ''); text = String(r.title || ''); }\n        } else if (m.type === 'button') {            // quick reply on a reminder template\n          kind = 'choice'; id = String((m.button || {}).payload || ''); text = String((m.button || {}).text || '');\n        }\n        const prof = ((contacts.find((c) => digitsOnly(c.wa_id) === wa) || contacts[0] || {}).profile) || {};\n        out.push({ json: { wa_id: wa, phone_number_id: pnid, kind, id, text,\n          profile_name: String(prof.name || ''), msg_id: String(m.id || ('gen-' + Date.now() + Math.random())) } });\n      }\n    }\n  }\n}\nreturn out;\n"
+      }
+    },
+    {
+      "id": "b0cf107a-11bd-4cad-8ea1-41fe45ecae84",
+      "name": "This Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        500
+      ],
+      "parameters": {
+        "jsCode": "// ===== This Message =====\n// The loop's current message, kept here so every later node can read it. Nodes after an\n// HTTP call lose their input, and this node runs on every pass, so it is always current.\nconst CFG = $('Config').first().json;\nconst m = $input.first().json;\n// One read for everything. Handoffs is written to but never searched, so only its\n// header row is fetched - enough to know the column order, without downloading history.\nconst tabs = ['FAQ', 'AppointmentTypes', 'Owners', 'Pets', 'Sessions', 'Appointments', 'Handoffs'];\nconst ranges = tabs.map((t) => (t === 'Handoffs' ? 'Handoffs!1:1' : t));\nreturn [{ json: { ...m,\n  sheetsUrl: 'https://sheets.googleapis.com/v4/spreadsheets/' + encodeURIComponent(CFG.sheet_id)\n    + '/values:batchGet?majorDimension=ROWS&valueRenderOption=FORMATTED_VALUE&'\n    + ranges.map((r) => 'ranges=' + encodeURIComponent(r)).join('&'),\n  tabs,\n} }];\n"
+      }
+    },
+    {
+      "id": "914097ba-7861-4663-85ba-24976c11c04e",
+      "name": "Load Clinic Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        500
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.sheetsUrl }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "5f0a12dd-2071-495f-b1a0-7ea9a1ac0d07",
+      "name": "Assistant Engine",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        500
+      ],
+      "parameters": {
+        "jsCode": "// ===== Assistant Engine =====\n// Deterministic router. It never lets the model near an emergency or a medical question,\n// and it never lets the model book anything. The model only answers from the FAQ tab.\nconst CFG = $('Config').first().json;\nconst m = $('This Message').first().json;\n// --- Google Sheets helpers (identical copy in every node that reads the sheet) ---\nconst S = (v) => (v == null ? '' : String(v));\nconst digits = (s) => S(s).replace(/\\D/g, '');\n\n// values:batchGet returns ragged rows: trailing empty cells are simply missing, and a\n// blank line comes back as []. Read by header name and keep the real sheet row number.\nfunction readTables(batch, names) {\n  const out = {};\n  const vrs = (batch && batch.valueRanges) || [];\n  names.forEach((name, i) => {\n    const vr = vrs[i] || {};\n    const got = S(vr.range).replace(/^'|'?!.*$/g, '');\n    if (vr.range && got && got !== name) throw new Error('Sheet order mismatch: expected ' + name + ', got ' + got);\n    const rows = vr.values || [];\n    const header = (rows[0] || []).map((h) => S(h).trim());\n    const recs = [];\n    for (let r = 1; r < rows.length; r++) {\n      const row = rows[r] || [];\n      if (!row.some((c) => S(c).trim() !== '')) continue;\n      const rec = { __row: r + 1 };\n      header.forEach((h, c) => { if (h) rec[h] = row[c] === undefined ? '' : S(row[c]).trim(); });\n      recs.push(rec);\n    }\n    out[name] = { header, rows: recs };\n  });\n  return out;\n}\n\n// Staff type dates however they like, and Sheets displays them in the sheet's locale.\nfunction parseDate(raw, order, zone) {\n  const v = S(raw).trim();\n  if (!v) return null;\n  let d = null;\n  if (/^\\d{4}-\\d{2}-\\d{2}/.test(v)) d = DateTime.fromISO(v.slice(0, 10), { zone });\n  else if (/^\\d{4,5}(\\.\\d+)?$/.test(v)) {                          // a raw Sheets serial number\n    d = DateTime.fromISO('1899-12-30', { zone }).plus({ days: Math.floor(Number(v)) });\n  } else {\n    const m = v.match(/^(\\d{1,2})[\\/.\\-](\\d{1,2})[\\/.\\-](\\d{2,4})$/);\n    if (m) {\n      const a = +m[1], b = +m[2]; let y = +m[3]; if (y < 100) y += 2000;\n      const [day, month] = order === 'MDY' ? [b, a] : [a, b];\n      d = DateTime.fromObject({ year: y, month, day }, { zone });\n    } else {\n      for (const f of ['d LLL yyyy', 'd LLLL yyyy', 'LLL d, yyyy', 'LLLL d, yyyy', 'd-LLL-yyyy']) {\n        const t = DateTime.fromFormat(v, f, { zone });\n        if (t.isValid) { d = t; break; }\n      }\n    }\n  }\n  return d && d.isValid ? d.startOf('day') : null;\n}\n// --- outcome helpers (identical copy in every node that ends a turn) ---\nconst clip = (s, n) => (S(s).length > n ? S(s).slice(0, n - 1) + '\\u2026' : S(s));\nconst waBase = (to) => ({ messaging_product: 'whatsapp', recipient_type: 'individual', to });\nconst txt = (to, body) => ({ ...waBase(to), type: 'text', text: { preview_url: false, body: clip(body, 4096) } });\nconst btns = (to, body, opts) => ({ ...waBase(to), type: 'interactive',\n  interactive: { type: 'button', body: { text: clip(body, 1024) },\n    action: { buttons: opts.slice(0, 3).map((o) => ({ type: 'reply', reply: { id: clip(o.id, 256), title: clip(o.title, 20) } })) } } });\nconst lst = (to, body, buttonText, section, rows) => ({ ...waBase(to), type: 'interactive',\n  interactive: { type: 'list', body: { text: clip(body, 1024) },\n    action: { button: clip(buttonText, 20), sections: [{ title: clip(section, 24),\n      rows: rows.slice(0, 10).map((r) => { const o = { id: clip(r.id, 200), title: clip(r.title, 24) };\n        if (r.description) o.description = clip(r.description, 72); return o; }) }] } } });\n// a list holds ten rows; longer option sets get a \"More\" row and a page number\nfunction paged(options, page) {\n  if (options.length <= 10) return options;\n  const start = (page || 0) * 9;\n  const rows = options.slice(start, start + 9);\n  if (start + 9 < options.length) rows.push({ id: '__more', title: 'More \\u25b8', description: 'Show more options' });\n  else rows.push({ id: '__first', title: '\\u25c2 Back to start', description: 'Show the first options' });\n  return rows;\n}\n// every turn ends here: the reply, the session save, any other sheet writes, any staff alert\nfunction outcome(ctx, state, reply, writes, alert) {\n  let saved = JSON.stringify(state || {});\n  if (saved.length > 40000 && state && state.slots) {           // a Sheets cell holds 50,000 characters\n    saved = JSON.stringify({ ...state, slots: state.dayISO ? { [state.dayISO]: state.slots[state.dayISO] } : {} });\n  }\n  const sess = { phone: '+' + ctx.phone, state: saved, updated_at: DateTime.now().toUTC().toISO() };\n  const first = ctx.sessionRow ? { op: 'update', tab: 'Sessions', row: ctx.sessionRow, record: sess }\n                               : { op: 'append', tab: 'Sessions', record: sess };\n  return { json: { outcome: true, to: ctx.phone, phone_number_id: ctx.phone_number_id,\n    graph_version: ctx.graph_version, token: ctx.token, sheet_id: ctx.sheet_id, headers: ctx.headers,\n    reply, silent: reply === null, writes: [first].concat(ctx.pendingWrites || [], writes || []), alert: alert || null } };\n}\n\n// If the sheet cannot be read, every customer would look like a stranger and be\n// registered again. Say sorry, write nothing, and tell the staff.\nconst batch = $input.first().json || {};\nlet T;\ntry {\n  if (batch.error || !Array.isArray(batch.valueRanges)) throw new Error(S((batch.error && batch.error.message) || 'no data returned'));\n  T = readTables(batch, m.tabs);\n} catch (err) {\n  return [{ json: { action: 'reply', outcome: true, to: S(m.wa_id), phone_number_id: m.phone_number_id,\n    graph_version: CFG.graph_version || 'v25.0', token: CFG.wa_token, sheet_id: CFG.sheet_id, headers: {},\n    reply: txt(S(m.wa_id), 'Sorry - our system is having a moment. Please try again in a few minutes, or call us on '\n      + S(CFG.clinic_phone) + '.'),\n    writes: [], alert: { title: 'Clinic sheet unreadable', message: S(err.message).slice(0, 300), priority: 1 } } }];\n}\nconst zone = CFG.timezone || 'Europe/London';\nconst now = DateTime.now().setZone(zone);\nconst phone = S(m.wa_id);\nconst input = { kind: m.kind, id: S(m.id), text: S(m.text).trim() };\nconst low = input.text.toLowerCase();\n\n// ---------- who is this ----------\nconst owner = T.Owners.rows.find((r) => digits(r.phone) === phone) || null;\nconst pets = T.Pets.rows.filter((p) => digits(p.owner_phone) === phone);\nconst sessRec = T.Sessions.rows.find((r) => digits(r.phone) === phone) || null;\nconst types = T.AppointmentTypes.rows.filter((t) => t.name && !/^(no|false|0)$/i.test(t.active || 'yes'));\nconst faq = T.FAQ.rows.filter((f) => f.question && f.answer && !/^(no|false|0)$/i.test(f.active || 'yes'));\nconst upcoming = T.Appointments.rows.filter((a) => digits(a.owner_phone) === phone && /^booked$/i.test(a.status)\n  && DateTime.fromISO(a.start, { zone }).isValid && DateTime.fromISO(a.start, { zone }) > now)\n  .sort((a, b) => (a.start < b.start ? -1 : 1));\n\nlet state = {};\ntry { state = JSON.parse((sessRec && sessRec.state) || '{}') || {}; } catch (e) { state = {}; }\nconst updated = sessRec ? DateTime.fromISO(S(sessRec.updated_at)) : null;\nif (updated && updated.isValid && now.diff(updated, 'hours').hours > (Number(CFG.session_hours) || 6)) {\n  state = { seen: state.seen || [] };                        // idle too long: start fresh\n}\nstate.seen = Array.isArray(state.seen) ? state.seen : [];\nif (state.seen.includes(m.msg_id)) return [{ json: { action: 'skip' } }];   // WhatsApp re-delivered this one\nstate.seen = state.seen.concat([m.msg_id]).slice(-15);\n\nconst ctx = {\n  phone, phone_number_id: m.phone_number_id, graph_version: CFG.graph_version || 'v25.0', token: CFG.wa_token,\n  sheet_id: CFG.sheet_id, calendar_id: CFG.calendar_id, zone,\n  headers: Object.fromEntries(Object.entries(T).map(([k, v]) => [k, v.header])),\n  sessionRow: sessRec ? sessRec.__row : null,\n  owner, pets, types, upcoming, clinic: S(CFG.clinic_name) || 'the clinic',\n};\nconst to = phone;\nconst first = S((owner && owner.name) || m.profile_name).split(' ')[0];\nconst hello = first ? 'Hi ' + first + '! ' : 'Hi! ';\nconst newId = (p) => p + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();\nconst done = (st, reply, writes, alert) => [{ json: { action: 'reply', ctx, ...outcome(ctx, st, reply, writes, alert).json } }];\n\n// ---------- 1. emergencies never wait, and never reach the model ----------\nconst EMERGENCY = /\\b(not breathing|can'?t breathe|cannot breathe|struggling to breathe|collaps(e|ed|es|ing)|seizures?|having (a )?fits?|convuls\\w*|unconscious|unresponsive|hit by a car|run over|poison(ed|ing|ous)?|ate (some |a )?(chocolate|grapes|raisins|rat poison|antifreeze|xylitol|lilies|ibuprofen|paracetamol|onions?)|swallowed (a |some |my |his |her )?(battery|batteries|sock|bone|toy|string|tablets?|pills?|medication)|antifreeze|bleeding (heavily|a lot|badly)|heavy bleeding|won'?t stop bleeding|choking|bloat(ed|ing)?|can'?t stand|cannot stand|paralys\\w*|heat ?stroke|giving birth|in labour|can'?t (pee|urinate|wee)|straining to (pee|urinate|wee)|emergency)\\b/i;\nif (input.kind === 'text' && EMERGENCY.test(low)) {\n  const reply = txt(to, '\\ud83d\\udea8 If your pet is in danger right now, please call us immediately on ' + S(CFG.emergency_phone)\n    + '.\\n\\nOut of hours: ' + S(CFG.out_of_hours || CFG.emergency_phone)\n    + '\\n\\nPlease do not wait for a reply here. I have also alerted the team.');\n  const handoff = { handoff_id: newId('H'), phone: '+' + phone, name: (owner && owner.name) || m.profile_name,\n    reason: 'EMERGENCY', message: input.text.slice(0, 500), priority: 'emergency', status: 'open', created_at: now.toISO() };\n  return done({ ...state, step: 'menu' }, reply, [{ op: 'append', tab: 'Handoffs', record: handoff }],\n    { title: 'EMERGENCY - ' + (handoff.name || '+' + phone), message: '+' + phone + ': ' + input.text.slice(0, 300), priority: 1 });\n}\n\n// ---------- 2. medical questions get a vet, not a guess ----------\nconst MEDICAL = /\\b(paracetamol|ibuprofen|aspirin|calpol|piriton|benadryl|antihistamines?|antibiotics?|painkillers?|pain ?killers?|dosage|doses?|(can|should|could) i give|vomit(s|ing|ed)?|being sick|diarrh(o)?ea|limping|lame(ness)?|lumps?|rash|itch(ing|y)?|scratching|not eating|off (his|her|its|their) food|letharg\\w*|blood in|coughing|sneezing|discharge|swelling|swollen|weight loss|drinking (a lot|more)|diagnos\\w*|symptoms?|infection|infected)\\b|\\bhow (much|many)\\b.{0,30}\\b(tablets?|pills?|ml|mg|medicine|medication)\\b/i;\nconst consult = types.find((t) => /consult|check|exam/i.test(t.name));\nconst MEDICAL_REPLY = () => btns(to, 'I cannot give medical advice over WhatsApp - I would hate to get it wrong. '\n  + 'A vet can take a proper look' + (pets.length === 1 ? ' at ' + pets[0].name : '') + '.\\n\\nIf it is urgent, call us on '\n  + S(CFG.clinic_phone || CFG.emergency_phone) + '.',\n  [consult ? { id: 'type:' + consult.id, title: 'Book a vet visit' } : { id: 'm:book', title: 'Book a vet visit' },\n   { id: 'm:human', title: 'Talk to the team' }]);\n\n// ---------- 3. commands that work from anywhere ----------\nconst menuRows = () => {\n  const rows = [\n    { id: 'm:book', title: 'Book an appointment', description: 'See real availability' },\n    { id: 'm:ask', title: 'Ask a question', description: 'Prices, opening hours, what to bring' },\n    { id: 'm:pets', title: 'My pets & reminders', description: 'Vaccinations due and bookings' },\n    { id: 'm:human', title: 'Talk to the team', description: 'A person will reply here' },\n  ];\n  if (upcoming.length) rows.push({ id: 'm:cancel', title: 'Cancel an appointment', description: upcoming.length + ' booked' });\n  return rows;\n};\nconst showMenu = (lead) => done({ seen: state.seen, step: 'menu' },\n  lst(to, (lead || hello + 'Welcome to ' + ctx.clinic + '.') + '\\n\\nHow can I help?', 'Options', 'How can I help?', menuRows()));\n\nif (input.kind === 'text' && /^(menu|hi|hello|hey|start|help|options|salam|good (morning|afternoon|evening))[!. ]*$/i.test(low)) return showMenu();\n\nif ((input.kind === 'text' && /^(stop|unsubscribe|stop reminders|no more reminders)[!. ]*$/i.test(low)) || input.id === 'stop_reminders') {\n  const writes = owner ? [{ op: 'update', tab: 'Owners', row: owner.__row, record: { ...owner, reminders_opt_out: 'yes' } }] : [];\n  return done({ seen: state.seen, step: 'menu' },\n    txt(to, 'Done - no more vaccination reminders from us. You can still message here any time. Reply MENU for options.'), writes);\n}\n\n// ---------- 4. a \"Book now\" tap on a reminder jumps straight into booking ----------\nfunction startBooking(st) {\n  if (!owner) return done({ ...st, step: 'reg_name' }, txt(to, hello + 'Let us get you booked in. First, what is your name?'));\n  if (!pets.length) return done({ ...st, step: 'reg_pet' }, txt(to, 'Lovely. What is your pet\\'s name?'));\n  if (st.petId && !st.typeId) return askType(st);\n  if (st.petId && st.typeId) return needSlots(st);\n  const rows = pets.map((p) => ({ id: 'pet:' + p.pet_id, title: p.name, description: [p.species, p.breed].filter(Boolean).join(', ') }))\n    .concat([{ id: 'pet:new', title: 'Someone new', description: 'Add another pet' }]);\n  return done({ ...st, step: 'pick_pet' }, lst(to, 'Who is the appointment for?', 'Choose pet', 'Your pets', rows));\n}\nfunction askType(st) {\n  if (!types.length) return done({ ...st, step: 'menu' }, txt(to, 'Online booking is not set up yet - please call us on ' + S(CFG.clinic_phone) + '.'));\n  const rows = types.map((t) => ({ id: 'type:' + t.id, title: t.name, description: [S(t.minutes) + ' min', t.price ? t.price : ''].filter(Boolean).join(' \\u00b7 ') }));\n  return done({ ...st, step: 'pick_type', page: 0 }, lst(to, 'What is ' + (st.petName || 'the appointment') + ' coming in for?',\n    'Choose', 'Appointment types', paged(rows, 0)));\n}\nfunction needSlots(st) {\n  const until = now.plus({ days: Number(CFG.booking_days) || 14 }).endOf('day');\n  return [{ json: { action: 'slots', ctx, state: { ...st, step: 'loading_slots' },\n    freeBusyBody: { timeMin: now.toUTC().toISO(), timeMax: until.toUTC().toISO(), timeZone: zone, items: [{ id: CFG.calendar_id }] } } }];\n}\n\nconst bookPayload = input.id.match(/^book:([^:]*):?(.*)$/);\nif (bookPayload) {\n  const pet = pets.find((p) => p.pet_id === bookPayload[1]);\n  const type = types.find((t) => t.id === bookPayload[2]) || types.find((t) => /vacc/i.test(t.name));\n  const st = { seen: state.seen };\n  if (pet) { st.petId = pet.pet_id; st.petName = pet.name; }\n  if (type) { st.typeId = type.id; st.typeName = type.name; st.minutes = Number(type.minutes) || 15; }\n  return startBooking(st);\n}\n\n// ---------- 5. emergency first, medical second, then the menu choices ----------\n// Not while they are mid-booking (a pet can be called Lumpy), and not in a hand-off,\n// where describing symptoms to the team is exactly the point.\nconst inFlow = /^(reg_|pick_|confirm|cancel_|handoff|loading)/.test(S(state.step));\nif (input.kind === 'text' && !inFlow && MEDICAL.test(low)) {\n  return done({ seen: state.seen, step: 'menu' }, MEDICAL_REPLY());\n}\n// typed numbers work on the menu too\nif (input.kind === 'text' && /^[1-5]$/.test(low) && (!state.step || state.step === 'menu')) {\n  const row = menuRows()[parseInt(low, 10) - 1];\n  if (row) { input.kind = 'choice'; input.id = row.id; }\n}\n\nif (input.id === 'm:book') return startBooking({ seen: state.seen });\nif (input.id === 'm:human' || (input.kind === 'text' && /^(talk to (a )?(human|person|someone|the team)|agent|human|speak to someone)[!. ]*$/i.test(low))) {\n  const h = { handoff_id: newId('H'), phone: '+' + phone, name: (owner && owner.name) || m.profile_name,\n    reason: 'Asked for a person', message: '', priority: 'normal', status: 'open', created_at: now.toISO() };\n  // no quiet-period stamps yet: the next message is their actual question, so it is\n  // acknowledged and sent to staff; only the ones after that are rate-limited\n  return done({ seen: state.seen, step: 'handoff', handoffId: h.handoff_id },\n    txt(to, 'No problem - a member of the team will reply here shortly (' + S(CFG.team_hours || 'during opening hours') + ').\\n\\nTell me anything you would like them to know.'),\n    [{ op: 'append', tab: 'Handoffs', record: h }], { title: 'WhatsApp: ' + (h.name || '+' + phone) + ' wants a person', message: '+' + phone, priority: 0 });\n}\nif (input.id === 'm:ask') return done({ seen: state.seen, step: 'ask' }, txt(to, 'Sure - what would you like to know? (Prices, opening hours, what to bring, and so on.)'));\nif (input.id === 'm:pets') {\n  if (!pets.length) return done({ seen: state.seen, step: 'menu' }, txt(to, 'I do not have any pets on file for this number yet. Reply MENU and choose \"Book an appointment\" to add one.'));\n  const months = Number(CFG.vaccination_interval_months) || 12;\n  const lines = pets.map((p) => {\n    const nextDue = parseDate(p.next_vaccination_due, CFG.date_order, zone)\n      || (parseDate(p.last_vaccination, CFG.date_order, zone) ? parseDate(p.last_vaccination, CFG.date_order, zone).plus({ months }) : null);\n    const appt = upcoming.find((a) => a.pet_id === p.pet_id);\n    return '\\u2022 ' + p.name + (p.species ? ' (' + p.species + ')' : '') + '\\n   Vaccination due: '\n      + (nextDue ? nextDue.toFormat('d LLL yyyy') + (nextDue < now ? ' - overdue' : '') : 'not on file')\n      + (appt ? '\\n   Booked: ' + S(appt.type) + ', ' + DateTime.fromISO(appt.start, { zone }).toFormat('ccc d LLL, HH:mm') : '');\n  });\n  return done({ seen: state.seen, step: 'menu' }, txt(to, 'Here is what I have:\\n\\n' + lines.join('\\n\\n') + '\\n\\nReply MENU to book.'));\n}\nif (input.id === 'm:cancel' || (input.kind === 'text' && /^cancel( (my )?(appointment|booking))?[!. ]*$/i.test(low))) {\n  if (!upcoming.length) return done({ seen: state.seen, step: 'menu' }, txt(to, 'You have no upcoming appointments with us. Reply MENU for options.'));\n  const a = upcoming[0];\n  const when = DateTime.fromISO(a.start, { zone }).toFormat('cccc d LLLL \\u00b7 HH:mm');\n  return done({ seen: state.seen, step: 'cancel_confirm', apptId: a.appt_id },\n    btns(to, 'Cancel this appointment?\\n\\n\\u2022 ' + S(a.type) + ' for ' + S(a.pet_name) + '\\n\\u2022 ' + when,\n      [{ id: 'cx:yes', title: 'Yes, cancel it' }, { id: 'cx:no', title: 'No, keep it' }]));\n}\n\n// ---------- 6. the step we are in ----------\nconst pick = (opts) => {\n  if (input.kind === 'choice') return opts.find((o) => o.id === input.id) || null;\n  if (input.kind !== 'text' || !low) return null;\n  if (/^\\d{1,2}$/.test(low)) return opts.filter((o) => !o.id.startsWith('__'))[parseInt(low, 10) - 1] || null;\n  return opts.find((o) => S(o.title).toLowerCase() === low) || opts.find((o) => low.length >= 3 && S(o.title).toLowerCase().includes(low)) || null;\n};\n\nswitch (state.step) {\n  case 'reg_name': {\n    if (input.kind !== 'text' || input.text.length < 2 || input.text.length > 60) return done(state, txt(to, 'Please type your name.'));\n    return done({ ...state, step: 'reg_pet', ownerName: input.text.replace(/\\s+/g, ' ') }, txt(to, 'Thanks ' + input.text.split(' ')[0] + '. And your pet\\'s name?'));\n  }\n  case 'reg_pet': {\n    if (input.kind !== 'text' || input.text.length < 1 || input.text.length > 40) return done(state, txt(to, 'Please type your pet\\'s name.'));\n    return done({ ...state, step: 'reg_species', petName: input.text.replace(/\\s+/g, ' ') },\n      btns(to, 'Is ' + input.text + ' a dog, a cat, or something else?',\n        [{ id: 'sp:Dog', title: 'Dog' }, { id: 'sp:Cat', title: 'Cat' }, { id: 'sp:Other', title: 'Something else' }]));\n  }\n  case 'reg_species': {\n    const opts = [{ id: 'sp:Dog', title: 'Dog' }, { id: 'sp:Cat', title: 'Cat' }, { id: 'sp:Other', title: 'Something else' }];\n    const opt = pick(opts) || (input.kind === 'text' && input.text.length >= 3 ? { id: 'sp:' + input.text.slice(0, 30), title: input.text } : null);\n    if (!opt) return done(state, btns(to, 'Please tap one:', opts));\n    const species = opt.id.slice(3) === 'Other' ? 'Other' : opt.id.slice(3);\n    const writes = [];\n    if (!owner) writes.push({ op: 'append', tab: 'Owners', record: { owner_id: newId('O'), phone: '+' + phone,\n      name: S(state.ownerName) || m.profile_name, email: '', reminders_opt_out: 'no', created_at: now.toISO() } });\n    const petId = newId('P');\n    writes.push({ op: 'append', tab: 'Pets', record: { pet_id: petId, owner_phone: '+' + phone, name: state.petName,\n      species, breed: '', dob: '', last_vaccination: '', next_vaccination_due: '', notes: 'Added via WhatsApp', created_at: now.toISO() } });\n    const st = { ...state, petId, species };\n    ctx.pendingWrites = writes;               // saved with whichever step answers next\n    return st.typeId ? needSlots(st) : askType(st);\n  }\n  case 'pick_pet': {\n    const rows = pets.map((p) => ({ id: 'pet:' + p.pet_id, title: p.name })).concat([{ id: 'pet:new', title: 'Someone new' }]);\n    const opt = pick(rows);\n    if (!opt) return startBooking({ seen: state.seen });\n    if (opt.id === 'pet:new') return done({ seen: state.seen, step: 'reg_pet' }, txt(to, 'What is your new pet\\'s name?'));\n    const pet = pets.find((p) => 'pet:' + p.pet_id === opt.id);\n    return askType({ seen: state.seen, petId: pet.pet_id, petName: pet.name, species: pet.species });\n  }\n  case 'pick_type': {\n    const rows = types.map((t) => ({ id: 'type:' + t.id, title: t.name }));\n    if (input.id === '__more' || input.id === '__first') {\n      const page = input.id === '__more' ? (state.page || 0) + 1 : 0;\n      const full = types.map((t) => ({ id: 'type:' + t.id, title: t.name, description: S(t.minutes) + ' min' }));\n      return done({ ...state, page }, lst(to, 'More appointment types:', 'Choose', 'Appointment types', paged(full, page)));\n    }\n    const opt = pick(rows);\n    if (!opt) return askType(state);\n    const t = types.find((x) => 'type:' + x.id === opt.id);\n    return needSlots({ ...state, typeId: t.id, typeName: t.name, minutes: Number(t.minutes) || 15 });\n  }\n  case 'pick_day': {\n    const days = (state.days || []).map((d) => ({ id: 'day:' + d.iso, title: d.label, iso: d.iso }));\n    const opt = pick(days);\n    if (!opt) return done(state, lst(to, 'Please choose a day:', 'Choose day', 'Available days', days.map((d) => ({ id: d.id, title: d.title }))));\n    const times = ((state.slots || {})[opt.iso] || []).map((t) => ({ id: 'tm:' + t, title: t }));\n    if (!times.length) return needSlots(state);                    // the cache emptied: look again\n    return done({ ...state, step: 'pick_time', dayISO: opt.iso, dayLabel: opt.title, page: 0 },\n      lst(to, 'Times free on ' + opt.title + ':', 'Choose time', opt.title, paged(times, 0)));\n  }\n  case 'pick_time': {\n    const times = ((state.slots || {})[state.dayISO] || []).map((t) => ({ id: 'tm:' + t, title: t }));\n    if (input.id === '__more' || input.id === '__first') {\n      const page = input.id === '__more' ? (state.page || 0) + 1 : 0;\n      return done({ ...state, page }, lst(to, 'More times on ' + state.dayLabel + ':', 'Choose time', S(state.dayLabel), paged(times, page)));\n    }\n    let opt = pick(times);\n    if (!opt && input.kind === 'text') {\n      const mm = low.replace(/[.\\s]/g, ':').match(/^(\\d{1,2}):?(\\d{2})?$/);\n      if (mm) opt = times.find((t) => t.title === String(mm[1]).padStart(2, '0') + ':' + (mm[2] || '00')) || null;\n    }\n    if (!opt) return done(state, lst(to, 'Please choose a time on ' + state.dayLabel + ':', 'Choose time', S(state.dayLabel), paged(times, state.page || 0)));\n    const st = { ...state, step: 'confirm', time: opt.title };\n    return done(st, btns(to, 'Please check:\\n\\n\\u2022 ' + state.typeName + ' for ' + state.petName + '\\n\\u2022 ' + state.dayLabel + ' at ' + opt.title\n      + '\\n\\u2022 ' + (state.minutes || 15) + ' minutes\\n\\nShall I book it?',\n      [{ id: 'ok', title: 'Confirm' }, { id: 'change', title: 'Change time' }, { id: 'restart', title: 'Start over' }]));\n  }\n  case 'confirm': {\n    if (input.id === 'restart') return showMenu('No problem, starting again.');\n    if (input.id === 'change') {\n      const times = ((state.slots || {})[state.dayISO] || []).map((t) => ({ id: 'tm:' + t, title: t }));\n      return done({ ...state, step: 'pick_time', page: 0 }, lst(to, 'Pick another time on ' + state.dayLabel + ':', 'Choose time', S(state.dayLabel), paged(times, 0)));\n    }\n    if (input.id !== 'ok' && !(input.kind === 'text' && /^(yes|y|ok|confirm|book it|yes please)[!. ]*$/i.test(low))) {\n      return done(state, btns(to, 'Shall I book ' + state.dayLabel + ' at ' + state.time + '?',\n        [{ id: 'ok', title: 'Confirm' }, { id: 'change', title: 'Change time' }, { id: 'restart', title: 'Start over' }]));\n    }\n    const day = DateTime.fromISO(state.dayISO, { zone });\n    return [{ json: { action: 'book', ctx, state,\n      freeBusyBody: { timeMin: day.startOf('day').toUTC().toISO(), timeMax: day.endOf('day').toUTC().toISO(), timeZone: zone, items: [{ id: CFG.calendar_id }] } } }];\n  }\n  case 'cancel_confirm': {\n    const appt = T.Appointments.rows.find((a) => a.appt_id === state.apptId && digits(a.owner_phone) === phone);\n    if (input.id === 'cx:no' || (input.kind === 'text' && /^(no|n|keep( it)?)[!. ]*$/i.test(low))) return showMenu('No problem, it is still booked.');\n    if (input.id !== 'cx:yes' && !(input.kind === 'text' && /^(yes|y)[!. ]*$/i.test(low))) {\n      return done(state, btns(to, 'Cancel it - yes or no?', [{ id: 'cx:yes', title: 'Yes, cancel it' }, { id: 'cx:no', title: 'No, keep it' }]));\n    }\n    if (!appt) return showMenu('I could not find that appointment any more.');\n    return [{ json: { action: 'cancel', ctx, state: { seen: state.seen, step: 'menu' }, appt,\n      eventUrl: 'https://www.googleapis.com/calendar/v3/calendars/' + encodeURIComponent(CFG.calendar_id) + '/events/' + encodeURIComponent(S(appt.calendar_event_id)) } }];\n  }\n  case 'handoff': {\n    // Staff may be mid-conversation with them. Record every message, but acknowledge at\n    // most every 30 minutes and buzz the staff phone at most every 10.\n    const t = now.toMillis();\n    const ackNow = !state.lastAck || t - state.lastAck >= 30 * 60000;\n    const alertNow = !state.lastAlert || t - state.lastAlert >= 10 * 60000;\n    const st = { ...state, lastAck: ackNow ? t : state.lastAck, lastAlert: alertNow ? t : state.lastAlert };\n    const text = input.kind === 'text' ? input.text : '[' + (input.text || m.kind || 'attachment') + ']';\n    const h = { handoff_id: newId('H'), phone: '+' + phone, name: (owner && owner.name) || m.profile_name,\n      reason: 'Follow-up to ' + S(state.handoffId), message: S(text).slice(0, 500), priority: 'normal', status: 'open', created_at: now.toISO() };\n    return done(st, ackNow ? txt(to, 'Thanks - I have passed that on. The team will reply here.') : null,\n      [{ op: 'append', tab: 'Handoffs', record: h }],\n      alertNow ? { title: 'WhatsApp follow-up from ' + (h.name || '+' + phone), message: S(text).slice(0, 300), priority: 0 } : null);\n  }\n  default: break;                                          // menu, ask, or nothing yet\n}\n\n// ---------- 7. anything else is a question for the FAQ ----------\nif (input.kind !== 'text' || input.text.length < 3) return showMenu();\nif (!faq.length) return done({ seen: state.seen, step: 'menu' }, txt(to, 'I cannot answer questions yet - reply MENU and choose \"Talk to the team\".'));\n\n// No vector database needed for a clinic's FAQ: score entries by shared words, send the best.\nconst STOP = new Set('a an the is are do does you your i my me we our can how what when where which who for of to in on at it and or be with about have has any'.split(' '));\nconst words = (s) => S(s).toLowerCase().replace(/[^a-z0-9\\u00a3\\u20ac$ ]/g, ' ').split(/\\s+/).filter((w) => w.length > 2 && !STOP.has(w));\nconst qw = new Set(words(input.text));\nconst scored = faq.map((f) => {\n  const fw = words(f.question + ' ' + f.tags + ' ' + f.answer);\n  let score = 0; for (const w of fw) if (qw.has(w)) score += 1;\n  for (const w of words(f.question + ' ' + f.tags)) if (qw.has(w)) score += 2;          // question and tags count more\n  return { f, score };\n}).sort((a, b) => b.score - a.score);\nconst picked = (faq.length <= 12 ? faq.map((f) => ({ f, score: 1 })) : scored.slice(0, 12)).map((x) => x.f);\n\nconst faqPrompt = 'Customer question: ' + input.text.slice(0, 600) + '\\n\\nClinic FAQ entries:\\n'\n  + picked.map((f) => '[' + f.id + '] Q: ' + f.question + '\\nA: ' + f.answer).join('\\n\\n');\nreturn [{ json: { action: 'ai', ctx, state: { seen: state.seen, step: 'menu' }, question: input.text.slice(0, 600),\n  faqPrompt, faqIds: picked.map((f) => f.id), faqAnswers: Object.fromEntries(picked.map((f) => [f.id, f.answer])) } }];\n"
+      }
+    },
+    {
+      "id": "d0144420-98f0-4360-968a-50b31453c3d8",
+      "name": "What Next?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1540,
+        500
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "6b47b99a-d311-40cb-b43c-fe0fed3a9c2b",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "slots",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "slots"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "1eb705c6-0a00-4f02-acb6-21d8bb6ec16e",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "book",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "book"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "e09b8376-4416-456e-880f-b6276e3fff97",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "ai",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ai"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "e803f9f1-4aef-4c09-a0cc-d779056793b1",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "cancel",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "cancel"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "2f6266e9-9808-4a6c-a798-52fa1dd78bb9",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "reply",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "reply"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "2eb72701-1142-4da9-81b7-5af7d97fd85a",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "skip",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "skip"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      }
+    },
+    {
+      "id": "1b9d7390-25c1-4a19-a0b2-9d22bd4e5a90",
+      "name": "Loop Over Messages",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        660,
+        500
+      ],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "042b4463-d451-47e2-a522-4333aae6db73",
+      "name": "Check Diary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1780,
+        240
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/calendar/v3/freeBusy",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.freeBusyBody) }}",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "c0a058a3-f810-4189-b4b9-041506908b33",
+      "name": "Answer From FAQ",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        1780,
+        500
+      ],
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You answer customer questions for a vet clinic, using ONLY the FAQ entries provided.\n\nReply with JSON only, no prose, no code fences:\n{\"answered\": true, \"answer\": \"\", \"sources\": []}\n\nRules:\n- Answer only if the FAQ entries contain the answer. Put the ids you used in \"sources\", for example [\"F2\"].\n- If the entries do not answer the question, reply {\"answered\": false, \"answer\": \"\", \"sources\": []}. Do not guess.\n- Never give medical advice, diagnoses, doses or medication instructions, even if asked, unless an FAQ entry states them word for word.\n- Two or three friendly sentences. Plain text, no markdown, no lists.\n- Use the clinic's own wording for prices and times. Do not round, convert or add to them."
+            },
+            {
+              "content": "={{ $json.faqPrompt }}"
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "options": {
+          "temperature": 0
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "b2659d8d-f04b-4a85-86fb-862743c849c5",
+      "name": "Delete Calendar Event",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1780,
+        740
+      ],
+      "parameters": {
+        "method": "DELETE",
+        "url": "={{ $json.eventUrl }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "da474c07-8274-4b01-aad8-6addcb994fec",
+      "name": "Outcome",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2900,
+        500
+      ],
+      "parameters": {
+        "jsCode": "// ===== Outcome =====\n// Every branch of the conversation ends here. Last check before anything is sent or saved.\nconst out = [];\n// A problem must never hide behind another alert: fold it into whatever is already going out.\nconst merge = (alert, title, message) => (alert\n  ? { ...alert, title: alert.title + ' (+ ' + title.toLowerCase() + ')', message: alert.message + '\\n' + title + ': ' + message }\n  : { title, message, priority: 0 });\nfor (const it of $input.all()) {\n  const o = { ...it.json };\n  const known = o.headers || {};\n  const quiet = o.silent === true && o.reply === null;           // deliberate: staff are handling it\n  if (!quiet && (!o.reply || o.reply.messaging_product !== 'whatsapp')) {\n    o.reply = { messaging_product: 'whatsapp', recipient_type: 'individual', to: String(o.to || ''), type: 'text',\n      text: { preview_url: false, body: 'Sorry, something went wrong on our side. Reply MENU to try again.' } };\n    o.alert = merge(o.alert, 'Bot produced no reply', '+' + o.to);\n  }\n  // drop anything aimed at a tab we have no header for, rather than writing a misaligned row\n  const dropped = (o.writes || []).filter((w) => !(w && w.tab && known[w.tab] && known[w.tab].length\n    && (w.op === 'append' || (w.op === 'update' && Number(w.row) >= 2))));\n  o.writes = (o.writes || []).filter((w) => !dropped.includes(w));\n  if (dropped.length) o.alert = merge(o.alert, 'Sheet write skipped',\n    dropped.map((w) => (w && w.tab) || '?').join(', ') + ' - check the tab and its header row');\n  out.push({ json: o });\n}\nreturn out;\n"
+      }
+    },
+    {
+      "id": "b9aa361b-417d-4fc8-b9aa-b56bdac9e064",
+      "name": "Use Availability",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        240
+      ],
+      "parameters": {
+        "jsCode": "// ===== Use Availability =====\n// Turns Google Calendar's busy blocks into bookable times. Used twice: to list the\n// days that have space, and to re-check the exact slot seconds before booking it.\nconst CFG = $('Config').first().json;\nconst E = $('Assistant Engine').first().json;\nconst ctx = E.ctx;\nconst fb = $input.first().json || {};\n// --- Google Sheets helpers (identical copy in every node that reads the sheet) ---\nconst S = (v) => (v == null ? '' : String(v));\nconst digits = (s) => S(s).replace(/\\D/g, '');\n\n// values:batchGet returns ragged rows: trailing empty cells are simply missing, and a\n// blank line comes back as []. Read by header name and keep the real sheet row number.\nfunction readTables(batch, names) {\n  const out = {};\n  const vrs = (batch && batch.valueRanges) || [];\n  names.forEach((name, i) => {\n    const vr = vrs[i] || {};\n    const got = S(vr.range).replace(/^'|'?!.*$/g, '');\n    if (vr.range && got && got !== name) throw new Error('Sheet order mismatch: expected ' + name + ', got ' + got);\n    const rows = vr.values || [];\n    const header = (rows[0] || []).map((h) => S(h).trim());\n    const recs = [];\n    for (let r = 1; r < rows.length; r++) {\n      const row = rows[r] || [];\n      if (!row.some((c) => S(c).trim() !== '')) continue;\n      const rec = { __row: r + 1 };\n      header.forEach((h, c) => { if (h) rec[h] = row[c] === undefined ? '' : S(row[c]).trim(); });\n      recs.push(rec);\n    }\n    out[name] = { header, rows: recs };\n  });\n  return out;\n}\n\n// Staff type dates however they like, and Sheets displays them in the sheet's locale.\nfunction parseDate(raw, order, zone) {\n  const v = S(raw).trim();\n  if (!v) return null;\n  let d = null;\n  if (/^\\d{4}-\\d{2}-\\d{2}/.test(v)) d = DateTime.fromISO(v.slice(0, 10), { zone });\n  else if (/^\\d{4,5}(\\.\\d+)?$/.test(v)) {                          // a raw Sheets serial number\n    d = DateTime.fromISO('1899-12-30', { zone }).plus({ days: Math.floor(Number(v)) });\n  } else {\n    const m = v.match(/^(\\d{1,2})[\\/.\\-](\\d{1,2})[\\/.\\-](\\d{2,4})$/);\n    if (m) {\n      const a = +m[1], b = +m[2]; let y = +m[3]; if (y < 100) y += 2000;\n      const [day, month] = order === 'MDY' ? [b, a] : [a, b];\n      d = DateTime.fromObject({ year: y, month, day }, { zone });\n    } else {\n      for (const f of ['d LLL yyyy', 'd LLLL yyyy', 'LLL d, yyyy', 'LLLL d, yyyy', 'd-LLL-yyyy']) {\n        const t = DateTime.fromFormat(v, f, { zone });\n        if (t.isValid) { d = t; break; }\n      }\n    }\n  }\n  return d && d.isValid ? d.startOf('day') : null;\n}\n// --- outcome helpers (identical copy in every node that ends a turn) ---\nconst clip = (s, n) => (S(s).length > n ? S(s).slice(0, n - 1) + '\\u2026' : S(s));\nconst waBase = (to) => ({ messaging_product: 'whatsapp', recipient_type: 'individual', to });\nconst txt = (to, body) => ({ ...waBase(to), type: 'text', text: { preview_url: false, body: clip(body, 4096) } });\nconst btns = (to, body, opts) => ({ ...waBase(to), type: 'interactive',\n  interactive: { type: 'button', body: { text: clip(body, 1024) },\n    action: { buttons: opts.slice(0, 3).map((o) => ({ type: 'reply', reply: { id: clip(o.id, 256), title: clip(o.title, 20) } })) } } });\nconst lst = (to, body, buttonText, section, rows) => ({ ...waBase(to), type: 'interactive',\n  interactive: { type: 'list', body: { text: clip(body, 1024) },\n    action: { button: clip(buttonText, 20), sections: [{ title: clip(section, 24),\n      rows: rows.slice(0, 10).map((r) => { const o = { id: clip(r.id, 200), title: clip(r.title, 24) };\n        if (r.description) o.description = clip(r.description, 72); return o; }) }] } } });\n// a list holds ten rows; longer option sets get a \"More\" row and a page number\nfunction paged(options, page) {\n  if (options.length <= 10) return options;\n  const start = (page || 0) * 9;\n  const rows = options.slice(start, start + 9);\n  if (start + 9 < options.length) rows.push({ id: '__more', title: 'More \\u25b8', description: 'Show more options' });\n  else rows.push({ id: '__first', title: '\\u25c2 Back to start', description: 'Show the first options' });\n  return rows;\n}\n// every turn ends here: the reply, the session save, any other sheet writes, any staff alert\nfunction outcome(ctx, state, reply, writes, alert) {\n  let saved = JSON.stringify(state || {});\n  if (saved.length > 40000 && state && state.slots) {           // a Sheets cell holds 50,000 characters\n    saved = JSON.stringify({ ...state, slots: state.dayISO ? { [state.dayISO]: state.slots[state.dayISO] } : {} });\n  }\n  const sess = { phone: '+' + ctx.phone, state: saved, updated_at: DateTime.now().toUTC().toISO() };\n  const first = ctx.sessionRow ? { op: 'update', tab: 'Sessions', row: ctx.sessionRow, record: sess }\n                               : { op: 'append', tab: 'Sessions', record: sess };\n  return { json: { outcome: true, to: ctx.phone, phone_number_id: ctx.phone_number_id,\n    graph_version: ctx.graph_version, token: ctx.token, sheet_id: ctx.sheet_id, headers: ctx.headers,\n    reply, silent: reply === null, writes: [first].concat(ctx.pendingWrites || [], writes || []), alert: alert || null } };\n}\nconst zone = ctx.zone;\nconst now = DateTime.now().setZone(zone);\nconst to = ctx.phone;\nlet state = { ...(E.state || {}) };\n\n// ---- what the calendar says ----\nconst cal = ((fb.calendars || {})[CFG.calendar_id]) || null;\nconst calError = fb.error || !cal || (cal.errors && cal.errors.length);\nif (calError) {\n  return [outcome(ctx, { seen: state.seen, step: 'menu' },\n    txt(to, 'Sorry - I cannot see the diary right now. Please call us on ' + S(CFG.clinic_phone) + ' and we will book you in.'),\n    [], { title: 'Booking diary unreachable', message: JSON.stringify(fb.error || (cal && cal.errors) || 'no calendar in response').slice(0, 300), priority: 0 })];\n}\nconst busy = (cal.busy || []).map((b) => ({ s: DateTime.fromISO(b.start).setZone(zone), e: DateTime.fromISO(b.end).setZone(zone) }))\n  .filter((b) => b.s.isValid && b.e.isValid);\n\n// ---- opening hours: {\"1\":[\"08:30-12:30\",\"13:30-18:00\"], ...}, 0 = Sunday ----\nlet hours = {};\ntry { hours = typeof CFG.opening_hours === 'string' ? JSON.parse(CFG.opening_hours) : (CFG.opening_hours || {}); } catch (e) { hours = {}; }\nconst step = Number(CFG.slot_step_min) || 15;\nconst notice = Number(CFG.min_notice_min) || 60;\nconst buffer = Number(CFG.buffer_min) || 0;\nconst minutes = Number(state.minutes) || 15;\n\nfunction freeSlots(dayISO) {\n  const day = DateTime.fromISO(dayISO, { zone });\n  const spans = hours[String(day.weekday % 7)] || [];\n  const earliest = now.plus({ minutes: notice });\n  const out = [];\n  for (const span of spans) {\n    const mt = String(span).match(/^(\\d{1,2}):(\\d{2})\\s*-\\s*(\\d{1,2}):(\\d{2})$/);\n    if (!mt) continue;\n    const open = day.set({ hour: +mt[1], minute: +mt[2], second: 0, millisecond: 0 });\n    const close = day.set({ hour: +mt[3], minute: +mt[4], second: 0, millisecond: 0 });\n    for (let t = open; t.plus({ minutes }) <= close; t = t.plus({ minutes: step })) {\n      if (t < earliest) continue;\n      const a = t.minus({ minutes: buffer }), b = t.plus({ minutes: minutes + buffer });\n      if (busy.some((x) => a < x.e && b > x.s)) continue;              // half-open overlap\n      out.push(t.toFormat('HH:mm'));\n    }\n  }\n  return out;\n}\n\n// ---- list the days that have space ----\nif (E.action === 'slots') {\n  const days = []; const slots = {};\n  const horizon = Number(CFG.booking_days) || 14;\n  for (let i = 0; i <= horizon && days.length < 10; i++) {\n    const d = now.plus({ days: i });\n    const iso = d.toISODate();\n    const free = freeSlots(iso);\n    if (!free.length) continue;\n    slots[iso] = free;\n    days.push({ iso, label: i === 0 ? 'Today ' + d.toFormat('d LLL') : i === 1 ? 'Tomorrow ' + d.toFormat('d LLL') : d.toFormat('ccc d LLL'), count: free.length });\n  }\n  if (!days.length) {\n    return [outcome(ctx, { seen: state.seen, step: 'menu' },\n      txt(to, 'Sorry - we are fully booked for ' + (state.typeName || 'that') + ' over the next ' + horizon + ' days. Please call us on '\n        + S(CFG.clinic_phone) + ' and we will try to fit you in.'))];\n  }\n  state = { ...state, step: 'pick_day', days, slots, page: 0 };\n  return [outcome(ctx, state, lst(to, 'Which day suits ' + (state.petName || 'you') + '?', 'Choose day', 'Days with space',\n    days.map((d) => ({ id: 'day:' + d.iso, title: d.label, description: d.count + (d.count === 1 ? ' time free' : ' times free') }))))];\n}\n\n// ---- re-check one slot just before booking it ----\nconst fresh = freeSlots(state.dayISO);\nif (!fresh.includes(state.time)) {\n  const slots = { ...(state.slots || {}), [state.dayISO]: fresh };\n  if (!fresh.length) {\n    const days = (state.days || []).filter((d) => d.iso !== state.dayISO);\n    delete slots[state.dayISO];\n    state = { ...state, step: 'pick_day', days, slots };\n    return [outcome(ctx, state, days.length\n      ? lst(to, 'Sorry - ' + state.dayLabel + ' has just filled up. Another day?', 'Choose day', 'Days with space',\n          days.map((d) => ({ id: 'day:' + d.iso, title: d.label })))\n      : txt(to, 'Sorry - that day has just filled up. Reply MENU to look again.'))];\n  }\n  state = { ...state, step: 'pick_time', slots, page: 0 };\n  return [outcome(ctx, state, lst(to, 'Sorry - ' + state.time + ' was just taken. These are still free on ' + state.dayLabel + ':',\n    'Choose time', S(state.dayLabel), paged(fresh.map((t) => ({ id: 'tm:' + t, title: t })), 0)))];\n}\n\nconst start = DateTime.fromISO(state.dayISO + 'T' + state.time, { zone });\nconst end = start.plus({ minutes });\nconst apptId = 'A-' + Math.random().toString(36).slice(2, 8).toUpperCase();\nconst ownerName = S((ctx.owner && ctx.owner.name) || state.ownerName);\nreturn [{ json: {\n  createEvent: true, apptId, start: start.toISO({ suppressMilliseconds: true }), end: end.toISO({ suppressMilliseconds: true }),\n  eventUrl: 'https://www.googleapis.com/calendar/v3/calendars/' + encodeURIComponent(CFG.calendar_id) + '/events',\n  eventBody: {\n    summary: S(state.typeName) + ' - ' + S(state.petName) + (state.species ? ' (' + state.species + ')' : '') + ' - ' + (ownerName || '+' + to),\n    description: 'Booked via WhatsApp\\nOwner: ' + (ownerName || 'unknown') + ' (+' + to + ')\\nPet: ' + S(state.petName)\n      + (state.species ? ', ' + state.species : '') + '\\nRef: ' + apptId,\n    start: { dateTime: start.toISO({ suppressMilliseconds: true }), timeZone: zone },\n    end: { dateTime: end.toISO({ suppressMilliseconds: true }), timeZone: zone },\n    extendedProperties: { private: { source: 'whatsapp', phone: to, pet_id: S(state.petId), appt_id: apptId } },\n  },\n} }];\n"
+      }
+    },
+    {
+      "id": "20b5cf34-fc99-4cf3-9d19-8bc00dfbe8a8",
+      "name": "Book It?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2220,
+        240
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c888b57e-b59a-4715-9220-4d2b4d88ea3e",
+              "leftValue": "={{ $json.createEvent === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "86da7793-d9ac-488a-9553-b0d6c9bbeda3",
+      "name": "Create Calendar Event",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2440,
+        140
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.eventUrl }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.eventBody) }}",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "a820477e-cac3-4bb7-b99d-a9edcb165331",
+      "name": "After Booking",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2660,
+        140
+      ],
+      "parameters": {
+        "jsCode": "// ===== After Booking =====\nconst CFG = $('Config').first().json;\nconst E = $('Assistant Engine').first().json;\nconst A = $('Use Availability').first().json;\nconst ctx = E.ctx;\nconst res = $input.first().json || {};\n// --- Google Sheets helpers (identical copy in every node that reads the sheet) ---\nconst S = (v) => (v == null ? '' : String(v));\nconst digits = (s) => S(s).replace(/\\D/g, '');\n\n// values:batchGet returns ragged rows: trailing empty cells are simply missing, and a\n// blank line comes back as []. Read by header name and keep the real sheet row number.\nfunction readTables(batch, names) {\n  const out = {};\n  const vrs = (batch && batch.valueRanges) || [];\n  names.forEach((name, i) => {\n    const vr = vrs[i] || {};\n    const got = S(vr.range).replace(/^'|'?!.*$/g, '');\n    if (vr.range && got && got !== name) throw new Error('Sheet order mismatch: expected ' + name + ', got ' + got);\n    const rows = vr.values || [];\n    const header = (rows[0] || []).map((h) => S(h).trim());\n    const recs = [];\n    for (let r = 1; r < rows.length; r++) {\n      const row = rows[r] || [];\n      if (!row.some((c) => S(c).trim() !== '')) continue;\n      const rec = { __row: r + 1 };\n      header.forEach((h, c) => { if (h) rec[h] = row[c] === undefined ? '' : S(row[c]).trim(); });\n      recs.push(rec);\n    }\n    out[name] = { header, rows: recs };\n  });\n  return out;\n}\n\n// Staff type dates however they like, and Sheets displays them in the sheet's locale.\nfunction parseDate(raw, order, zone) {\n  const v = S(raw).trim();\n  if (!v) return null;\n  let d = null;\n  if (/^\\d{4}-\\d{2}-\\d{2}/.test(v)) d = DateTime.fromISO(v.slice(0, 10), { zone });\n  else if (/^\\d{4,5}(\\.\\d+)?$/.test(v)) {                          // a raw Sheets serial number\n    d = DateTime.fromISO('1899-12-30', { zone }).plus({ days: Math.floor(Number(v)) });\n  } else {\n    const m = v.match(/^(\\d{1,2})[\\/.\\-](\\d{1,2})[\\/.\\-](\\d{2,4})$/);\n    if (m) {\n      const a = +m[1], b = +m[2]; let y = +m[3]; if (y < 100) y += 2000;\n      const [day, month] = order === 'MDY' ? [b, a] : [a, b];\n      d = DateTime.fromObject({ year: y, month, day }, { zone });\n    } else {\n      for (const f of ['d LLL yyyy', 'd LLLL yyyy', 'LLL d, yyyy', 'LLLL d, yyyy', 'd-LLL-yyyy']) {\n        const t = DateTime.fromFormat(v, f, { zone });\n        if (t.isValid) { d = t; break; }\n      }\n    }\n  }\n  return d && d.isValid ? d.startOf('day') : null;\n}\n// --- outcome helpers (identical copy in every node that ends a turn) ---\nconst clip = (s, n) => (S(s).length > n ? S(s).slice(0, n - 1) + '\\u2026' : S(s));\nconst waBase = (to) => ({ messaging_product: 'whatsapp', recipient_type: 'individual', to });\nconst txt = (to, body) => ({ ...waBase(to), type: 'text', text: { preview_url: false, body: clip(body, 4096) } });\nconst btns = (to, body, opts) => ({ ...waBase(to), type: 'interactive',\n  interactive: { type: 'button', body: { text: clip(body, 1024) },\n    action: { buttons: opts.slice(0, 3).map((o) => ({ type: 'reply', reply: { id: clip(o.id, 256), title: clip(o.title, 20) } })) } } });\nconst lst = (to, body, buttonText, section, rows) => ({ ...waBase(to), type: 'interactive',\n  interactive: { type: 'list', body: { text: clip(body, 1024) },\n    action: { button: clip(buttonText, 20), sections: [{ title: clip(section, 24),\n      rows: rows.slice(0, 10).map((r) => { const o = { id: clip(r.id, 200), title: clip(r.title, 24) };\n        if (r.description) o.description = clip(r.description, 72); return o; }) }] } } });\n// a list holds ten rows; longer option sets get a \"More\" row and a page number\nfunction paged(options, page) {\n  if (options.length <= 10) return options;\n  const start = (page || 0) * 9;\n  const rows = options.slice(start, start + 9);\n  if (start + 9 < options.length) rows.push({ id: '__more', title: 'More \\u25b8', description: 'Show more options' });\n  else rows.push({ id: '__first', title: '\\u25c2 Back to start', description: 'Show the first options' });\n  return rows;\n}\n// every turn ends here: the reply, the session save, any other sheet writes, any staff alert\nfunction outcome(ctx, state, reply, writes, alert) {\n  let saved = JSON.stringify(state || {});\n  if (saved.length > 40000 && state && state.slots) {           // a Sheets cell holds 50,000 characters\n    saved = JSON.stringify({ ...state, slots: state.dayISO ? { [state.dayISO]: state.slots[state.dayISO] } : {} });\n  }\n  const sess = { phone: '+' + ctx.phone, state: saved, updated_at: DateTime.now().toUTC().toISO() };\n  const first = ctx.sessionRow ? { op: 'update', tab: 'Sessions', row: ctx.sessionRow, record: sess }\n                               : { op: 'append', tab: 'Sessions', record: sess };\n  return { json: { outcome: true, to: ctx.phone, phone_number_id: ctx.phone_number_id,\n    graph_version: ctx.graph_version, token: ctx.token, sheet_id: ctx.sheet_id, headers: ctx.headers,\n    reply, silent: reply === null, writes: [first].concat(ctx.pendingWrites || [], writes || []), alert: alert || null } };\n}\nconst to = ctx.phone;\nconst state = E.state || {};\nconst zone = ctx.zone;\n\nif (!res.id) {\n  return [outcome(ctx, { seen: state.seen, step: 'menu' },\n    txt(to, 'Sorry - something went wrong saving that booking. Please call us on ' + S(CFG.clinic_phone) + ' and quote ' + A.apptId + '.'),\n    [], { title: 'Calendar booking FAILED ' + A.apptId, message: JSON.stringify(res.error || res).slice(0, 300), priority: 1 })];\n}\nconst when = DateTime.fromISO(A.start, { zone }).toFormat('cccc d LLLL \\u00b7 HH:mm');\nconst row = { appt_id: A.apptId, owner_phone: '+' + to, pet_id: S(state.petId), pet_name: S(state.petName),\n  type: S(state.typeName), start: A.start, end: A.end, status: 'booked', calendar_event_id: S(res.id),\n  created_at: DateTime.now().setZone(zone).toISO() };\nreturn [outcome(ctx, { seen: state.seen, step: 'menu' },\n  txt(to, 'Booked \\u2705\\n\\n\\u2022 ' + S(state.typeName) + ' for ' + S(state.petName) + '\\n\\u2022 ' + when\n    + '\\n\\u2022 Ref ' + A.apptId + '\\n\\nSee you then! Reply CANCEL if your plans change.'),\n  [{ op: 'append', tab: 'Appointments', record: row }])];\n"
+      }
+    },
+    {
+      "id": "c5a795ac-8f04-4639-9019-3f1e3c7aa536",
+      "name": "After Cancel",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        740
+      ],
+      "parameters": {
+        "jsCode": "// ===== After Cancel =====\n// Google answers 204 on success and 410 if the event was already deleted - both mean gone.\nconst CFG = $('Config').first().json;\nconst E = $('Assistant Engine').first().json;\nconst ctx = E.ctx;\nconst res = $input.first().json || {};\n// --- Google Sheets helpers (identical copy in every node that reads the sheet) ---\nconst S = (v) => (v == null ? '' : String(v));\nconst digits = (s) => S(s).replace(/\\D/g, '');\n\n// values:batchGet returns ragged rows: trailing empty cells are simply missing, and a\n// blank line comes back as []. Read by header name and keep the real sheet row number.\nfunction readTables(batch, names) {\n  const out = {};\n  const vrs = (batch && batch.valueRanges) || [];\n  names.forEach((name, i) => {\n    const vr = vrs[i] || {};\n    const got = S(vr.range).replace(/^'|'?!.*$/g, '');\n    if (vr.range && got && got !== name) throw new Error('Sheet order mismatch: expected ' + name + ', got ' + got);\n    const rows = vr.values || [];\n    const header = (rows[0] || []).map((h) => S(h).trim());\n    const recs = [];\n    for (let r = 1; r < rows.length; r++) {\n      const row = rows[r] || [];\n      if (!row.some((c) => S(c).trim() !== '')) continue;\n      const rec = { __row: r + 1 };\n      header.forEach((h, c) => { if (h) rec[h] = row[c] === undefined ? '' : S(row[c]).trim(); });\n      recs.push(rec);\n    }\n    out[name] = { header, rows: recs };\n  });\n  return out;\n}\n\n// Staff type dates however they like, and Sheets displays them in the sheet's locale.\nfunction parseDate(raw, order, zone) {\n  const v = S(raw).trim();\n  if (!v) return null;\n  let d = null;\n  if (/^\\d{4}-\\d{2}-\\d{2}/.test(v)) d = DateTime.fromISO(v.slice(0, 10), { zone });\n  else if (/^\\d{4,5}(\\.\\d+)?$/.test(v)) {                          // a raw Sheets serial number\n    d = DateTime.fromISO('1899-12-30', { zone }).plus({ days: Math.floor(Number(v)) });\n  } else {\n    const m = v.match(/^(\\d{1,2})[\\/.\\-](\\d{1,2})[\\/.\\-](\\d{2,4})$/);\n    if (m) {\n      const a = +m[1], b = +m[2]; let y = +m[3]; if (y < 100) y += 2000;\n      const [day, month] = order === 'MDY' ? [b, a] : [a, b];\n      d = DateTime.fromObject({ year: y, month, day }, { zone });\n    } else {\n      for (const f of ['d LLL yyyy', 'd LLLL yyyy', 'LLL d, yyyy', 'LLLL d, yyyy', 'd-LLL-yyyy']) {\n        const t = DateTime.fromFormat(v, f, { zone });\n        if (t.isValid) { d = t; break; }\n      }\n    }\n  }\n  return d && d.isValid ? d.startOf('day') : null;\n}\n// --- outcome helpers (identical copy in every node that ends a turn) ---\nconst clip = (s, n) => (S(s).length > n ? S(s).slice(0, n - 1) + '\\u2026' : S(s));\nconst waBase = (to) => ({ messaging_product: 'whatsapp', recipient_type: 'individual', to });\nconst txt = (to, body) => ({ ...waBase(to), type: 'text', text: { preview_url: false, body: clip(body, 4096) } });\nconst btns = (to, body, opts) => ({ ...waBase(to), type: 'interactive',\n  interactive: { type: 'button', body: { text: clip(body, 1024) },\n    action: { buttons: opts.slice(0, 3).map((o) => ({ type: 'reply', reply: { id: clip(o.id, 256), title: clip(o.title, 20) } })) } } });\nconst lst = (to, body, buttonText, section, rows) => ({ ...waBase(to), type: 'interactive',\n  interactive: { type: 'list', body: { text: clip(body, 1024) },\n    action: { button: clip(buttonText, 20), sections: [{ title: clip(section, 24),\n      rows: rows.slice(0, 10).map((r) => { const o = { id: clip(r.id, 200), title: clip(r.title, 24) };\n        if (r.description) o.description = clip(r.description, 72); return o; }) }] } } });\n// a list holds ten rows; longer option sets get a \"More\" row and a page number\nfunction paged(options, page) {\n  if (options.length <= 10) return options;\n  const start = (page || 0) * 9;\n  const rows = options.slice(start, start + 9);\n  if (start + 9 < options.length) rows.push({ id: '__more', title: 'More \\u25b8', description: 'Show more options' });\n  else rows.push({ id: '__first', title: '\\u25c2 Back to start', description: 'Show the first options' });\n  return rows;\n}\n// every turn ends here: the reply, the session save, any other sheet writes, any staff alert\nfunction outcome(ctx, state, reply, writes, alert) {\n  let saved = JSON.stringify(state || {});\n  if (saved.length > 40000 && state && state.slots) {           // a Sheets cell holds 50,000 characters\n    saved = JSON.stringify({ ...state, slots: state.dayISO ? { [state.dayISO]: state.slots[state.dayISO] } : {} });\n  }\n  const sess = { phone: '+' + ctx.phone, state: saved, updated_at: DateTime.now().toUTC().toISO() };\n  const first = ctx.sessionRow ? { op: 'update', tab: 'Sessions', row: ctx.sessionRow, record: sess }\n                               : { op: 'append', tab: 'Sessions', record: sess };\n  return { json: { outcome: true, to: ctx.phone, phone_number_id: ctx.phone_number_id,\n    graph_version: ctx.graph_version, token: ctx.token, sheet_id: ctx.sheet_id, headers: ctx.headers,\n    reply, silent: reply === null, writes: [first].concat(ctx.pendingWrites || [], writes || []), alert: alert || null } };\n}\nconst to = ctx.phone;\nconst appt = E.appt;\n// Google answers 404/410 when the event is already gone. Anything else - including an\n// n8n error item with no code at all - means the event may still be in the diary.\nconst err = res && res.error;\nconst code = Number((err && (err.code || err.httpCode)) || 0);\nif (err && code !== 404 && code !== 410) {\n  return [outcome(ctx, E.state, txt(to, 'Sorry - I could not cancel that just now. Please call us on ' + S(CFG.clinic_phone) + '.'),\n    [], { title: 'Calendar cancel FAILED ' + S(appt.appt_id), message: S(JSON.stringify(err)).slice(0, 300), priority: 0 })];\n}\nconst when = DateTime.fromISO(appt.start, { zone: ctx.zone }).toFormat('cccc d LLLL \\u00b7 HH:mm');\nreturn [outcome(ctx, E.state,\n  txt(to, 'Cancelled \\u274c\\n\\n' + S(appt.type) + ' for ' + S(appt.pet_name) + ' on ' + when + ' is no longer booked.\\n\\nReply MENU to rebook.'),\n  [{ op: 'update', tab: 'Appointments', row: appt.__row, record: { ...appt, status: 'cancelled' } }],\n  null)];\n"
+      }
+    },
+    {
+      "id": "e34ffc91-c4c4-46f8-8a46-63ee7cbf89d7",
+      "name": "Check Answer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        500
+      ],
+      "parameters": {
+        "jsCode": "// ===== Check Answer =====\n// The model may only repeat what the clinic's FAQ says. Anything it cannot source,\n// and anything that reads like medical advice, goes to a person instead.\nconst CFG = $('Config').first().json;\nconst E = $('Assistant Engine').first().json;\nconst ctx = E.ctx;\n// --- Google Sheets helpers (identical copy in every node that reads the sheet) ---\nconst S = (v) => (v == null ? '' : String(v));\nconst digits = (s) => S(s).replace(/\\D/g, '');\n\n// values:batchGet returns ragged rows: trailing empty cells are simply missing, and a\n// blank line comes back as []. Read by header name and keep the real sheet row number.\nfunction readTables(batch, names) {\n  const out = {};\n  const vrs = (batch && batch.valueRanges) || [];\n  names.forEach((name, i) => {\n    const vr = vrs[i] || {};\n    const got = S(vr.range).replace(/^'|'?!.*$/g, '');\n    if (vr.range && got && got !== name) throw new Error('Sheet order mismatch: expected ' + name + ', got ' + got);\n    const rows = vr.values || [];\n    const header = (rows[0] || []).map((h) => S(h).trim());\n    const recs = [];\n    for (let r = 1; r < rows.length; r++) {\n      const row = rows[r] || [];\n      if (!row.some((c) => S(c).trim() !== '')) continue;\n      const rec = { __row: r + 1 };\n      header.forEach((h, c) => { if (h) rec[h] = row[c] === undefined ? '' : S(row[c]).trim(); });\n      recs.push(rec);\n    }\n    out[name] = { header, rows: recs };\n  });\n  return out;\n}\n\n// Staff type dates however they like, and Sheets displays them in the sheet's locale.\nfunction parseDate(raw, order, zone) {\n  const v = S(raw).trim();\n  if (!v) return null;\n  let d = null;\n  if (/^\\d{4}-\\d{2}-\\d{2}/.test(v)) d = DateTime.fromISO(v.slice(0, 10), { zone });\n  else if (/^\\d{4,5}(\\.\\d+)?$/.test(v)) {                          // a raw Sheets serial number\n    d = DateTime.fromISO('1899-12-30', { zone }).plus({ days: Math.floor(Number(v)) });\n  } else {\n    const m = v.match(/^(\\d{1,2})[\\/.\\-](\\d{1,2})[\\/.\\-](\\d{2,4})$/);\n    if (m) {\n      const a = +m[1], b = +m[2]; let y = +m[3]; if (y < 100) y += 2000;\n      const [day, month] = order === 'MDY' ? [b, a] : [a, b];\n      d = DateTime.fromObject({ year: y, month, day }, { zone });\n    } else {\n      for (const f of ['d LLL yyyy', 'd LLLL yyyy', 'LLL d, yyyy', 'LLLL d, yyyy', 'd-LLL-yyyy']) {\n        const t = DateTime.fromFormat(v, f, { zone });\n        if (t.isValid) { d = t; break; }\n      }\n    }\n  }\n  return d && d.isValid ? d.startOf('day') : null;\n}\n// --- outcome helpers (identical copy in every node that ends a turn) ---\nconst clip = (s, n) => (S(s).length > n ? S(s).slice(0, n - 1) + '\\u2026' : S(s));\nconst waBase = (to) => ({ messaging_product: 'whatsapp', recipient_type: 'individual', to });\nconst txt = (to, body) => ({ ...waBase(to), type: 'text', text: { preview_url: false, body: clip(body, 4096) } });\nconst btns = (to, body, opts) => ({ ...waBase(to), type: 'interactive',\n  interactive: { type: 'button', body: { text: clip(body, 1024) },\n    action: { buttons: opts.slice(0, 3).map((o) => ({ type: 'reply', reply: { id: clip(o.id, 256), title: clip(o.title, 20) } })) } } });\nconst lst = (to, body, buttonText, section, rows) => ({ ...waBase(to), type: 'interactive',\n  interactive: { type: 'list', body: { text: clip(body, 1024) },\n    action: { button: clip(buttonText, 20), sections: [{ title: clip(section, 24),\n      rows: rows.slice(0, 10).map((r) => { const o = { id: clip(r.id, 200), title: clip(r.title, 24) };\n        if (r.description) o.description = clip(r.description, 72); return o; }) }] } } });\n// a list holds ten rows; longer option sets get a \"More\" row and a page number\nfunction paged(options, page) {\n  if (options.length <= 10) return options;\n  const start = (page || 0) * 9;\n  const rows = options.slice(start, start + 9);\n  if (start + 9 < options.length) rows.push({ id: '__more', title: 'More \\u25b8', description: 'Show more options' });\n  else rows.push({ id: '__first', title: '\\u25c2 Back to start', description: 'Show the first options' });\n  return rows;\n}\n// every turn ends here: the reply, the session save, any other sheet writes, any staff alert\nfunction outcome(ctx, state, reply, writes, alert) {\n  let saved = JSON.stringify(state || {});\n  if (saved.length > 40000 && state && state.slots) {           // a Sheets cell holds 50,000 characters\n    saved = JSON.stringify({ ...state, slots: state.dayISO ? { [state.dayISO]: state.slots[state.dayISO] } : {} });\n  }\n  const sess = { phone: '+' + ctx.phone, state: saved, updated_at: DateTime.now().toUTC().toISO() };\n  const first = ctx.sessionRow ? { op: 'update', tab: 'Sessions', row: ctx.sessionRow, record: sess }\n                               : { op: 'append', tab: 'Sessions', record: sess };\n  return { json: { outcome: true, to: ctx.phone, phone_number_id: ctx.phone_number_id,\n    graph_version: ctx.graph_version, token: ctx.token, sheet_id: ctx.sheet_id, headers: ctx.headers,\n    reply, silent: reply === null, writes: [first].concat(ctx.pendingWrites || [], writes || []), alert: alert || null } };\n}\nconst to = ctx.phone;\nconst state = E.state || {};\nconst flags = [];\n\nlet raw = $input.first().json;\nlet ai = raw && raw.message ? raw.message.content : raw;\nif (typeof ai === 'string') {\n  const t = ai.replace(/^\\s*```(?:json)?/i, '').replace(/```\\s*$/, '').trim();\n  try { ai = JSON.parse(t); } catch (e) {\n    const mm = t.match(/\\{[\\s\\S]*\\}/);\n    try { ai = mm ? JSON.parse(mm[0]) : null; } catch (e2) { ai = null; }\n  }\n}\nif (!ai || typeof ai !== 'object') { ai = {}; flags.push('UNREADABLE'); }\n\nconst known = new Set(E.faqIds || []);\nconst sources = (Array.isArray(ai.sources) ? ai.sources : []).map(S).filter((id) => known.has(id));\nif ((Array.isArray(ai.sources) ? ai.sources.length : 0) > sources.length) flags.push('INVENTED_SOURCE');\nlet answer = S(ai.answer).replace(/\\*\\*|__|`/g, '').replace(/\\n{3,}/g, '\\n\\n').trim();\nif (ai.answered === false) flags.push('MODEL_UNSURE');\nif (!sources.length) flags.push('NO_SOURCE');\nif (answer.length < 5) flags.push('EMPTY');\n\n// Medical-sounding content is only allowed if the cited FAQ entry itself says it.\nconst sourceText = sources.map((id) => S((E.faqAnswers || {})[id])).join(' ').toLowerCase();\nconst RISKY = [/\\b\\d+(\\.\\d+)?\\s?(mg|ml|mcg|g\\/kg|mg\\/kg|tablets?|pills?|capsules?)\\b/i,\n  /\\b(paracetamol|ibuprofen|aspirin|calpol|piriton|benadryl|antibiotics?|steroids?)\\b/i,\n  /\\b(give (him|her|them|it|your (dog|cat|pet))|administer|dose|dosage)\\b/i,\n  /\\b(sounds like|probably (has|is)|likely (has|to be)|diagnos\\w*|it could be|might be suffering)\\b/i];\nfor (const re of RISKY) {\n  const hit = answer.toLowerCase().match(re);\n  if (hit && !sourceText.includes(hit[0].toLowerCase())) { flags.push('MEDICAL_CONTENT'); break; }\n}\n\nconst handoff = flags.some((f) => ['UNREADABLE', 'NO_SOURCE', 'MODEL_UNSURE', 'EMPTY', 'MEDICAL_CONTENT', 'INVENTED_SOURCE'].includes(f));\nif (handoff) {\n  const h = { handoff_id: 'H-' + Math.random().toString(36).slice(2, 8).toUpperCase(), phone: '+' + to,\n    name: S((ctx.owner && ctx.owner.name) || ''), reason: 'Bot could not answer: ' + flags.join(','),\n    message: S(E.question).slice(0, 500), priority: 'normal', status: 'open', created_at: DateTime.now().toUTC().toISO() };\n  const reply = flags.includes('MEDICAL_CONTENT')\n    ? 'That one needs a vet rather than me. I have passed your question to the team, who will reply here. If it is urgent, please call '\n      + S(CFG.clinic_phone) + '.'\n    : 'Good question - I am not sure, so I have passed it to the team and someone will reply here shortly. Reply MENU for other options.';\n  return [outcome(ctx, state, txt(to, reply), [{ op: 'append', tab: 'Handoffs', record: h }],\n    { title: 'Question for the team (' + flags.join(',') + ')', message: '+' + to + ': ' + S(E.question).slice(0, 250), priority: 0 })];\n}\nreturn [outcome(ctx, state, txt(to, answer.slice(0, 1200) + '\\n\\nAnything else? Reply MENU for options.'))];\n"
+      }
+    },
+    {
+      "id": "6c8ba610-2219-4413-b359-56a53b7ff97a",
+      "name": "Split Writes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3120,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// ===== Split Writes =====\n// Row updates go in one batchUpdate call. New rows each use values:append, because\n// Google picks the next free row itself - two customers at once can never overwrite\n// each other, which a computed \"next row\" number cannot promise.\n// RAW means nothing a customer types is ever treated as a formula.\nconst out = [];\nconst S = (v) => (v == null ? '' : String(v));\nconst col = (n) => { let s = ''; while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); } return s; };\nconst q = (t) => (/^[A-Za-z0-9_]+$/.test(t) ? t : \"'\" + t.replace(/'/g, \"''\") + \"'\");\nfor (const it of $input.all()) {\n  const o = it.json;\n  if (!o.sheet_id) continue;\n  const base = 'https://sheets.googleapis.com/v4/spreadsheets/' + encodeURIComponent(o.sheet_id);\n  const updates = [];\n  for (const w of (o.writes || [])) {\n    const header = (o.headers || {})[w.tab] || [];\n    if (!header.length) continue;\n    const values = header.map((h) => (h ? S(w.record && w.record[h] !== undefined ? w.record[h] : '').slice(0, 49000) : ''));\n    if (w.op === 'update' && Number(w.row) >= 2) {\n      // Only touch columns that have a header. A column someone added without one\n      // holds notes we know nothing about, and blanking it would lose them.\n      let i = 0;\n      while (i < header.length) {\n        if (!header[i]) { i++; continue; }\n        let j = i;\n        while (j + 1 < header.length && header[j + 1]) j++;\n        updates.push({ range: q(w.tab) + '!' + col(i + 1) + w.row + ':' + col(j + 1) + w.row, values: [values.slice(i, j + 1)] });\n        i = j + 1;\n      }\n    } else if (w.op === 'append') {\n      out.push({ json: { method: 'POST',\n        url: base + '/values/' + encodeURIComponent(q(w.tab) + '!A1') + ':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',\n        body: { values: [values] }, tab: w.tab, op: 'append' } });\n    }\n  }\n  if (updates.length) out.unshift({ json: { method: 'POST', url: base + '/values:batchUpdate',\n    body: { valueInputOption: 'RAW', data: updates }, tab: updates.map((u) => u.range.split('!')[0]).join(','), op: 'update' } });\n}\nreturn out;\n"
+      }
+    },
+    {
+      "id": "2c97777c-4619-40ee-a4fc-48394e8be654",
+      "name": "Save to Sheet",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3340,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "6398f434-e69f-440b-8ae2-5394456e6908",
+      "name": "Alert Staff?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3120,
+        500
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "76cec182-a74a-4262-9976-3e548afcb95f",
+              "leftValue": "={{ !!$json.alert }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "fe4bb4c6-b397-4d92-8114-da25704f0ef4",
+      "name": "Alert Staff",
+      "type": "n8n-nodes-base.pushover",
+      "typeVersion": 1,
+      "position": [
+        3340,
+        460
+      ],
+      "parameters": {
+        "userKey": "={{ $('Config').first().json.pushover_user_key }}",
+        "message": "={{ $json.alert.message }}",
+        "priority": "={{ $json.alert.priority || 0 }}",
+        "additionalFields": {
+          "title": "={{ $json.alert.title }}"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "c2faf742-5c58-48bd-85e3-66fa231b1ce4",
+      "name": "Has Reply?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3120,
+        720
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "20d63ee7-06da-4409-b479-eb436be5f744",
+              "leftValue": "={{ !!$json.reply }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "baca2baf-5a19-440b-a3d8-24855c62f6ad",
+      "name": "Send Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3340,
+        700
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/{{ $json.graph_version }}/{{ $json.phone_number_id }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.reply) }}",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "dab13e72-382c-43a9-8800-79de5adcdab5",
+      "name": "Sticky Note 87fc897b",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -60,
+        -380
+      ],
+      "parameters": {
+        "content": "## Vet clinic on WhatsApp\nBooks appointments against the clinic's real Google Calendar, answers questions\nfrom an FAQ tab the staff edit themselves, and hands anything else to a person.\n\n**Setup**\n1. Upload **vet-clinic-template.xlsx** to Google Drive and open it with Google Sheets.\n   Paste its ID into **Config**, along with the calendar ID and WhatsApp details.\n2. Credentials: Google Sheets OAuth2 and Google Calendar OAuth2 (both HTTP nodes use\n   n8n's built-in Google credentials), OpenAI, Pushover.\n3. Meta: point the WhatsApp **messages** webhook at the production URL of *Message In*.\n4. Activate. To close the clinic for a day, add an all-day event to the calendar.\n\nStaff change prices, answers and appointment types in the sheet - no n8n edits.",
+        "color": 4,
+        "width": 820,
+        "height": 340
+      }
+    },
+    {
+      "id": "02f01dc4-1223-4376-8e0e-a46c5897fb12",
+      "name": "Sticky Note 99cae7cc",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1560,
+        880
+      ],
+      "parameters": {
+        "content": "## The model is not allowed to improvise\nThree layers run before and after it:\n1. **Emergencies** (not breathing, collapsed, ate chocolate...) get the emergency number\n   and a high-priority alert. The model never sees them.\n2. **Medical questions** (doses, symptoms, \"can I give...\") are offered a vet visit.\n   The model never sees these either.\n3. **Check Answer** rejects any reply that does not cite a real FAQ row, or that contains\n   doses, drug names or diagnosis language the cited FAQ row does not itself contain.\nAnything rejected goes to a person with the customer's question attached.",
+        "color": 5,
+        "width": 700,
+        "height": 300
+      }
+    },
+    {
+      "id": "cbbcbcdd-26d5-46ae-9c7b-75f4b379f652",
+      "name": "Sticky Note db1ed18c",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1760,
+        -120
+      ],
+      "parameters": {
+        "content": "## Google Calendar is the diary\n**Check Diary** asks freeBusy for the busy blocks; **Use Availability** subtracts them\nfrom the opening hours (lunch is just a gap) and lists only days with space.\nBefore booking, the exact day is checked again.\n\n**Honest limit:** Google Calendar has no lock. Between that last check and the insert\nthere is roughly a second in which a second booking could land. For a clinic's volume\nthat is acceptable; if it ever is not, keep bookings in Postgres as in the salon build,\nwhere the database makes a double booking impossible.",
+        "color": 3,
+        "width": 700,
+        "height": 300
+      }
+    },
+    {
+      "id": "6bdd4faa-ee48-43b6-9c54-45d5095daaa4",
+      "name": "Sticky Note ba854989",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3080,
+        60
+      ],
+      "parameters": {
+        "content": "## One read, one write\nEvery message reads all the tabs it needs in **one** values:batchGet call, and saves in\none batchUpdate plus an atomic append per new row - so two customers at once never\noverwrite each other's rows. Writes follow the header names, so staff can reorder\ncolumns. **RAW** input means a customer typing \"=IMPORTXML(...)\" is stored as text.",
+        "color": 6,
+        "width": 620,
+        "height": 220
+      }
+    }
+  ],
+  "connections": {
+    "WhatsApp Verify (GET)": {
+      "main": [
+        [
+          {
+            "node": "Verify Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Token": {
+      "main": [
+        [
+          {
+            "node": "Answer Challenge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message In": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Read Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Message": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "This Message": {
+      "main": [
+        [
+          {
+            "node": "Load Clinic Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Clinic Data": {
+      "main": [
+        [
+          {
+            "node": "Assistant Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assistant Engine": {
+      "main": [
+        [
+          {
+            "node": "What Next?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "What Next?": {
+      "main": [
+        [
+          {
+            "node": "Check Diary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Diary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Answer From FAQ",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Delete Calendar Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Over Messages",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Over Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Messages": {
+      "main": [
+        [],
+        [
+          {
+            "node": "This Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Diary": {
+      "main": [
+        [
+          {
+            "node": "Use Availability",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Answer From FAQ": {
+      "main": [
+        [
+          {
+            "node": "Check Answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Calendar Event": {
+      "main": [
+        [
+          {
+            "node": "After Cancel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Outcome": {
+      "main": [
+        [
+          {
+            "node": "Split Writes",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Alert Staff?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Has Reply?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Use Availability": {
+      "main": [
+        [
+          {
+            "node": "Book It?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Book It?": {
+      "main": [
+        [
+          {
+            "node": "Create Calendar Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Calendar Event": {
+      "main": [
+        [
+          {
+            "node": "After Booking",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "After Booking": {
+      "main": [
+        [
+          {
+            "node": "Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "After Cancel": {
+      "main": [
+        [
+          {
+            "node": "Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Answer": {
+      "main": [
+        [
+          {
+            "node": "Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Writes": {
+      "main": [
+        [
+          {
+            "node": "Save to Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Staff?": {
+      "main": [
+        [
+          {
+            "node": "Alert Staff",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Reply?": {
+      "main": [
+        [
+          {
+            "node": "Send Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Over Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Reply": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

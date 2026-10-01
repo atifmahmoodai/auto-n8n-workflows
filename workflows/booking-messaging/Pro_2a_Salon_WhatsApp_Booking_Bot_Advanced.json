@@ -1,0 +1,538 @@
+{
+  "name": "Pro 2a | Salon WhatsApp Booking Bot | Advanced",
+  "nodes": [
+    {
+      "id": "50024760-ce62-4d0d-aec8-cbbda9195d97",
+      "name": "WhatsApp Verify (GET)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "salon-wa-4f2b9c",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "f29042d4-fb6d-4801-9dd9-cddbc5a2965f"
+    },
+    {
+      "id": "b7224de7-54e1-4bc9-89d3-a73da47305ac",
+      "name": "Verify Token",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b154ce75-580f-403a-95b7-f8b976c7708f",
+              "name": "verify_token",
+              "value": "CHANGE_ME_verify_token",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "2c0632c1-b42a-42a8-a1b1-269276cb0b8c",
+      "name": "Answer Challenge",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.query['hub.verify_token'] === $json.verify_token ? $json.query['hub.challenge'] : 'forbidden' }}",
+        "options": {
+          "responseCode": "={{ $json.query['hub.verify_token'] === $json.verify_token ? 200 : 403 }}"
+        }
+      }
+    },
+    {
+      "id": "40890e2f-a979-4d6b-bf0f-d82d44d29f61",
+      "name": "WhatsApp Message In",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        320
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "salon-wa-4f2b9c",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "webhookId": "bb32fb69-3aed-483a-b6d5-f6c89e013bd9"
+    },
+    {
+      "id": "7f1947aa-bdc5-4b3e-b4ed-7598e9f460e1",
+      "name": "Config (Bot)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        320
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "730fd2dd-0305-4bce-8ffe-cb1c672b8c05",
+              "name": "graph_version",
+              "value": "v25.0",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "27a697e1-42ea-4e24-aef7-9c29b52efcf0",
+      "name": "Read Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        320
+      ],
+      "parameters": {
+        "jsCode": "// ===== Read Message =====\n// Turns Meta's webhook envelope into one item per customer message, and builds the\n// single query that loads everything the engine needs.\nconst out = [];\nconst digits = (s) => String(s || '').replace(/\\D/g, '');\n\nfor (const it of $input.all()) {\n  const j = it.json;\n  const graph = j.graph_version || 'v25.0';\n  const body = (j.body && j.body.entry) ? j.body : (j.entry ? j : null);\n  if (!body) continue;\n\n  for (const entry of body.entry || []) {\n    for (const change of entry.changes || []) {\n      const v = change.value || {};\n      const pnid = (v.metadata || {}).phone_number_id;\n      if (!pnid) continue;                      // not a message webhook\n      const contacts = v.contacts || [];\n\n      for (const m of v.messages || []) {       // statuses (sent/delivered/read) have no .messages\n        const wa = digits(m.from);\n        if (!wa) continue;\n        const prof = ((contacts.find((c) => digits(c.wa_id) === wa) || contacts[0] || {}).profile) || {};\n\n        let kind = 'other'; let id = ''; let text = '';\n        if (m.type === 'text') { kind = 'text'; text = String((m.text || {}).body || '').trim(); }\n        else if (m.type === 'interactive') {\n          const r = (m.interactive || {}).list_reply || (m.interactive || {}).button_reply;\n          if (r) { kind = 'choice'; id = String(r.id || ''); text = String(r.title || ''); }\n        } else if (m.type === 'button') { kind = 'text'; text = String((m.button || {}).text || '').trim(); }\n\n        const msg = { phone_number_id: pnid, wa_id: wa, profile_name: prof.name || '', kind, id, text,\n                      graph_version: graph, msg_id: m.id || ('gen-' + Date.now() + '-' + Math.random().toString(36).slice(2)) };\n\n        out.push({ json: {\n          sql: 'SELECT salon_context($1,$2) AS ctx, claim_message($3) AS fresh, $4::jsonb AS msg',\n          params: [pnid, wa, msg.msg_id, JSON.stringify(msg)],\n        } });\n      }\n    }\n  }\n}\nreturn out;\n"
+      }
+    },
+    {
+      "id": "12462968-44a3-4c73-a11d-8b98f03359c1",
+      "name": "Load Salon + Session",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        660,
+        320
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.sql }}",
+        "options": {
+          "queryReplacement": "={{ $json.params }}"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1500
+    },
+    {
+      "id": "012c369f-3340-4c95-a2fa-b8b174df5b82",
+      "name": "Booking Engine",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        320
+      ],
+      "parameters": {
+        "jsCode": "// ===== Booking Engine =====\n// No AI. A fixed state machine plus real availability maths.\n// In : one item per inbound message  { ctx, fresh, msg }   (from \"Load Salon + Session\")\n// Out: the WhatsApp reply, the new session state, and - when the customer confirms -\n//      the database action to run next.\n//\n// The engine NEVER decides that a slot is free. It only offers slots that the maths\n// says are free; the database has the final word when the booking is written.\n\nconst OUT = [];\nconst clip = (s, n) => (String(s).length > n ? String(s).slice(0, n - 1) + '\\u2026' : String(s));\nconst money = (v, cur) => {\n  const n = Number(v || 0);\n  if (!n) return '';\n  const sym = { GBP: '\\u00a3', USD: '$', EUR: '\\u20ac', PKR: 'Rs ', AED: 'AED ', INR: '\\u20b9' }[cur] || (cur + ' ');\n  return sym + (n % 1 === 0 ? n.toFixed(0) : n.toFixed(2));\n};\nconst dur = (m) => (m >= 60 ? (m / 60 % 1 === 0 ? (m / 60) + 'h' : Math.floor(m / 60) + 'h' + (m % 60) + 'm') : m + ' min');\n\n// ---------- WhatsApp payload builders (Cloud API limits enforced by clip()) ----------\nconst base = (to) => ({ messaging_product: 'whatsapp', recipient_type: 'individual', to });\nconst txt = (to, body) => ({ ...base(to), type: 'text', text: { preview_url: false, body: clip(body, 4096) } });\nconst btns = (to, body, opts) => ({\n  ...base(to), type: 'interactive',\n  interactive: {\n    type: 'button', body: { text: clip(body, 1024) },\n    action: { buttons: opts.slice(0, 3).map((o) => ({ type: 'reply', reply: { id: clip(o.id, 256), title: clip(o.title, 20) } })) },\n  },\n});\nconst lst = (to, body, buttonText, sectionTitle, rows) => ({\n  ...base(to), type: 'interactive',\n  interactive: {\n    type: 'list', body: { text: clip(body, 1024) },\n    action: {\n      button: clip(buttonText, 20),\n      sections: [{\n        title: clip(sectionTitle, 24),\n        rows: rows.slice(0, 10).map((r) => {\n          const row = { id: clip(r.id, 200), title: clip(r.title, 24) };\n          if (r.description) row.description = clip(r.description, 72);\n          return row;\n        }),\n      }],\n    },\n  },\n});\n\n// A list can hold 10 rows. Anything longer gets a \"More\" row and a page in the session.\nfunction paged(options, page) {\n  const PER = 9;\n  if (options.length <= 10) return { rows: options, more: false };\n  const start = page * PER;\n  const slice = options.slice(start, start + PER);\n  const rows = slice.slice();\n  if (start + PER < options.length) rows.push({ id: '__more', title: 'More \\u25b8', description: 'Show the next options' });\n  else if (page > 0) rows.push({ id: '__first', title: '\\u25c2 Back to start', description: 'Show the first options' });\n  return { rows, more: true };\n}\n\n// ---------- availability ----------\nfunction hhmmToMin(t) { const p = String(t || '0:0').split(':'); return (+p[0]) * 60 + (+p[1] || 0); }\nconst minToHHMM = (m) => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');\n\nfunction staffForService(ctx, serviceId) {\n  return (ctx.staff || []).filter((s) => !s.service_ids || !s.service_ids.length || s.service_ids.includes(serviceId));\n}\n\n// Every free start time on one calendar day, and who could do it.\nfunction daySlots(ctx, serviceId, staffId, dayISO) {\n  const t = ctx.tenant;\n  const service = (ctx.services || []).find((s) => s.id === serviceId);\n  if (!service) return [];\n  const block = service.duration_min + (t.buffer_min || 0);   // chair time + cleanup\n  const step = t.slot_step_min || 15;\n  const zone = t.timezone;\n\n  const day = DateTime.fromISO(dayISO, { zone });\n  if (!day.isValid) return [];\n  const weekday = day.weekday % 7;                            // luxon 1..7 (Mon..Sun) -> 0..6 (Sun..Sat)\n  const salon = (ctx.opening_hours || []).find((h) => h.weekday === weekday);\n  if (!salon || salon.closed) return [];\n\n  const now = DateTime.fromISO(ctx.now, { zone });\n  const earliest = now.plus({ minutes: t.min_notice_min || 0 });\n  const latestDay = now.plus({ days: t.max_advance_days || 30 }).endOf('day');\n  if (day.endOf('day') < earliest || day > latestDay) return [];\n\n  const salonOpen = hhmmToMin(salon.opens);\n  const salonClose = hhmmToMin(salon.closes);\n  const busy = ctx.busy || [];\n  const byTime = new Map();\n\n  for (const person of staffForService(ctx, serviceId)) {\n    if (staffId && person.id !== staffId) continue;\n\n    let open = salonOpen; let close = salonClose;\n    const own = (person.hours || []).find((h) => h.weekday === weekday);\n    if (own) {\n      if (own.off) continue;\n      open = Math.max(open, hhmmToMin(own.opens));\n      close = Math.min(close, hhmmToMin(own.closes));\n    }\n    if (close - open < block) continue;\n\n    const taken = busy.filter((b) => b.staff_id === person.id)\n      .concat((person.time_off || []).map((o) => ({ starts_at: o.starts_at, ends_at: o.ends_at })))\n      .map((b) => ({ s: DateTime.fromISO(b.starts_at, { zone }), e: DateTime.fromISO(b.ends_at, { zone }) }));\n\n    for (let m = open; m + block <= close; m += step) {\n      const start = day.set({ hour: Math.floor(m / 60), minute: m % 60, second: 0, millisecond: 0 });\n      const end = start.plus({ minutes: block });\n      if (start < earliest || start > latestDay) continue;\n      if (taken.some((b) => start < b.e && end > b.s)) continue;   // half-open overlap\n      const key = minToHHMM(m);\n      if (!byTime.has(key)) byTime.set(key, []);\n      byTime.get(key).push(person.id);\n    }\n  }\n\n  return [...byTime.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1))\n    .map(([time, staff]) => ({ time, staff }));\n}\n\nfunction nextOpenDays(ctx, serviceId, staffId, limit) {\n  const zone = ctx.tenant.timezone;\n  const now = DateTime.fromISO(ctx.now, { zone });\n  const out = [];\n  const horizon = Math.min(ctx.tenant.max_advance_days || 30, 60);\n  for (let i = 0; i <= horizon && out.length < limit; i++) {\n    const d = now.plus({ days: i });\n    const iso = d.toFormat('yyyy-LL-dd');\n    const slots = daySlots(ctx, serviceId, staffId, iso);\n    if (!slots.length) continue;\n    out.push({\n      id: 'day:' + iso,\n      title: i === 0 ? 'Today ' + d.toFormat('d LLL') : i === 1 ? 'Tomorrow ' + d.toFormat('d LLL') : d.toFormat('ccc d LLL'),\n      description: slots.length + (slots.length === 1 ? ' time free' : ' times free'),\n      iso, count: slots.length,\n    });\n  }\n  return out;\n}\n\n// ---------- input parsing ----------\nfunction readMsg(msg) {\n  if (msg.kind === 'choice') return { kind: 'choice', id: String(msg.id || ''), text: String(msg.text || '') };\n  if (msg.kind === 'text') return { kind: 'text', id: '', text: String(msg.text || '').trim() };\n  return { kind: 'other', id: '', text: '' };\n}\nfunction pick(input, options) {\n  if (input.kind === 'choice') return options.find((o) => o.id === input.id) || null;\n  if (input.kind !== 'text') return null;\n  const t = input.text.toLowerCase().trim();\n  if (!t) return null;\n  if (/^\\d{1,2}$/.test(t)) return options[parseInt(t, 10) - 1] || null;\n  const plain = (o) => String(o.title).toLowerCase().replace(/[\\u2026\\u25b8\\u25c2]/g, '').trim();\n  return options.find((o) => plain(o) === t)\n    || options.find((o) => t.length >= 3 && plain(o).includes(t))\n    || null;\n}\n\n// ---------- the conversation ----------\nfunction respond(ctx, msg) {\n  const t = ctx.tenant;\n  const to = msg.wa_id;\n  const input = readMsg(msg);\n  const low = input.text.toLowerCase();\n  const cur = t.currency;\n  let s = (ctx.session && ctx.session.step) ? ctx.session : { step: 'service', data: {}, page: 0 };\n  s.data = s.data || {};\n  let action = 'none'; let args = null;\n\n  const services = ctx.services || [];\n  const known = ctx.customer && ctx.customer.name ? ctx.customer.name : '';\n\n  const serviceRows = () => services.map((sv) => ({\n    id: 'svc:' + sv.id, title: sv.name,\n    description: [dur(sv.duration_min), money(sv.price, cur)].filter(Boolean).join(' \\u00b7 '),\n  }));\n\n  const askService = (lead) => {\n    const opts = serviceRows();\n    if (!opts.length) return { reply: txt(to, 'Sorry, online booking is not set up yet. Please call us.'), state: s };\n    s.step = 'service';\n    const { rows } = paged(opts, s.page || 0);\n    return {\n      reply: lst(to, lead + '\\n\\nWhat would you like booked?\\n' + rows.filter((r) => !r.id.startsWith('__'))\n        .map((r, i) => (i + 1) + '. ' + r.title).join('\\n'), 'Choose service', 'Our services', rows),\n      state: s,\n    };\n  };\n\n  const askStaff = () => {\n    const people = staffForService(ctx, s.data.serviceId);\n    if (people.length <= 1) {\n      s.data.staffId = people.length ? people[0].id : null;\n      s.data.staffName = people.length ? people[0].name : '';\n      return askDay();\n    }\n    s.step = 'staff'; s.page = 0;\n    const opts = [{ id: 'stf:any', title: 'Anyone', description: 'First available' }]\n      .concat(people.map((p) => ({ id: 'stf:' + p.id, title: p.name })));\n    const { rows } = paged(opts, 0);\n    return { reply: lst(to, 'Who would you like?\\n' + rows.filter((r) => !r.id.startsWith('__')).map((r, i) => (i + 1) + '. ' + r.title).join('\\n'),\n      'Choose person', 'Our team', rows), state: s };\n  };\n\n  const askDay = () => {\n    const days = nextOpenDays(ctx, s.data.serviceId, s.data.staffId, 9);\n    if (!days.length) {\n      s.step = 'service'; s.data = {};\n      return { reply: txt(to, 'Sorry, we have nothing free for that in the next ' + (t.max_advance_days || 30)\n        + ' days. Reply MENU to try a different service, or call us and we will sort something out.'), state: s };\n    }\n    s.step = 'day'; s.days = days.map((d) => ({ id: d.id, title: d.title, description: d.description, iso: d.iso }));\n    return { reply: lst(to, 'Which day suits you?\\n' + days.map((d, i) => (i + 1) + '. ' + d.title).join('\\n'),\n      'Choose day', 'Next available', days), state: s };\n  };\n\n  const askTime = (lead) => {\n    const slots = daySlots(ctx, s.data.serviceId, s.data.staffId, s.data.dayISO);\n    if (!slots.length) return askDay();\n    s.step = 'time'; s.page = 0;\n    s.slots = slots.map((sl) => ({ id: 'tm:' + sl.time, title: sl.time, staff: sl.staff }));\n    const { rows } = paged(s.slots, 0);\n    return { reply: lst(to, (lead ? lead + '\\n\\n' : '') + 'Times free on ' + s.data.dayLabel + ':', 'Choose time',\n      s.data.dayLabel, rows), state: s };\n  };\n\n  const askName = () => {\n    if (known) { s.data.name = known; return askConfirm(); }\n    s.step = 'name';\n    return { reply: txt(to, 'Last thing - what name should I put the booking under?'), state: s };\n  };\n\n  const askConfirm = () => {\n    s.step = 'confirm';\n    const sv = services.find((x) => x.id === s.data.serviceId) || {};\n    const price = money(sv.price, cur);\n    return {\n      reply: btns(to, 'Please check this is right:\\n\\n\\u2022 ' + sv.name + (price ? ' (' + price + ')' : '')\n        + '\\n\\u2022 ' + s.data.dayLabel + ' at ' + s.data.time\n        + '\\n\\u2022 With ' + (s.data.staffName || 'first available')\n        + '\\n\\u2022 ' + dur(sv.duration_min || 0)\n        + '\\n\\nShall I book it?', [\n        { id: 'ok', title: 'Confirm' }, { id: 'time', title: 'Change time' }, { id: 'menu', title: 'Start over' }]),\n      state: s,\n    };\n  };\n\n  // ----- global commands -----\n  if (input.kind === 'text') {\n    const naming = s.step === 'name';   // \"Hi\" is a greeting everywhere except where it might be a name\n    if (naming ? /^(menu|restart|start over|reset)$/i.test(low)\n               : /^(menu|restart|start over|start again|reset|hi|hello|hey|salam|book)$/i.test(low)) {\n      s = { step: 'service', data: {}, page: 0 };\n      const hi = known ? 'Hi ' + known.split(' ')[0] + '!' : 'Hi!';\n      return { ...askService(hi + ' Welcome to ' + t.name + '.'), action, args };\n    }\n    if (/^(cancel|cancel booking)$/i.test(low)) {\n      const mine = ctx.my_bookings || [];\n      if (!mine.length) return { reply: txt(to, 'You have no upcoming bookings with us. Reply MENU to make one.'), state: s, action, args };\n      const b = mine[0];\n      const when = DateTime.fromISO(b.starts_at, { zone: t.timezone }).toFormat('ccc d LLL \\u00b7 HH:mm');\n      s = { step: 'cancelConfirm', data: { ref: b.ref }, page: 0 };\n      return { reply: btns(to, 'Cancel this booking?\\n\\n\\u2022 ' + b.service + '\\n\\u2022 ' + when + '\\n\\u2022 With ' + b.staff + '\\n\\u2022 Ref ' + b.ref,\n        [{ id: 'yes', title: 'Yes, cancel it' }, { id: 'no', title: 'No, keep it' }]), state: s, action, args };\n    }\n    if (/^(my booking|my bookings|when|status)$/i.test(low)) {\n      const mine = ctx.my_bookings || [];\n      if (!mine.length) return { reply: txt(to, 'You have no upcoming bookings. Reply MENU to book one.'), state: s, action, args };\n      const lines = mine.map((b) => '\\u2022 ' + b.service + ' - ' + DateTime.fromISO(b.starts_at, { zone: t.timezone }).toFormat('ccc d LLL \\u00b7 HH:mm')\n        + ' with ' + b.staff + ' (ref ' + b.ref + ')');\n      return { reply: txt(to, 'Your upcoming bookings:\\n\\n' + lines.join('\\n') + '\\n\\nReply CANCEL to cancel, or MENU to book again.'), state: s, action, args };\n    }\n  }\n\n  // ----- steps -----\n  switch (s.step) {\n    case 'service': {\n      const opts = serviceRows();\n      if (input.id === '__more') { s.page = (s.page || 0) + 1; return { ...askService('More services:'), action, args }; }\n      if (input.id === '__first') { s.page = 0; return { ...askService('Our services:'), action, args }; }\n      const opt = pick(input, opts);\n      if (!opt) return { ...askService(known ? 'Sorry, I did not catch that.' : 'Welcome to ' + t.name + '.'), action, args };\n      s.data.serviceId = parseInt(opt.id.split(':')[1], 10);\n      s.data.serviceName = opt.title;\n      s.page = 0;\n      return { ...askStaff(), action, args };\n    }\n    case 'staff': {\n      const people = staffForService(ctx, s.data.serviceId);\n      const opts = [{ id: 'stf:any', title: 'Anyone' }].concat(people.map((p) => ({ id: 'stf:' + p.id, title: p.name })));\n      const opt = pick(input, opts);\n      if (!opt) return { ...askStaff(), action, args };\n      if (opt.id === 'stf:any') { s.data.staffId = null; s.data.staffName = ''; }\n      else {\n        s.data.staffId = parseInt(opt.id.split(':')[1], 10);\n        s.data.staffName = (people.find((p) => p.id === s.data.staffId) || {}).name || '';\n      }\n      return { ...askDay(), action, args };\n    }\n    case 'day': {\n      const days = s.days && s.days.length ? s.days : nextOpenDays(ctx, s.data.serviceId, s.data.staffId, 9);\n      const opt = pick(input, days);\n      if (!opt) { s.days = days; return { ...askDay(), action, args }; }\n      s.data.dayISO = opt.iso || opt.id.split(':')[1];\n      s.data.dayLabel = opt.title;\n      return { ...askTime(''), action, args };\n    }\n    case 'time': {\n      const slots = s.slots && s.slots.length ? s.slots : [];\n      if (input.id === '__more') {\n        s.page = (s.page || 0) + 1;\n        const { rows } = paged(slots, s.page);\n        return { reply: lst(to, 'More times on ' + s.data.dayLabel + ':', 'Choose time', s.data.dayLabel, rows), state: s, action, args };\n      }\n      if (input.id === '__first') {\n        s.page = 0;\n        const { rows } = paged(slots, 0);\n        return { reply: lst(to, 'Times free on ' + s.data.dayLabel + ':', 'Choose time', s.data.dayLabel, rows), state: s, action, args };\n      }\n      let opt = pick(input, slots);\n      if (!opt && input.kind === 'text') {                       // \"10:30\", \"1030\", \"10.30\", \"10\"\n        const m = low.replace(/[.\\s]/g, ':').match(/^(\\d{1,2}):?(\\d{2})?$/);\n        if (m) {\n          const want = String(m[1]).padStart(2, '0') + ':' + (m[2] || '00');\n          opt = slots.find((x) => x.title === want) || null;\n        }\n      }\n      if (!opt) return { ...askTime('Sorry, that time is not on the list.'), action, args };\n      s.data.time = opt.title;\n      s.data.slotStaff = opt.staff || [];\n      return { ...askName(), action, args };\n    }\n    case 'name': {\n      if (input.kind !== 'text' || input.text.length < 2 || input.text.length > 60) {\n        return { reply: txt(to, 'Please type the name for the booking.'), state: s, action, args };\n      }\n      s.data.name = input.text;\n      return { ...askConfirm(), action, args };\n    }\n    case 'confirm': {\n      const opt = pick(input, [{ id: 'ok', title: 'Confirm' }, { id: 'time', title: 'Change time' }, { id: 'menu', title: 'Start over' }])\n        || (input.kind === 'text' && /^(yes|y|ok|confirm|book it)$/i.test(low) ? { id: 'ok' } : null);\n      if (!opt) return { ...askConfirm(), action, args };\n      if (opt.id === 'menu') { s = { step: 'service', data: {}, page: 0 }; return { ...askService('No problem, starting again.'), action, args }; }\n      if (opt.id === 'time') return { ...askTime('No problem.'), action, args };\n\n      const sv = services.find((x) => x.id === s.data.serviceId);\n      if (!sv) { s = { step: 'service', data: {}, page: 0 }; return { ...askService('That service is no longer available.'), action, args }; }\n\n      // recheck against the freshest availability before writing\n      const live = daySlots(ctx, s.data.serviceId, s.data.staffId, s.data.dayISO).find((x) => x.time === s.data.time);\n      if (!live) return { ...askTime('Sorry, that time has just been taken.'), action, args };\n\n      const staffId = s.data.staffId || live.staff[0];\n      const start = DateTime.fromISO(s.data.dayISO + 'T' + s.data.time, { zone: t.timezone });\n      const end = start.plus({ minutes: sv.duration_min + (t.buffer_min || 0) });\n      action = 'book';\n      args = {\n        staffId, serviceId: sv.id, name: s.data.name, blockMin: sv.duration_min + (t.buffer_min || 0),\n        startISO: start.toISO({ suppressMilliseconds: true }),\n        endISO: end.toISO({ suppressMilliseconds: true }),\n        label: s.data.dayLabel + ' at ' + s.data.time,\n        serviceName: sv.name,\n        price: money(sv.price, cur),\n      };\n      s.step = 'booked';\n      return { reply: null, state: s, action, args };\n    }\n    case 'cancelConfirm': {\n      const opt = pick(input, [{ id: 'yes', title: 'Yes, cancel it' }, { id: 'no', title: 'No, keep it' }])\n        || (input.kind === 'text' && /^(yes|y)$/i.test(low) ? { id: 'yes' } : null);\n      if (!opt) {\n        return { reply: btns(to, 'Sorry - cancel that booking, yes or no?',\n          [{ id: 'yes', title: 'Yes, cancel it' }, { id: 'no', title: 'No, keep it' }]), state: s, action, args };\n      }\n      if (opt.id === 'no') { const ref = s.data.ref; s = { step: 'service', data: {}, page: 0 };\n        return { reply: txt(to, 'No problem, booking ' + ref + ' is still in the diary. Reply MENU if you need anything else.'), state: s, action, args }; }\n      action = 'cancel'; args = { ref: s.data.ref };\n      s = { step: 'service', data: {}, page: 0 };\n      return { reply: null, state: s, action, args };\n    }\n    case 'booked':\n    default:\n      return { ...askService(known ? 'Hi ' + known.split(' ')[0] + '!' : 'Hi!'), action, args };\n  }\n}\n\n// ---------- run ----------\nfor (const it of $input.all()) {\n  const row = it.json;\n  const ctx = row.ctx;\n  const msg = row.msg || {};\n  if (!ctx || !ctx.tenant) continue;        // unknown WhatsApp number - not one of our salons\n  if (row.fresh === false) continue;        // Meta re-delivered a message we already answered\n  if (!msg.wa_id || msg.kind === 'skip') continue;\n\n  const t = ctx.tenant;\n  const r = respond(ctx, msg);\n\n  const common = {\n    tenant_id: t.id,\n    wa_id: msg.wa_id,\n    token: t.wa_token,\n    phone_number_id: t.phone_number_id,\n    graph_version: msg.graph_version || 'v25.0',\n    timezone: t.timezone,\n    owner_wa: t.owner_wa || '',\n    owner_template: t.owner_template || '',\n    salon_name: t.name,\n    state: JSON.stringify(r.state || {}),\n    action: r.action,\n    waPayload: r.reply,\n  };\n\n  if (r.action === 'book') {\n    OUT.push({ json: { ...common,\n      sql: 'SELECT book_slot($1::int,$2::int,$3::int,$4,$5,$6::timestamptz,$7::timestamptz) AS r, $8::jsonb AS pass',\n      params: [t.id, r.args.staffId, r.args.serviceId, msg.wa_id, r.args.name, r.args.startISO, r.args.endISO,\n        JSON.stringify({ ...common, booking: r.args, session: r.state })],\n    } });\n  } else if (r.action === 'cancel') {\n    OUT.push({ json: { ...common,\n      sql: 'SELECT cancel_booking($1::int,$2,$3) AS r, $4::jsonb AS pass',\n      params: [t.id, msg.wa_id, r.args.ref,\n        JSON.stringify({ ...common, booking: r.args, session: r.state })],\n    } });\n  } else {\n    OUT.push({ json: common });\n  }\n}\nreturn OUT;\n"
+      }
+    },
+    {
+      "id": "f93279c7-790d-49e5-be5a-042cc43ee5f0",
+      "name": "Write to Database?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1100,
+        320
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "24e59220-d8c5-4e60-91c7-4c73d16b2a87",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "none",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "7989f87d-525a-4ef5-8845-e193d3dd6493",
+      "name": "Run DB Action",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1320,
+        220
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.sql }}",
+        "options": {
+          "queryReplacement": "={{ $json.params }}"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1500
+    },
+    {
+      "id": "cb21c9ee-2cf5-4963-a2f5-749e2f8d9566",
+      "name": "Finalize Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        220
+      ],
+      "parameters": {
+        "jsCode": "// ===== Finalize Reply =====\n// The database has now spoken. Turn its answer into the customer's message.\n// This is where a lost race becomes a helpful list instead of an error.\nconst clip = (s, n) => (String(s).length > n ? String(s).slice(0, n - 1) + '\\u2026' : String(s));\nconst base = (to) => ({ messaging_product: 'whatsapp', recipient_type: 'individual', to });\nconst txt = (to, body) => ({ ...base(to), type: 'text', text: { preview_url: false, body: clip(body, 4096) } });\nconst lst = (to, body, buttonText, sectionTitle, rows) => ({\n  ...base(to), type: 'interactive',\n  interactive: { type: 'list', body: { text: clip(body, 1024) },\n    action: { button: clip(buttonText, 20), sections: [{ title: clip(sectionTitle, 24),\n      rows: rows.slice(0, 10).map((r) => { const o = { id: clip(r.id, 200), title: clip(r.title, 24) };\n        if (r.description) o.description = clip(r.description, 72); return o; }) }] } },\n});\n\nconst out = [];\nfor (const it of $input.all()) {\n  const r = it.json.r || {};\n  const p = it.json.pass || {};\n  const to = p.wa_id;\n  const b = p.booking || {};\n  let session = p.session || { step: 'service', data: {} };\n  let reply; let notifyOwner = false;\n\n  if (p.action === 'book') {\n    if (r.ok) {\n      notifyOwner = !!(p.owner_wa && p.owner_template);\n      reply = txt(to, 'Booked \\u2705\\n\\n\\u2022 ' + (r.service || b.serviceName) + (b.price ? ' (' + b.price + ')' : '')\n        + '\\n\\u2022 ' + b.label + '\\n\\u2022 With ' + (r.staff || '') + '\\n\\u2022 Ref ' + r.ref\n        + '\\n\\nSee you at ' + p.salon_name + '. Reply CANCEL if your plans change.');\n      session = { step: 'booked', data: {}, ref: r.ref };\n    } else if (r.reason === 'taken') {\n      // Someone confirmed the same minute. Offer what is genuinely left of this day:\n      // drop every cached time that overlaps the slot just taken - for that stylist only,\n      // since a colleague may still be free at the same time.\n      const mins = (t) => (+String(t).slice(0, 2)) * 60 + (+String(t).slice(3, 5));\n      const takenTime = (b.label || '').split(' at ')[1] || '';\n      const blockMin = Number(b.blockMin) || 0;\n      const from = mins(takenTime); const until = from + blockMin;\n      const left = (session.slots || []).filter((s) => {\n        if (!/^\\d{2}:\\d{2}$/.test(s.title) || !takenTime) return s.title !== takenTime;\n        const s0 = mins(s.title);\n        if (!(s0 < until && s0 + blockMin > from)) return true;      // no clash\n        const others = (s.staff || []).filter((id) => id !== b.staffId);\n        s.staff = others;\n        return others.length > 0;                                     // a colleague is still free\n      });\n      if (left.length) {\n        session = { ...session, step: 'time', page: 0, slots: left };\n        const rows = left.length > 10 ? left.slice(0, 9).concat([{ id: '__more', title: 'More \\u25b8' }]) : left;\n        reply = lst(to, 'Sorry - someone booked ' + (b.label || 'that slot') + ' moments before you. These are still free:',\n          'Choose time', clip(String(session.data && session.data.dayLabel || 'Other times'), 24), rows);\n      } else {\n        session = { step: 'day', data: session.data || {} };\n        reply = txt(to, 'Sorry - someone booked ' + (b.label || 'that slot') + ' moments before you, and that was the last time free that day. Reply OK and I will show you the next available days.');\n      }\n    } else if (r.reason === 'past') {\n      session = { step: 'service', data: {} };\n      reply = txt(to, 'That time has already passed. Reply MENU and we will start again.');\n    } else {\n      session = { step: 'service', data: {} };\n      reply = txt(to, 'Sorry, that is no longer available. Reply MENU to start again.');\n    }\n  } else if (p.action === 'cancel') {\n    if (r.ok) reply = txt(to, 'Cancelled \\u274c\\n\\nBooking ' + r.ref + ' (' + (r.service || '') + ') is no longer in the diary.\\n\\nReply MENU whenever you want to rebook.');\n    else reply = txt(to, 'I could not find that booking. Reply MY BOOKINGS to see what is in the diary.');\n  } else {\n    reply = txt(to, 'Reply MENU to start again.');\n  }\n\n  const ownerPayload = notifyOwner ? {\n    messaging_product: 'whatsapp', to: String(p.owner_wa).replace(/\\D/g, ''), type: 'template',\n    template: { name: p.owner_template, language: { code: p.owner_lang || 'en' },\n      components: [{ type: 'body', parameters: [\n        { type: 'text', text: clip(b.name || 'Customer', 60) },\n        { type: 'text', text: clip(r.service || b.serviceName || '', 60) },\n        { type: 'text', text: clip((b.label || '') + ' with ' + (r.staff || ''), 60) }] }] },\n  } : null;\n\n  out.push({ json: { ...p, waPayload: reply, state: JSON.stringify(session), notifyOwner, ownerPayload, booked: !!(p.action === 'book' && r.ok), ref: r.ref || '' } });\n}\nreturn out;\n"
+      }
+    },
+    {
+      "id": "479965c3-2c8c-4acc-9e70-3aaceb365d04",
+      "name": "Save Session",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1780,
+        120
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT save_session($1::int, $2, $3::jsonb)",
+        "options": {
+          "queryReplacement": "={{ [$json.tenant_id, $json.wa_id, $json.state] }}"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1500,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "22d1b4d3-bd76-499a-9162-94808cddc91e",
+      "name": "Send WhatsApp Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1780,
+        320
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/{{ $json.graph_version }}/{{ $json.phone_number_id }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.waPayload) }}",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1500
+    },
+    {
+      "id": "dc76083e-71de-4cc9-add5-b7798cae9a7c",
+      "name": "Alert the Owner?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1780,
+        520
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "54201ceb-a9ac-4c16-9806-bfbee56dbae3",
+              "leftValue": "={{ $json.notifyOwner }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "9b46d997-3bfc-421d-803e-bf18f77e4eaf",
+      "name": "Send Owner Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2000,
+        520
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/{{ $json.graph_version }}/{{ $json.phone_number_id }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.ownerPayload) }}",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1500,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "b3ff52b9-6731-4476-868a-44dc8d887551",
+      "name": "Sticky Note 25252fec",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -320
+      ],
+      "parameters": {
+        "content": "## START HERE\n**1.** Run `schema.sql` then `seed.sql` against your Postgres (Supabase / Neon free tier is fine).\n**2.** Add ONE Postgres credential and select it on all four Postgres nodes.\n**3.** Put your own verify token in **Verify Token**, then in Meta: WhatsApp > Configuration > Edit, callback URL =\nthe **production** URL of *WhatsApp Message In*, and subscribe to the **messages** field.\n**4.** In the `tenants` row set `phone_number_id` and `wa_token` (permanent System User token) for the salon.\n**5.** Activate. Test webhooks only reach a workflow while its editor tab is open - this one must be **Active**.\n\nAdding salon #2 = one INSERT into `tenants`. No new workflow, no new nodes.",
+        "color": 4,
+        "width": 860,
+        "height": 300
+      }
+    },
+    {
+      "id": "98d60bec-1279-41bd-a7b3-a23d5ee26692",
+      "name": "Sticky Note 480c56b8",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        660,
+        560
+      ],
+      "parameters": {
+        "content": "## How a message becomes a booking\n**Read Message** flattens Meta's envelope and builds one query.\n**Load Salon + Session** does the whole read in a single round trip:\nwhich salon owns this number, its services, staff, hours, existing\nbookings, this customer, and where the conversation had got to.\n**Booking Engine** is a state machine - no AI. It works out the free\nslots and only ever offers those.\n**Run DB Action** is the only thing that decides a booking is real.\nTwo people tapping 10:30 at the same instant: the database gives it\nto one of them, and **Finalize Reply** offers the other the times\nthat are genuinely still free.",
+        "color": 5,
+        "width": 620,
+        "height": 300
+      }
+    },
+    {
+      "id": "f216ccd5-8a3e-4181-9d7e-3cf8014c101a",
+      "name": "Sticky Note 74621c4b",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1960,
+        700
+      ],
+      "parameters": {
+        "content": "## Owner alert (optional)\nWhatsApp only allows free-form messages within 24h of the\ncustomer's last message. The owner has not messaged you,\nso their alert must be an **approved template** with\nexactly **3 variables**: customer, service, when.\n\nCreate it in Meta > WhatsApp Manager > Message templates,\nthen put its name in `tenants.owner_template` and the\nowner's number in `tenants.owner_wa`.\nLeave both NULL and this branch simply never fires - new\nbookings still appear in the dashboard instantly.",
+        "color": 3,
+        "width": 520,
+        "height": 280
+      }
+    }
+  ],
+  "connections": {
+    "WhatsApp Verify (GET)": {
+      "main": [
+        [
+          {
+            "node": "Verify Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Token": {
+      "main": [
+        [
+          {
+            "node": "Answer Challenge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp Message In": {
+      "main": [
+        [
+          {
+            "node": "Config (Bot)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config (Bot)": {
+      "main": [
+        [
+          {
+            "node": "Read Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Message": {
+      "main": [
+        [
+          {
+            "node": "Load Salon + Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Salon + Session": {
+      "main": [
+        [
+          {
+            "node": "Booking Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Booking Engine": {
+      "main": [
+        [
+          {
+            "node": "Write to Database?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write to Database?": {
+      "main": [
+        [
+          {
+            "node": "Run DB Action",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Save Session",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send WhatsApp Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run DB Action": {
+      "main": [
+        [
+          {
+            "node": "Finalize Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finalize Reply": {
+      "main": [
+        [
+          {
+            "node": "Save Session",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send WhatsApp Reply",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Alert the Owner?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert the Owner?": {
+      "main": [
+        [
+          {
+            "node": "Send Owner Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

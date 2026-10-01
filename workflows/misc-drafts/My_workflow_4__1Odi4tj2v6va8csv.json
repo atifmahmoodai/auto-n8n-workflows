@@ -1,0 +1,666 @@
+{
+  "name": "My workflow 4",
+  "nodes": [
+    {
+      "id": "356aa662-0c31-46cb-a494-f3c82260788c",
+      "name": "Chat Interface",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        240,
+        496
+      ],
+      "parameters": {
+        "availableInChat": true,
+        "agentName": "Enterprise CRM Assistant",
+        "agentDescription": "AI-powered assistant for managing leads, contacts, and customer communications across Salesforce, HubSpot, and Slack",
+        "suggestedPrompts": {
+          "prompts": [
+            {
+              "icon": {
+                "type": "icon",
+                "value": "user-plus"
+              },
+              "text": "Create a new lead in Salesforce"
+            },
+            {
+              "icon": {
+                "type": "icon",
+                "value": "address-book"
+              },
+              "text": "Add a contact to HubSpot"
+            },
+            {
+              "icon": {
+                "type": "icon",
+                "value": "bell"
+              },
+              "text": "Send a notification to the sales team"
+            },
+            {
+              "icon": {
+                "type": "icon",
+                "value": "search"
+              },
+              "text": "Research a company or prospect"
+            }
+          ]
+        },
+        "options": {
+          "allowFileUploads": false,
+          "responseMode": "streaming"
+        }
+      },
+      "webhookId": "a3588fc3-2d65-43a9-a7bb-e1cbd052abb8"
+    },
+    {
+      "id": "78d46cc5-dd79-4b28-9c1f-452b2448959b",
+      "name": "OpenAI GPT Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        464,
+        720
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {
+          "webSearch": {
+            "searchContextSize": "medium"
+          }
+        },
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "68cf0957-86db-4295-840b-0c9692e66e31",
+      "name": "Conversation Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        592,
+        720
+      ],
+      "parameters": {
+        "contextWindowLength": 15
+      }
+    },
+    {
+      "id": "aca7ae93-640b-481a-a7a6-a9f6f5b8715a",
+      "name": "CRM Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        784,
+        496
+      ],
+      "parameters": {
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are an enterprise CRM assistant with expertise in sales operations, lead management, and customer relationship workflows.\n\nYou have access to the following professional tools:\n\n1. **Salesforce Lead Tool** - Create new leads in Salesforce CRM with complete contact information\n2. **HubSpot Contact Tool** - Create or update contacts in HubSpot CRM\n3. **Slack Notification Tool** - Send notifications to sales team channels\n4. **Web Search Tool** - Research companies, prospects, and market information\n\nFor each request, you must:\n1. Determine the appropriate action (create_lead, create_contact, send_notification, research)\n2. Identify the target platform (salesforce, hubspot, slack)\n3. Extract or gather all required information\n4. Use the appropriate tool to execute the action\n5. Provide structured output with action details, platform, data, confidence level, and reasoning\n\nAlways structure your response according to the output parser schema with fields: action, platform, leadData/contactData, confidence, and reasoning.\n\nIf information is missing, ask clarifying questions before proceeding.",
+          "maxIterations": 15,
+          "returnIntermediateSteps": true,
+          "enableStreaming": true
+        }
+      }
+    },
+    {
+      "id": "585b17d4-9cdb-4a61-ba9d-470ec80e4418",
+      "name": "Salesforce Lead Tool",
+      "type": "n8n-nodes-base.salesforceTool",
+      "typeVersion": 1,
+      "position": [
+        720,
+        720
+      ],
+      "parameters": {
+        "company": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('company', 'Company name of the lead') }}",
+        "lastname": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('lastName', 'Last name of the lead') }}",
+        "additionalFields": {
+          "description": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('description', 'Additional notes about the lead') }}",
+          "email": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('email', 'Email address of the lead') }}",
+          "firstname": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('firstName', 'First name of the lead') }}",
+          "leadSource": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('leadSource', 'Source of the lead (e.g., Website, Referral, Trade Show)') }}",
+          "phone": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('phone', 'Phone number of the lead') }}",
+          "status": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('status', 'Lead status (e.g., Open, Contacted, Qualified)') }}",
+          "title": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('title', 'Job title of the lead') }}"
+        }
+      }
+    },
+    {
+      "id": "330c7409-d860-4aec-8581-6f0d53cccc5a",
+      "name": "HubSpot Contact Tool",
+      "type": "n8n-nodes-base.hubspotTool",
+      "typeVersion": 2.2,
+      "position": [
+        848,
+        720
+      ],
+      "parameters": {
+        "authentication": "oAuth2",
+        "email": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('email', 'Contact email address') }}",
+        "additionalFields": {
+          "companyName": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('company', 'Company name') }}",
+          "firstName": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('firstName', 'First name') }}",
+          "jobTitle": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('jobTitle', 'Job title') }}",
+          "lastName": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('lastName', 'Last name') }}",
+          "lifeCycleStage": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('lifeCycleStage', 'Lifecycle stage (e.g., lead, opportunity, customer)') }}"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "9c915555-bcfb-46f0-96f2-9dab36d01887",
+      "name": "Slack Notification Tool",
+      "type": "n8n-nodes-base.slackTool",
+      "typeVersion": 2.4,
+      "position": [
+        976,
+        720
+      ],
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "text": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('message', 'Message to send to Slack channel') }}",
+        "otherOptions": {}
+      },
+      "webhookId": "b379eaca-fa1b-4324-b2d8-279582170258"
+    },
+    {
+      "id": "d664b5ed-82da-4cf8-bb6c-fa88234096f9",
+      "name": "Web Search Tool",
+      "type": "@n8n/n8n-nodes-langchain.toolSerpApi",
+      "typeVersion": 1,
+      "position": [
+        1104,
+        720
+      ],
+      "parameters": {
+        "options": {
+          "gl": "us",
+          "device": "desktop",
+          "google_domain": "google.com",
+          "hl": "en"
+        }
+      }
+    },
+    {
+      "id": "201e7755-2409-49df-818b-60e5452f8361",
+      "name": "Structured Output Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1232,
+        720
+      ],
+      "parameters": {
+        "jsonSchemaExample": "{ \"action\": \"create_lead\", \"platform\": \"salesforce\", \"leadData\": { \"firstName\": \"John\", \"lastName\": \"Doe\", \"email\": \"john@example.com\", \"company\": \"Acme Corp\", \"phone\": \"+1234567890\", \"title\": \"CTO\", \"leadSource\": \"Website\", \"status\": \"Open\", \"description\": \"Interested in enterprise solution\" }, \"confidence\": \"high\", \"reasoning\": \"User provided complete contact information and expressed clear interest\" }"
+      }
+    },
+    {
+      "id": "b1ef6018-ccb6-4b12-8f61-99a01155a450",
+      "name": "Extract Action Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1440,
+        496
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "action",
+              "value": "={{ $json.output.action }}",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "platform",
+              "value": "={{ $json.output.platform }}",
+              "type": "string"
+            },
+            {
+              "id": "3",
+              "name": "leadData",
+              "value": "={{ $json.output.leadData }}",
+              "type": "object"
+            },
+            {
+              "id": "4",
+              "name": "confidence",
+              "value": "={{ $json.output.confidence }}",
+              "type": "string"
+            },
+            {
+              "id": "5",
+              "name": "reasoning",
+              "value": "={{ $json.output.reasoning }}",
+              "type": "string"
+            },
+            {
+              "id": "6",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "7",
+              "name": "sessionId",
+              "value": "={{ $json.sessionId }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "c5bb6229-f3b2-47ed-b103-dc49af4daf16",
+      "name": "Route by Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1664,
+        448
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "create_lead",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Create Lead"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "create_contact",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Create Contact"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "send_notification",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Send Notification"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "research",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Research"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      }
+    },
+    {
+      "id": "56f964d2-cc03-4eed-8e25-57b553a5250d",
+      "name": "Save to DataTable",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1888,
+        208
+      ],
+      "parameters": {
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "sessionId",
+              "keyValue": "={{ $json.sessionId }}"
+            },
+            {
+              "keyName": "timestamp",
+              "keyValue": "={{ $json.timestamp }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "action": "={{ $json.action }}",
+            "platform": "={{ $json.platform }}",
+            "leadData": "={{ JSON.stringify($json.leadData) }}",
+            "confidence": "={{ $json.confidence }}",
+            "reasoning": "={{ $json.reasoning }}",
+            "timestamp": "={{ $json.timestamp }}",
+            "sessionId": "={{ $json.sessionId }}"
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "e28945a5-f971-4e41-8674-05186d668d57",
+      "name": "Log Contact Creation",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1888,
+        400
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "status",
+              "value": "contact_created",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "message",
+              "value": "=Contact created in {{ $json.platform }} for {{ $json.leadData.firstName }} {{ $json.leadData.lastName }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "42aa8393-7d79-4c6c-85b9-6af15b3a377f",
+      "name": "Log Notification Sent",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1888,
+        592
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "status",
+              "value": "notification_sent",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "message",
+              "value": "=Notification sent to {{ $json.platform }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "76d3c8af-438c-4e6f-84b8-a6538c3fe8eb",
+      "name": "Log Research Complete",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1888,
+        784
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "status",
+              "value": "research_complete",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "message",
+              "value": "=Research completed: {{ $json.reasoning }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Chat Interface": {
+      "main": [
+        [
+          {
+            "node": "CRM Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI GPT Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "CRM Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Conversation Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "CRM Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CRM Agent": {
+      "main": [
+        [
+          {
+            "node": "Extract Action Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Salesforce Lead Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "CRM Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot Contact Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "CRM Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack Notification Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "CRM Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Web Search Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "CRM Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "CRM Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Action Data": {
+      "main": [
+        [
+          {
+            "node": "Route by Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Action": {
+      "main": [
+        [
+          {
+            "node": "Save to DataTable",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Contact Creation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Notification Sent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Research Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

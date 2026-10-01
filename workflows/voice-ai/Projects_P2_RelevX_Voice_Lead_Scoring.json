@@ -1,0 +1,612 @@
+{
+  "name": "Projects P2: RelevX Voice Lead Scoring",
+  "nodes": [
+    {
+      "id": "d3499185-07e0-456a-be05-f3d17839098f",
+      "name": "Sticky Note 61ee1c92",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        528,
+        688
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "RelevX High-Volume Voice Architecture",
+            "position": [
+              -220,
+              60
+            ],
+            "parameters": {
+              "width": 580,
+              "height": 300,
+              "content": "RELEVX VOICE LEAD SCORING (13K+ calls/mo)\n\n1. Webhook POST /relevx/voice-event from Vapi\n2. Multi-tenant client_id routing\n3. GPT-4o-mini scores Hot/Warm/Cold from transcript\n4. Sync to Google Sheets + Airtable HTTP\n5. Error-resilient with neverError on CRM sync\n\nProduction: deploy n8n Queue Mode on Docker for scale."
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "88446379-e5f7-4788-9a90-f9b7db10bf6e",
+      "name": "Webhook: RelevX Voice Event",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "relevx/voice-event",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "c2e1c044-9e94-4433-b964-d143a8fe918d"
+    },
+    {
+      "id": "f08c019d-7613-47b1-807a-42b34bb9a9c7",
+      "name": "Normalize Vapi Payload",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cid",
+              "name": "client_id",
+              "value": "={{ $json.client_id || $json.body?.client_id || \"default_client\" }}",
+              "type": "string"
+            },
+            {
+              "id": "call",
+              "name": "call_id",
+              "value": "={{ $json.call_id || $json.body?.call_id || $json.id || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "ph",
+              "name": "phone",
+              "value": "={{ $json.phone || $json.body?.phone || $json.customer?.number || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "tr",
+              "name": "transcript",
+              "value": "={{ $json.transcript || $json.body?.transcript || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "sec",
+              "name": "sector",
+              "value": "={{ $json.sector || $json.body?.sector || \"automotive\" }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "66482d44-47aa-4c0e-b249-a837049f5480",
+      "name": "AI: Score Lead Hot/Warm/Cold",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        500,
+        300
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ \"You score automotive/real estate voice leads. Classify tier hot/warm/cold, score 0-100, intent, and summary. Sector: \" + $json.sector + \"\\nTranscript:\\n\" + $json.transcript }}",
+        "hasOutputParser": true
+      }
+    },
+    {
+      "id": "92c514e9-3236-43c7-842e-a2a264b67209",
+      "name": "GPT-4o Mini",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        528,
+        640
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "options": {
+          "temperature": 0.1
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "3f46cafe-9966-4ec6-bcb9-d62c90429992",
+      "name": "Lead Score Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        560,
+        432
+      ],
+      "parameters": {
+        "schemaType": "fromJson",
+        "autoFix": true,
+        "jsonSchemaExample": {
+          "tier": "hot",
+          "score": 91,
+          "intent": "book_appointment",
+          "vehicle_interest": "SUV 2024",
+          "language": "es",
+          "summary": "Ready to visit dealership tomorrow."
+        }
+      }
+    },
+    {
+      "id": "ebf6025a-84e6-4f8a-b751-b13968b2b660",
+      "name": "Merge Scored Lead",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        760,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cl",
+              "name": "client_id",
+              "value": "={{ $(\"Normalize Vapi Payload\").item.json.client_id }}",
+              "type": "string"
+            },
+            {
+              "id": "ca",
+              "name": "call_id",
+              "value": "={{ $(\"Normalize Vapi Payload\").item.json.call_id }}",
+              "type": "string"
+            },
+            {
+              "id": "ph",
+              "name": "phone",
+              "value": "={{ $(\"Normalize Vapi Payload\").item.json.phone }}",
+              "type": "string"
+            },
+            {
+              "id": "se",
+              "name": "sector",
+              "value": "={{ $(\"Normalize Vapi Payload\").item.json.sector }}",
+              "type": "string"
+            },
+            {
+              "id": "ti",
+              "name": "tier",
+              "value": "={{ $json.output?.tier || $json.tier || \"cold\" }}",
+              "type": "string"
+            },
+            {
+              "id": "sc",
+              "name": "score",
+              "value": "={{ $json.output?.score || $json.score || 0 }}",
+              "type": "number"
+            },
+            {
+              "id": "in",
+              "name": "intent",
+              "value": "={{ $json.output?.intent || $json.intent || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "su",
+              "name": "summary",
+              "value": "={{ $json.output?.summary || $json.summary || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "ts",
+              "name": "scored_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "d2df7f5b-c51a-4917-8ea9-cf278aafad69",
+      "name": "Log to Lead Scores Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1020,
+        300
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "RelevX_Lead_Scores"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "scored_at": "={{ $json.scored_at }}",
+            "client_id": "={{ $json.client_id }}",
+            "call_id": "={{ $json.call_id }}",
+            "phone": "={{ $json.phone }}",
+            "sector": "={{ $json.sector }}",
+            "tier": "={{ $json.tier }}",
+            "score": "={{ $json.score }}",
+            "intent": "={{ $json.intent }}",
+            "summary": "={{ $json.summary }}"
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "44cb83cf-1d16-4239-95b8-0b48bfca22c1",
+      "name": "Airtable: Sync Lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1280,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ \"https://api.airtable.com/v0/REPLACE_AIRTABLE_BASE/Leads\" }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n        records: [{\n          fields: {\n            client_id: $json.client_id,\n            call_id: $json.call_id,\n            phone: $json.phone,\n            tier: $json.tier,\n            score: $json.score,\n            intent: $json.intent,\n            summary: $json.summary,\n            sector: $json.sector\n          }\n        }]\n      } }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "377faa71-5c5e-476e-94a0-36d83177a393",
+      "name": "Route by Tier",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1540,
+        300
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "outputKey": "hot",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.tier }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "hot"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "warm",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.tier }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "warm"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Cold"
+        }
+      }
+    },
+    {
+      "id": "c1854578-92fd-4ba4-9e3e-d5f5921deb6f",
+      "name": "Hot: Priority Queue",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1800,
+        180
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "act",
+              "name": "action",
+              "value": "priority_sales_callback",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "6e5af618-ab4b-4b0a-a514-4924068fcd4a",
+      "name": "Respond Score Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2060,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, client_id: $json.client_id, call_id: $json.call_id, tier: $json.tier, score: $json.score, action: $json.action } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "3fa7eb30-c8be-4b10-a5a8-6d3a6e771a61",
+      "name": "Warm: Nurture Queue",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1800,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "act",
+              "name": "action",
+              "value": "whatsapp_nurture_24h",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "4142b337-79d9-4130-8e72-26439e8cbdb7",
+      "name": "Cold: Archive",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1800,
+        420
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "act",
+              "name": "action",
+              "value": "archive_low_intent",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook: RelevX Voice Event": {
+      "main": [
+        [
+          {
+            "node": "Normalize Vapi Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Vapi Payload": {
+      "main": [
+        [
+          {
+            "node": "AI: Score Lead Hot/Warm/Cold",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Score Lead Hot/Warm/Cold": {
+      "main": [
+        [
+          {
+            "node": "Merge Scored Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT-4o Mini": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI: Score Lead Hot/Warm/Cold",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Lead Score Schema",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Score Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI: Score Lead Hot/Warm/Cold",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Scored Lead": {
+      "main": [
+        [
+          {
+            "node": "Log to Lead Scores Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Lead Scores Sheet": {
+      "main": [
+        [
+          {
+            "node": "Airtable: Sync Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Airtable: Sync Lead": {
+      "main": [
+        [
+          {
+            "node": "Route by Tier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Tier": {
+      "main": [
+        [
+          {
+            "node": "Hot: Priority Queue",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Warm: Nurture Queue",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Cold: Archive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hot: Priority Queue": {
+      "main": [
+        [
+          {
+            "node": "Respond Score Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Warm: Nurture Queue": {
+      "main": [
+        [
+          {
+            "node": "Respond Score Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cold: Archive": {
+      "main": [
+        [
+          {
+            "node": "Respond Score Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

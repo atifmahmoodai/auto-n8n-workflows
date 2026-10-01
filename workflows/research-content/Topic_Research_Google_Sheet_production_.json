@@ -1,0 +1,766 @@
+{
+  "name": "Topic Research → Google Sheet (production)",
+  "nodes": [
+    {
+      "id": "5b358d78-6d4a-4114-abbd-cc089b293106",
+      "name": "Research request",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "authentication": "n8nUserAuth",
+        "formTitle": "Topic Research",
+        "formDescription": "Enter a topic and how many sources to pull. I will search the web, scrape each source, summarize them, save the findings to your Google Sheet, and write a combined briefing.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Topic",
+              "fieldType": "text",
+              "placeholder": "e.g. best open-source AI agent frameworks 2026",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Sources",
+              "fieldType": "dropdown",
+              "requiredField": true,
+              "defaultValue": "5",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "3"
+                  },
+                  {
+                    "option": "5"
+                  },
+                  {
+                    "option": "10"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "responseMode": "onReceived",
+        "options": {
+          "buttonLabel": "Research",
+          "respondWithOptions": {
+            "values": {
+              "respondWith": "text",
+              "formSubmittedText": "Got it - researching now. Findings and a briefing will appear in your Google Sheet shortly."
+            }
+          }
+        }
+      },
+      "webhookId": "2ea3380e-6c3b-4302-91b7-1e6fc6382841"
+    },
+    {
+      "id": "05b5ed53-e2c7-4b25-a834-b7e87a71b017",
+      "name": "Firecrawl search and scrape",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.firecrawl.dev/v1/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "firecrawlApi",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"query\": $json.Topic, \"limit\": (Number($json.Sources) || 5), \"scrapeOptions\": { \"formats\": [\"markdown\"], \"onlyMainContent\": true } } }}",
+        "options": {
+          "timeout": 120000
+        }
+      }
+    },
+    {
+      "id": "1881821d-8d56-4ba4-aa45-ccc3ee4e3ab6",
+      "name": "Normalize results",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "res-array",
+              "name": "results",
+              "value": "={{ $json.data ?? $json.results ?? [] }}",
+              "type": "array"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "da2490b4-bb04-435c-87f5-c28c1187c905",
+      "name": "Any results?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        640,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.results }}",
+              "operator": {
+                "type": "array",
+                "operation": "notEmpty"
+              },
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "47537174-b4a7-4237-9338-c6cf511f7d7e",
+      "name": "Split sources",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        860,
+        -140
+      ],
+      "parameters": {
+        "fieldToSplitOut": "results",
+        "include": "noOtherFields"
+      }
+    },
+    {
+      "id": "5317d5e7-f0db-4701-bcbc-c2dce1d68b1f",
+      "name": "Summarize source",
+      "type": "@n8n/n8n-nodes-langchain.informationExtractor",
+      "typeVersion": 1.2,
+      "position": [
+        1080,
+        -140
+      ],
+      "parameters": {
+        "text": "={{ ($json.markdown || $json.description || \"\").slice(0, 8000) }}",
+        "schemaType": "fromAttributes",
+        "attributes": {
+          "attributes": [
+            {
+              "name": "summary",
+              "type": "string",
+              "description": "A factual 2-3 sentence summary of what this page says about the research topic. If the page content is empty or unrelated to the topic, return exactly: No relevant content found.",
+              "required": true
+            },
+            {
+              "name": "key_points",
+              "type": "string",
+              "description": "The 3-5 most important facts or takeaways from this page, as one string with each point separated by a semicolon. Empty string if none.",
+              "required": false
+            },
+            {
+              "name": "is_relevant",
+              "type": "boolean",
+              "description": "true ONLY if this page contains real, on-topic content that helps answer the research topic. Set false if the page is empty, an error or 404 page, a paywall or login wall, a cookie/consent notice, a navigation or link-list page, or is unrelated to the topic.",
+              "required": true
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batchSize": 5,
+            "delayBetweenBatches": 800
+          }
+        }
+      }
+    },
+    {
+      "id": "916c4da5-a64b-491e-9c15-5a91f9523122",
+      "name": "GPT model (summaries)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1080,
+        80
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4.1-mini",
+          "cachedResultName": "gpt-4.1-mini"
+        },
+        "responsesApiEnabled": false,
+        "options": {
+          "temperature": 0.2,
+          "maxRetries": 3
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "1a118e4f-ae6f-4200-bbc1-7499a24d6610",
+      "name": "Build record",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1300,
+        -140
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f-topic",
+              "name": "Topic",
+              "value": "={{ $('Research request').item.json.Topic }}",
+              "type": "string"
+            },
+            {
+              "id": "f-title",
+              "name": "Source Title",
+              "value": "={{ $('Split sources').item.json.title }}",
+              "type": "string"
+            },
+            {
+              "id": "f-url",
+              "name": "URL",
+              "value": "={{ $('Split sources').item.json.url }}",
+              "type": "string"
+            },
+            {
+              "id": "f-summary",
+              "name": "Summary",
+              "value": "={{ $json.summary ?? \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "f-points",
+              "name": "Key Points",
+              "value": "={{ $json.key_points ?? \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "f-date",
+              "name": "Date",
+              "value": "={{ $now.toFormat(\"yyyy-MM-dd HH:mm\") }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "7bc8f360-2d2c-41bf-8246-c2286bac46e5",
+      "name": "Drop empty sources",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        1520,
+        -140
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "has-summary",
+              "leftValue": "={{ $json.Summary }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              },
+              "rightValue": ""
+            },
+            {
+              "id": "is-relevant-str",
+              "leftValue": "={{ $json.Summary }}",
+              "operator": {
+                "type": "string",
+                "operation": "notContains"
+              },
+              "rightValue": "No relevant content"
+            },
+            {
+              "id": "is-relevant-bool",
+              "leftValue": "={{ $('Summarize source').item.json.is_relevant }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "8a32a2cd-2def-4b7b-8d73-f3405e451e68",
+      "name": "Save sources",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1740,
+        -260
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "appendOrUpdate",
+        "authentication": "oAuth2",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "1tEmie7SGWHz5i9My43c-fsxmuioZTPB-8XHy5BNozy8",
+          "cachedResultName": "Topic Research",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1tEmie7SGWHz5i9My43c-fsxmuioZTPB-8XHy5BNozy8/edit"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "1622279006",
+          "cachedResultName": "Sources"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "Topic",
+            "URL"
+          ],
+          "schema": [
+            {
+              "id": "Topic",
+              "displayName": "Topic",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Source Title",
+              "displayName": "Source Title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "URL",
+              "displayName": "URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Summary",
+              "displayName": "Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "Key Points",
+              "displayName": "Key Points",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            }
+          ]
+        },
+        "options": {
+          "handlingExtraData": "insertInNewColumn"
+        }
+      }
+    },
+    {
+      "id": "d8155bb7-60f7-4df7-82e1-d1c386e82fa4",
+      "name": "Alert: no results",
+      "type": "n8n-nodes-base.pushover",
+      "typeVersion": 1,
+      "position": [
+        860,
+        180
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "push",
+        "userKey": "<__PLACEHOLDER_VALUE__Your Pushover user/group key from pushover.net__>",
+        "message": "=No web results were found for topic: {{ $('Research request').item.json.Topic }}. Try rephrasing or broadening it.",
+        "priority": 0,
+        "additionalFields": {
+          "title": "Topic Research"
+        }
+      }
+    },
+    {
+      "id": "776ed4da-5115-4f86-b0cb-54fee426b48a",
+      "name": "Aggregate sources",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        1740,
+        -20
+      ],
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "sources",
+        "include": "allFields"
+      }
+    },
+    {
+      "id": "b1fd4f7c-9c12-47b7-98d5-fc662bdf4595",
+      "name": "Write briefing",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        1960,
+        -20
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a research analyst. Below are summaries of {{ $json.sources.length }} web sources on the topic: {{ $('Research request').item.json.Topic }}.\n\nWrite a concise briefing of 3-5 short paragraphs that synthesizes the main findings across all sources, explicitly notes where the sources agree, flags any disagreements, contradictions or gaps, and ends with a one-line bottom-line takeaway. Do not just list the sources one by one - reconcile them.\n\nSOURCES (JSON):\n{{ JSON.stringify($json.sources, null, 2) }}"
+      }
+    },
+    {
+      "id": "7597280e-f579-4b5d-af7e-d83d3f96dd5b",
+      "name": "GPT model (synthesis)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1960,
+        200
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4.1-mini",
+          "cachedResultName": "gpt-4.1-mini"
+        },
+        "responsesApiEnabled": false,
+        "options": {
+          "temperature": 0.4,
+          "maxRetries": 3
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "3c779c4f-cacd-4c2e-8a51-e7f8c492dcd7",
+      "name": "Save briefing",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2180,
+        -20
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "authentication": "oAuth2",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "1tEmie7SGWHz5i9My43c-fsxmuioZTPB-8XHy5BNozy8",
+          "cachedResultName": "Topic Research",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1tEmie7SGWHz5i9My43c-fsxmuioZTPB-8XHy5BNozy8/edit"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "1521236644",
+          "cachedResultName": "Briefings"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ $now.toFormat(\"yyyy-MM-dd HH:mm\") }}",
+            "Topic": "={{ $('Research request').item.json.Topic }}",
+            "Sources": "={{ $('Aggregate sources').item.json.sources.length }}",
+            "Briefing": "={{ $json.text }}"
+          },
+          "schema": [
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Topic",
+              "displayName": "Topic",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Sources",
+              "displayName": "Sources",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Briefing",
+              "displayName": "Briefing",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "e3a3a4cd-0459-4340-a451-8600c1f9020c",
+      "name": "Sticky Note 67c8e6b9",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -50,
+        -50
+      ],
+      "parameters": {
+        "content": "## Production checklist\n1. Open \"Firecrawl search and scrape\" -> select your Firecrawl API credential.\n2. Settings (top bar) -> Error Workflow -> pick \"Error handler - Pushover alert\".\n3. Paste your Pushover key into the two Pushover nodes.\n4. Activate the workflow (toggle, top right).\n\nForm is locked to your n8n login. To make it public, set the Form Trigger auth to \"none\".",
+        "color": 5,
+        "width": 520,
+        "height": 200
+      }
+    },
+    {
+      "id": "1307e132-b99c-45d1-a036-ce37342e724e",
+      "name": "Sticky Note 1a6ab672",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1690,
+        -310
+      ],
+      "parameters": {
+        "content": "## Output\nWired to the \"Topic Research\" spreadsheet.\n\"Save sources\" -> Sources tab (deduped on Topic+URL).\n\"Save briefing\" -> Briefings tab (one synthesized briefing per run).",
+        "color": 3,
+        "width": 740,
+        "height": 440
+      }
+    }
+  ],
+  "connections": {
+    "Research request": {
+      "main": [
+        [
+          {
+            "node": "Firecrawl search and scrape",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Firecrawl search and scrape": {
+      "main": [
+        [
+          {
+            "node": "Normalize results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize results": {
+      "main": [
+        [
+          {
+            "node": "Any results?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any results?": {
+      "main": [
+        [
+          {
+            "node": "Split sources",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Alert: no results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split sources": {
+      "main": [
+        [
+          {
+            "node": "Summarize source",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarize source": {
+      "main": [
+        [
+          {
+            "node": "Build record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT model (summaries)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Summarize source",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build record": {
+      "main": [
+        [
+          {
+            "node": "Drop empty sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drop empty sources": {
+      "main": [
+        [
+          {
+            "node": "Save sources",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Aggregate sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate sources": {
+      "main": [
+        [
+          {
+            "node": "Write briefing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write briefing": {
+      "main": [
+        [
+          {
+            "node": "Save briefing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT model (synthesis)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Write briefing",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

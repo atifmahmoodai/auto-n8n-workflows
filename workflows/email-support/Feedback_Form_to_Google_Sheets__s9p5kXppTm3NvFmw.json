@@ -1,0 +1,345 @@
+{
+  "name": "Feedback Form to Google Sheets",
+  "nodes": [
+    {
+      "id": "2bece291-9d4c-47fb-a060-0a17d43004c6",
+      "name": "Feedback Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.5,
+      "position": [
+        240,
+        576
+      ],
+      "parameters": {
+        "formTitle": "Feedback Form",
+        "formDescription": "Please share your feedback with us",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Your Name",
+              "fieldName": "name",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Email Address",
+              "fieldType": "email",
+              "fieldName": "email",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "How would you rate your experience?",
+              "fieldType": "dropdown",
+              "fieldName": "rating",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Excellent"
+                  },
+                  {
+                    "option": "Good"
+                  },
+                  {
+                    "option": "Average"
+                  },
+                  {
+                    "option": "Poor"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Your Feedback",
+              "fieldType": "textarea",
+              "fieldName": "feedback",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {
+          "respondWithOptions": {
+            "values": {
+              "formSubmittedText": "Thank you for your feedback!"
+            }
+          }
+        }
+      },
+      "webhookId": "951a5d76-a0ad-441a-a925-5d24b08a0a4e"
+    },
+    {
+      "id": "6b7410bc-f1b9-4830-b9ce-99200bb3aa54",
+      "name": "Save to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        528,
+        864
+      ],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1vCzT-uSgnDdow8aCG0hMEJigRDPSHPp24sPQnKkWEF0",
+          "mode": "list",
+          "cachedResultName": "Pappu FeedBack FoRum",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1vCzT-uSgnDdow8aCG0hMEJigRDPSHPp24sPQnKkWEF0/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1vCzT-uSgnDdow8aCG0hMEJigRDPSHPp24sPQnKkWEF0/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Contact",
+              "displayName": "Contact",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Responce",
+              "displayName": "Responce",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "0a7bbb80-5049-4e3a-9453-7162165e03d3",
+      "name": "Send Email Notification",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        528,
+        480
+      ],
+      "parameters": {
+        "sendTo": "agentic644@gmail.com",
+        "subject": "=New Feedback Received from {{ $json.name }}",
+        "message": "=<h2>New Feedback Submission</h2>\n<p><strong>Name:</strong> {{ $json.name }}</p>\n<p><strong>Email:</strong> {{ $json.email }}</p>\n<p><strong>Rating:</strong> {{ $json.rating }}</p>\n<p><strong>Feedback:</strong></p>\n<p>{{ $json.feedback }}</p>\n<p><strong>Submitted At:</strong> {{ $json.submittedAt }}</p>",
+        "options": {}
+      },
+      "webhookId": "d1251aee-1dc9-4a33-bc4e-93fe45e1e079"
+    },
+    {
+      "id": "cd241915-4ff8-4550-91f9-34db6f3e2bb0",
+      "name": "Send Push Notification",
+      "type": "n8n-nodes-base.pushover",
+      "typeVersion": 1,
+      "position": [
+        816,
+        672
+      ],
+      "parameters": {
+        "userKey": "uu2ohmeof36iswwndnqoqqskg4ix7r",
+        "message": "=New feedback from {{ $json.name }}: {{ $json.rating }}\n{{ $json.feedback }}",
+        "priority": 0,
+        "additionalFields": {
+          "title": "Feedback Received",
+          "url": "https://docs.google.com/spreadsheets/d/1vCzT-uSgnDdow8aCG0hMEJigRDPSHPp24sPQnKkWEF0",
+          "url_title": "View Feedback Sheet"
+        }
+      }
+    },
+    {
+      "id": "871af26e-c8f1-47e3-8424-0ed6618ec643",
+      "name": "Check Rating",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        528,
+        672
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.rating }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "Poor",
+              "id": "621ed072-c708-4fc7-a26d-94777203c082"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "542579b2-1b43-4a58-8165-62f5ae24e016",
+      "name": "Send Reply Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        816,
+        192
+      ],
+      "parameters": {
+        "sendTo": "={{ $(\"Feedback Form\").item.json.email }}",
+        "subject": "=Thank you for your feedback, {{ $(\"Feedback Form\").item.json.name }}!",
+        "message": "=<div style=\"font-family: Arial, sans-serif;\">{{ $json.output }}</div>",
+        "options": {}
+      },
+      "webhookId": "21149343-c4d3-40bf-846d-b34c73adb1bd"
+    },
+    {
+      "id": "23e849a4-89c6-46e7-a4d7-118339a69319",
+      "name": "Generate Reply",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        464,
+        80
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Generate a personalized email response to {{ $json.name }} who gave a {{ $json.rating }} rating with this feedback: {{ $json.feedback }}",
+        "options": {
+          "systemMessage": "You are a customer service assistant. Generate professional, empathetic email responses based on customer feedback. Keep responses concise and friendly. For Poor ratings, apologize and show commitment to improvement. For Excellent ratings, express gratitude. For Good/Average ratings, thank them and encourage continued engagement."
+        }
+      }
+    },
+    {
+      "id": "57d23556-797b-47f4-9ec9-cb5d2115d538",
+      "name": "OpenAI Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        544,
+        304
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Feedback Form": {
+      "main": [
+        [
+          {
+            "node": "Save to Google Sheets",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Email Notification",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Check Rating",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Generate Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Rating": {
+      "main": [
+        [
+          {
+            "node": "Send Push Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Reply": {
+      "main": [
+        [
+          {
+            "node": "Send Reply Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Generate Reply",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

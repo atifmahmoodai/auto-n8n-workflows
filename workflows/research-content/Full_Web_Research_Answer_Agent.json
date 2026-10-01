@@ -1,0 +1,310 @@
+{
+  "name": "Full Web Research Answer Agent",
+  "nodes": [
+    {
+      "id": "2119d020-1111-4736-bd24-9654af13c3a5",
+      "name": "Ask Research Question",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "options": {
+          "responseMode": "lastNode"
+        }
+      },
+      "webhookId": "4d78615d-9bd7-45e8-8e90-d3f138137c81"
+    },
+    {
+      "id": "4c46d19f-b351-4071-ba0b-964cdd684dc7",
+      "name": "Search Web With Firecrawl",
+      "type": "@mendable/n8n-nodes-firecrawl.firecrawl",
+      "typeVersion": 1,
+      "position": [
+        300,
+        0
+      ],
+      "parameters": {
+        "resource": "MapSearch",
+        "operation": "search",
+        "query": "={{ $json.chatInput }}",
+        "requestOptions": {}
+      },
+      "credentials": {
+        "firecrawlApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "05292519-dd67-43f5-a194-398363a75a2f",
+      "name": "Normalize Top Search Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        600,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const rows = $input.all().flatMap(i => i.json.data || i.json.results || []); return rows.slice(0,5).map((r,idx)=>({json:{url:r.url,title:r.title,rank:idx+1}}));"
+      }
+    },
+    {
+      "id": "76854daa-4acb-438b-8fe0-cd1486cca84e",
+      "name": "Format Final Chat Answer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1500,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const data = $input.first().json.output || $input.first().json;\nconst ranked = Array.isArray(data.ranked_sources) ? data.ranked_sources : [];\nconst sourceLines = ranked.map(s => (s.rank + '. ' + (s.title || 'Untitled') + ' — ' + (s.url || '') + '\\n   Score: ' + (s.score ?? 'n/a') + ' | Why: ' + (s.why_ranked || '') + '\\n   Summary: ' + (s.summary || ''))).join('\\n');\nconst output = '# Final Answer\\n\\n' + (data.final_answer || 'No final answer generated.') + '\\n\\n## Ranked Sources\\n' + (sourceLines || 'No ranked sources returned.') + '\\n\\n## Limitations\\n' + (data.limitations || 'Not specified.');\nreturn [{ json: { output } }];"
+      }
+    },
+    {
+      "id": "27f79a0c-8d46-4497-8431-35f24dfd244e",
+      "name": "Scrape Page Content",
+      "type": "@mendable/n8n-nodes-firecrawl.firecrawl",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        0
+      ],
+      "parameters": {
+        "resource": "Scraping",
+        "operation": "scrape",
+        "url": "={{ $json.url }}",
+        "requestOptions": {}
+      },
+      "credentials": {
+        "firecrawlApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "b2890d27-b9ff-403d-9356-c969b9858f8e",
+      "name": "Scrape Pages One By One",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        900,
+        0
+      ],
+      "parameters": {
+        "batchSize": 1
+      }
+    },
+    {
+      "id": "56d72575-af81-415a-b9e9-99ff8aea089c",
+      "name": "Build Source Brief",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1450,
+        220
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const original = $('Normalize Top Search Results').all()[$itemIndex]?.json || {};\nconst page = $json.data || $json;\nconst meta = page.metadata || {};\nconst rawText = page.markdown || page.content || page.text || page.html || '';\nreturn {\n  json: {\n    question: $('Ask Research Question').first().json.chatInput || '',\n    sourceRankFromSearch: original.rank || ($itemIndex + 1),\n    title: meta.title || page.title || original.title || '',\n    url: meta.sourceURL || meta.url || page.url || original.url || '',\n    excerpt: String(rawText).replace(/\\s+/g, ' ').trim().slice(0, 6000)\n  }\n};"
+      }
+    },
+    {
+      "id": "70af48bf-b943-47fe-a5e2-fa4c0c270226",
+      "name": "Writer OpenAI Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1780,
+        240
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-5-mini"
+        },
+        "responsesApiEnabled": true,
+        "builtInTools": {},
+        "options": {
+          "temperature": 0.15,
+          "reasoningEffort": "medium",
+          "maxRetries": 2
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "67872e6a-57f4-41f0-b0a4-55c54684257b",
+      "name": "Final Answer JSON Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1980,
+        240
+      ],
+      "parameters": {
+        "schemaType": "fromJson",
+        "jsonSchemaExample": "{\"final_answer\":\"Clear final answer based only on the scraped sources.\",\"ranked_sources\":[{\"rank\":1,\"title\":\"Source title\",\"url\":\"https://example.com\",\"score\":90,\"why_ranked\":\"Why this source is useful.\",\"summary\":\"Short source summary.\"}],\"limitations\":\"What could not be verified.\"}"
+      }
+    },
+    {
+      "id": "fc432ce8-d04f-4262-bdd3-e9c4ad76b515",
+      "name": "Summarize Rank And Write Final Answer",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1920,
+        0
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ 'User question: ' + $('Ask Research Question').first().json.chatInput + '\\n\\nScraped source briefs JSON:\\n' + JSON.stringify($input.all().map(i => i.json)) + '\\n\\nTask: summarize each useful source, rank the sources by relevance/authority/specificity/freshness, then write a final answer. Use only the provided source briefs. Do not invent facts. Include source URLs in ranked_sources.' }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a research analyst. Use only the provided scraped source briefs. Rank sources, summarize them, and write a direct final answer with source URLs. Return only the structured JSON required by the parser.",
+          "maxIterations": 4,
+          "enableStreaming": false
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Ask Research Question": {
+      "main": [
+        [
+          {
+            "node": "Search Web With Firecrawl",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Web With Firecrawl": {
+      "main": [
+        [
+          {
+            "node": "Normalize Top Search Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Top Search Results": {
+      "main": [
+        [
+          {
+            "node": "Scrape Pages One By One",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scrape Pages One By One": {
+      "main": [
+        [
+          {
+            "node": "Summarize Rank And Write Final Answer",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Scrape Page Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scrape Page Content": {
+      "main": [
+        [
+          {
+            "node": "Build Source Brief",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Source Brief": {
+      "main": [
+        [
+          {
+            "node": "Scrape Pages One By One",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Writer OpenAI Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Summarize Rank And Write Final Answer",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Final Answer JSON Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Summarize Rank And Write Final Answer",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarize Rank And Write Final Answer": {
+      "main": [
+        [
+          {
+            "node": "Format Final Chat Answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

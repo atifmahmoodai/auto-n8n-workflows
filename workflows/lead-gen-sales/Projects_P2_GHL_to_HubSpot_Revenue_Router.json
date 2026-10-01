@@ -1,0 +1,546 @@
+{
+  "name": "Projects P2: GHL to HubSpot Revenue Router",
+  "nodes": [
+    {
+      "id": "a0e519eb-9a18-4a73-9e64-35a187e729a1",
+      "name": "Sticky Note 9213c5b0",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        528,
+        688
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "GHL to HubSpot Revenue Router",
+            "position": [
+              -220,
+              60
+            ],
+            "parameters": {
+              "width": 580,
+              "height": 300,
+              "content": "REVENUE FUNNEL: GHL -> HUBSPOT\n\n1. Webhook POST /ghl/lead-capture from GoHighLevel funnel\n2. AI parses survey answers + scores lead\n3. Warm leads -> HubSpot deal + sales assignment HTTP\n4. Cold leads -> nurture loop sheet + bi-weekly email flag\n5. Qualified only -> WhatsApp opt-in HTTP (consent-driven)\n\nPipeline 2 from Media Network project."
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "5533a5fc-f23a-4c47-a4b2-3219f57df8bf",
+      "name": "Webhook: GHL Lead Capture",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ghl/lead-capture",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "13657bf4-fe67-4f67-905b-a504e7343cb0"
+    },
+    {
+      "id": "babe2d2b-712a-4fd0-a036-394830d53819",
+      "name": "Normalize GHL Payload",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "name",
+              "name": "lead_name",
+              "value": "={{ $json.name || $json.body?.name || $json.contact?.name || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "email",
+              "name": "lead_email",
+              "value": "={{ $json.email || $json.body?.email || $json.contact?.email || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "phone",
+              "name": "lead_phone",
+              "value": "={{ $json.phone || $json.body?.phone || $json.contact?.phone || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "survey",
+              "name": "survey_answers",
+              "value": "={{ JSON.stringify($json.survey || $json.body?.survey || $json.customFields || {}) }}",
+              "type": "string"
+            },
+            {
+              "id": "source",
+              "name": "funnel_source",
+              "value": "={{ $json.source || $json.body?.source || \"ghl_funnel\" }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "29be61ad-4b55-44f4-bf17-bad670ad13a5",
+      "name": "AI: Score and Route Lead",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        500,
+        300
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ \"Score this GoHighLevel funnel lead for a tax firm growth offer. Return tier warm/cold, score 0-100, route (sales_team or nurture), whatsapp_opt_in_eligible (only if highly qualified AND consent implied), nurture_sequence, hubspot_owner, reasoning.\\n\\nLead: \" + $json.lead_name + \"\\nEmail: \" + $json.lead_email + \"\\nSurvey: \" + $json.survey_answers }}",
+        "hasOutputParser": true
+      }
+    },
+    {
+      "id": "20c283dc-a321-4162-8b04-4e916eb25142",
+      "name": "GPT-4o Mini",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        528,
+        640
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "b0bf8de6-cc44-4ce2-8777-b995b69bfc3a",
+      "name": "Lead Routing Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        560,
+        432
+      ],
+      "parameters": {
+        "schemaType": "fromJson",
+        "autoFix": true,
+        "jsonSchemaExample": {
+          "tier": "warm",
+          "score": 78,
+          "route": "sales_team",
+          "whatsapp_opt_in_eligible": false,
+          "nurture_sequence": "biweekly_text_email",
+          "hubspot_owner": "sales_team",
+          "reasoning": "High revenue tax firm with immediate pain point."
+        }
+      }
+    },
+    {
+      "id": "9a57906a-bdd4-480e-b48f-ec45adc82ade",
+      "name": "Merge Routing Decision",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        760,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ln",
+              "name": "lead_name",
+              "value": "={{ $(\"Normalize GHL Payload\").item.json.lead_name }}",
+              "type": "string"
+            },
+            {
+              "id": "le",
+              "name": "lead_email",
+              "value": "={{ $(\"Normalize GHL Payload\").item.json.lead_email }}",
+              "type": "string"
+            },
+            {
+              "id": "lp",
+              "name": "lead_phone",
+              "value": "={{ $(\"Normalize GHL Payload\").item.json.lead_phone }}",
+              "type": "string"
+            },
+            {
+              "id": "ti",
+              "name": "tier",
+              "value": "={{ $json.output?.tier || $json.tier || \"cold\" }}",
+              "type": "string"
+            },
+            {
+              "id": "sc",
+              "name": "score",
+              "value": "={{ $json.output?.score || $json.score || 0 }}",
+              "type": "number"
+            },
+            {
+              "id": "rt",
+              "name": "route",
+              "value": "={{ $json.output?.route || $json.route || \"nurture\" }}",
+              "type": "string"
+            },
+            {
+              "id": "wa",
+              "name": "whatsapp_opt_in_eligible",
+              "value": "={{ $json.output?.whatsapp_opt_in_eligible || $json.whatsapp_opt_in_eligible || false }}",
+              "type": "boolean"
+            },
+            {
+              "id": "ns",
+              "name": "nurture_sequence",
+              "value": "={{ $json.output?.nurture_sequence || $json.nurture_sequence || \"biweekly_text_email\" }}",
+              "type": "string"
+            },
+            {
+              "id": "rs",
+              "name": "reasoning",
+              "value": "={{ $json.output?.reasoning || $json.reasoning || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "ts",
+              "name": "captured_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "fc11bfd1-5965-493d-90fc-3e9b5aa93e13",
+      "name": "Log Revenue Funnel Lead",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1020,
+        300
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Revenue_Funnel_Leads"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "captured_at": "={{ $json.captured_at }}",
+            "lead_name": "={{ $json.lead_name }}",
+            "lead_email": "={{ $json.lead_email }}",
+            "tier": "={{ $json.tier }}",
+            "score": "={{ $json.score }}",
+            "route": "={{ $json.route }}",
+            "nurture_sequence": "={{ $json.nurture_sequence }}",
+            "reasoning": "={{ $json.reasoning }}"
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "c8ed71e0-ad35-47e2-ae9b-0172cd04be26",
+      "name": "Warm Lead?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1280,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.tier }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "warm"
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "c4f4c819-faa1-490a-995d-03bdbd3b49a0",
+      "name": "HubSpot: Create Deal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1540,
+        220
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v3/objects/deals",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n        properties: {\n          dealname: \"GHL Lead - \" + $json.lead_name,\n          dealstage: \"appointmentscheduled\",\n          amount: \"0\",\n          pipeline: \"default\",\n          description: $json.reasoning\n        }\n      } }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "6a4be2f9-6ef2-45c5-b9d8-e3b1e75380b4",
+      "name": "WhatsApp: Consent Opt-in",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1800,
+        220
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v19.0/REPLACE_WABA_ID/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n        messaging_product: \"whatsapp\",\n        to: ($json.lead_phone || \"\").replace(/[^0-9]/g, \"\"),\n        type: \"template\",\n        template: { name: \"lead_opt_in_consent\", language: { code: \"en_US\" } }\n      } }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "2b3c6d4f-f08c-4077-969c-65ec444e53f8",
+      "name": "Respond Routing Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2060,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, lead_name: $json.lead_name, tier: $json.tier, score: $json.score, route: $json.route, nurture_status: $json.nurture_status || null } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "8bd1e72a-3574-4927-b8d3-5e2e644643be",
+      "name": "Cold: Nurture Loop Flag",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1540,
+        400
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "nf",
+              "name": "nurture_status",
+              "value": "queued_biweekly",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook: GHL Lead Capture": {
+      "main": [
+        [
+          {
+            "node": "Normalize GHL Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize GHL Payload": {
+      "main": [
+        [
+          {
+            "node": "AI: Score and Route Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Score and Route Lead": {
+      "main": [
+        [
+          {
+            "node": "Merge Routing Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT-4o Mini": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI: Score and Route Lead",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Lead Routing Schema",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Routing Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI: Score and Route Lead",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Routing Decision": {
+      "main": [
+        [
+          {
+            "node": "Log Revenue Funnel Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Revenue Funnel Lead": {
+      "main": [
+        [
+          {
+            "node": "Warm Lead?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Warm Lead?": {
+      "main": [
+        [
+          {
+            "node": "HubSpot: Create Deal",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Cold: Nurture Loop Flag",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot: Create Deal": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp: Consent Opt-in",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp: Consent Opt-in": {
+      "main": [
+        [
+          {
+            "node": "Respond Routing Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cold: Nurture Loop Flag": {
+      "main": [
+        [
+          {
+            "node": "Respond Routing Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

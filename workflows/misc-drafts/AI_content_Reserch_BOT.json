@@ -1,0 +1,379 @@
+{
+  "name": "AI content Reserch BOT",
+  "nodes": [
+    {
+      "id": "31c40e1f-da03-43b5-a96e-1b18c21547b9",
+      "name": "Daily 7AM Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        112
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 7
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "780979de-eaaa-4c03-84b2-691408629585",
+      "name": "X Deep Research Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        224,
+        112
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Run todays deep research pass and return the structured digest for {{ $now.toFormat(\"MMMM d, yyyy\") }}.",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a research assistant for an AI content creator who makes tutorials and commentary videos about AI. Using real-time search of X (Twitter) and the web, do a deep research pass on what is happening RIGHT NOW in the AI space (last 24-48 hours only). Step 1 - Find the 3-5 biggest AI news stories or model releases people are actually discussing. For each story provide: headline, why_it_matters, content_angle (one-line tutorial/explainer angle), and source_note (cite X post, article, etc). Step 2 - List 3-5 trending_questions: real confused or curious questions users are asking about these topics. Step 3 - Derive 4-6 content_ideas grounded in that research. For each idea provide: headline, angle (specific unique take), why_now (what made it timely today), suggested_format (short-form reaction, deep-dive tutorial, breakdown thread, etc), and related_story (headline of the top story it connects to, if any). Prioritize signal over noise - ignore low-engagement or unverified rumor posts. Do not invent fake events. If you are not certain something is currently trending, say so explicitly rather than fabricating urgency. Return ONLY structured JSON matching the required schema."
+        }
+      }
+    },
+    {
+      "id": "98761f3f-286a-4b62-ad46-632760deb490",
+      "name": "Grok Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatXAiGrok",
+      "typeVersion": 1,
+      "position": [
+        176,
+        336
+      ],
+      "parameters": {
+        "model": "grok-4.20-0309-reasoning",
+        "options": {
+          "temperature": 0.6
+        }
+      }
+    },
+    {
+      "id": "fa255891-5a8b-497e-9a1f-77f4d6024b61",
+      "name": "Digest Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        368,
+        336
+      ],
+      "parameters": {
+        "jsonSchemaExample": "{\"email_subject\":\"AI Content Digest - July 4\",\"top_stories\":[{\"headline\":\"GPT-5 leaked benchmarks spark debate\",\"why_it_matters\":\"Developers are comparing rumored specs against current models\",\"content_angle\":\"Break down what is verified vs rumor\",\"source_note\":\"Trending X thread by @ai_researcher\"}],\"trending_questions\":[\"Is the new model actually better for coding?\"],\"content_ideas\":[{\"headline\":\"GPT-5 rumors explained\",\"angle\":\"Compare leaked benchmarks vs current SOTA models\",\"why_now\":\"High engagement on X in the last 24 hours\",\"suggested_format\":\"short-form reaction video\",\"related_story\":\"GPT-5 leaked benchmarks spark debate\"}]}"
+      }
+    },
+    {
+      "id": "4366a0ca-e7b5-435a-815d-9cd706cca257",
+      "name": "Split Content Ideas",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        576,
+        16
+      ],
+      "parameters": {
+        "fieldToSplitOut": "output.content_ideas",
+        "options": {}
+      }
+    },
+    {
+      "id": "31c35547-53c8-46a4-b5e3-083909a58063",
+      "name": "Prepare Sheet Row",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        688,
+        16
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "date",
+              "name": "Date",
+              "value": "={{ $now.toFormat(\"yyyy-MM-dd\") }}",
+              "type": "string"
+            },
+            {
+              "id": "headline",
+              "name": "Headline",
+              "value": "={{ $json.headline }}",
+              "type": "string"
+            },
+            {
+              "id": "angle",
+              "name": "Angle",
+              "value": "={{ $json.angle }}",
+              "type": "string"
+            },
+            {
+              "id": "why-now",
+              "name": "Why Now",
+              "value": "={{ $json.why_now }}",
+              "type": "string"
+            },
+            {
+              "id": "format",
+              "name": "Format",
+              "value": "={{ $json.suggested_format }}",
+              "type": "string"
+            },
+            {
+              "id": "related",
+              "name": "Related Story",
+              "value": "={{ $json.related_story }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "23a3a2ab-a622-4efe-91ef-a333a472796f",
+      "name": "Log Idea to Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        800,
+        16
+      ],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1LOXhOxHGtE_DHUSKsdB6xCE-iYlMN7kt4rCdKOA_siE",
+          "mode": "list",
+          "cachedResultName": "Daily Update",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1LOXhOxHGtE_DHUSKsdB6xCE-iYlMN7kt4rCdKOA_siE/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1LOXhOxHGtE_DHUSKsdB6xCE-iYlMN7kt4rCdKOA_siE/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date ": "={{ $json[\"Date\"] }}",
+            "Headline": "={{ $json[\"Headline\"] }}",
+            "Angle": "={{ $json[\"Angle\"] }}",
+            "Why Now": "={{ $json[\"Why Now\"] }}",
+            "Format": "={{ $json[\"Format\"] }}",
+            "Related Story": "={{ $json[\"Related Story\"] }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Date ",
+              "displayName": "Date ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Headline",
+              "displayName": "Headline",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Angle",
+              "displayName": "Angle",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Why Now",
+              "displayName": "Why Now",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Format",
+              "displayName": "Format",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Related Story",
+              "displayName": "Related Story",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "b019c764-20f0-4139-a2f2-a95dad430f9f",
+      "name": "Format Digest Email",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        576,
+        208
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "subject",
+              "name": "subject",
+              "value": "={{ $json.output.email_subject }}",
+              "type": "string"
+            },
+            {
+              "id": "body",
+              "name": "body",
+              "value": "=<h2>Top Stories</h2>\n{{ $json.output.top_stories.map(s => \"<b>\" + s.headline + \"</b><br><i>Why:</i> \" + s.why_it_matters + \"<br><i>Angle:</i> \" + s.content_angle + \"<br><i>Source:</i> \" + s.source_note).join(\"<hr>\") }}<h2>Trending Questions</h2>{{ $json.output.trending_questions.map(q => \"&#8226; \" + q).join(\"<br>\") }}<h2>Content Ideas</h2>{{ $json.output.content_ideas.map(i => \"<b>\" + i.headline + \"</b><br>\" + i.angle + \"<br><i>Why now:</i> \" + i.why_now + \"<br><i>Format:</i> \" + i.suggested_format + (i.related_story ? \"<br><i>Related:</i> \" + i.related_story : \"\")).join(\"<hr>\") }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "30640e7c-d25d-498c-a25b-1cb058aae2ef",
+      "name": "Send Digest Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        800,
+        208
+      ],
+      "parameters": {
+        "sendTo": "atif.mahmood2045@gmail.com",
+        "subject": "={{ $json.subject }}",
+        "message": "={{ $json.body }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "webhookId": "08a78852-3687-4dfc-9a5f-f9c9410978f2"
+    }
+  ],
+  "connections": {
+    "Daily 7AM Trigger": {
+      "main": [
+        [
+          {
+            "node": "X Deep Research Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "X Deep Research Agent": {
+      "main": [
+        [
+          {
+            "node": "Split Content Ideas",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Format Digest Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Grok Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "X Deep Research Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Digest Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "X Deep Research Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Content Ideas": {
+      "main": [
+        [
+          {
+            "node": "Prepare Sheet Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Sheet Row": {
+      "main": [
+        [
+          {
+            "node": "Log Idea to Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Digest Email": {
+      "main": [
+        [
+          {
+            "node": "Send Digest Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

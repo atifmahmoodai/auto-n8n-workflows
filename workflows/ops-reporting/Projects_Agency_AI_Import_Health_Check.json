@@ -1,0 +1,364 @@
+{
+  "name": "Projects: Agency AI Import Health Check",
+  "nodes": [
+    {
+      "id": "fac4e72e-4ce3-41ed-ba4c-285b8d031a13",
+      "name": "Sticky Note d95ff640",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        528,
+        688
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "Agency AI Import Health Check",
+            "position": [
+              -220,
+              60
+            ],
+            "parameters": {
+              "width": 540,
+              "height": 260,
+              "content": "AGENCY AI WORKFLOW IMPORT & TEST\n\n1. Webhook POST /agency/healthcheck with workflow_name + test_input\n2. AI agent validates output quality against expected behavior\n3. Logs pass/fail to Google Sheets\n4. Returns structured test report\n\nUse after importing pre-built agency workflows."
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "c2c480a0-0e93-4cf7-a671-4cd38ad3571a",
+      "name": "Webhook: Agency Health Check",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agency/healthcheck",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "4aa62390-fa6a-43c6-9759-c199174a2826"
+    },
+    {
+      "id": "22e1d464-f7d3-4347-9781-fbcf3247c4bc",
+      "name": "Normalize Test Payload",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "workflow-name",
+              "name": "workflow_name",
+              "value": "={{ $json.workflow_name || $json.body?.workflow_name || \"unknown_workflow\" }}",
+              "type": "string"
+            },
+            {
+              "id": "test-input",
+              "name": "test_input",
+              "value": "={{ JSON.stringify($json.test_input || $json.body?.test_input || {}) }}",
+              "type": "string"
+            },
+            {
+              "id": "actual-output",
+              "name": "actual_output",
+              "value": "={{ JSON.stringify($json.actual_output || $json.body?.actual_output || {}) }}",
+              "type": "string"
+            },
+            {
+              "id": "expected-behavior",
+              "name": "expected_behavior",
+              "value": "={{ $json.expected_behavior || $json.body?.expected_behavior || \"Output should be accurate and complete\" }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "e2ca32a6-84ca-4fa4-b265-6783a48eef12",
+      "name": "AI: Validate Workflow Output",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        520,
+        300
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ \"You are an n8n QA engineer. Evaluate if the workflow output is correct.\\n\\nWorkflow: \" + $json.workflow_name + \"\\nExpected behavior: \" + $json.expected_behavior + \"\\nTest input: \" + $json.test_input + \"\\nActual output: \" + $json.actual_output + \"\\n\\nReturn structured pass/fail with issues and recommendations.\" }}",
+        "hasOutputParser": true
+      }
+    },
+    {
+      "id": "c5614ee6-47db-4df4-a393-641896e785de",
+      "name": "GPT-4o Mini",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        528,
+        640
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "26d6e8a6-c537-40ed-84dc-bb2d6267f725",
+      "name": "Health Check Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        560,
+        432
+      ],
+      "parameters": {
+        "schemaType": "fromJson",
+        "autoFix": true,
+        "jsonSchemaExample": {
+          "status": "pass",
+          "score": 95,
+          "issues": [],
+          "recommendations": [
+            "Connect missing credentials"
+          ],
+          "summary": "Workflow output matches expected behavior."
+        }
+      }
+    },
+    {
+      "id": "75ec0b31-4019-429f-b9ba-843a46f7eaa1",
+      "name": "Flatten Report",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        780,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "wf",
+              "name": "workflow_name",
+              "value": "={{ $(\"Normalize Test Payload\").item.json.workflow_name }}",
+              "type": "string"
+            },
+            {
+              "id": "status",
+              "name": "status",
+              "value": "={{ $json.output?.status || $json.status || \"unknown\" }}",
+              "type": "string"
+            },
+            {
+              "id": "score",
+              "name": "score",
+              "value": "={{ $json.output?.score || $json.score || 0 }}",
+              "type": "number"
+            },
+            {
+              "id": "summary",
+              "name": "summary",
+              "value": "={{ $json.output?.summary || $json.summary || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "issues",
+              "name": "issues",
+              "value": "={{ JSON.stringify($json.output?.issues || $json.issues || []) }}",
+              "type": "string"
+            },
+            {
+              "id": "recs",
+              "name": "recommendations",
+              "value": "={{ JSON.stringify($json.output?.recommendations || $json.recommendations || []) }}",
+              "type": "string"
+            },
+            {
+              "id": "ts",
+              "name": "checked_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "8a83d0ba-e234-46c3-bc08-589c2c6a0d2c",
+      "name": "Log Health Check",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1040,
+        300
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Agency_Health_Checks"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "checked_at": "={{ $json.checked_at }}",
+            "workflow_name": "={{ $json.workflow_name }}",
+            "status": "={{ $json.status }}",
+            "score": "={{ $json.score }}",
+            "summary": "={{ $json.summary }}",
+            "issues": "={{ $json.issues }}",
+            "recommendations": "={{ $json.recommendations }}"
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "285a44d9-8e8b-42df-bc47-1330c44bebd1",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1300,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, workflow_name: $json.workflow_name, status: $json.status, score: $json.score, summary: $json.summary, issues: JSON.parse($json.issues || \"[]\"), recommendations: JSON.parse($json.recommendations || \"[]\") } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook: Agency Health Check": {
+      "main": [
+        [
+          {
+            "node": "Normalize Test Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Test Payload": {
+      "main": [
+        [
+          {
+            "node": "AI: Validate Workflow Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Validate Workflow Output": {
+      "main": [
+        [
+          {
+            "node": "Flatten Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT-4o Mini": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI: Validate Workflow Output",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Health Check Schema",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Health Check Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI: Validate Workflow Output",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flatten Report": {
+      "main": [
+        [
+          {
+            "node": "Log Health Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Health Check": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

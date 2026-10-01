@@ -1,0 +1,980 @@
+{
+  "name": "X Automation: Grok Lead Qualification",
+  "nodes": [
+    {
+      "id": "3f79baaf-4bec-4734-9236-cd29ab21474e",
+      "name": "Sticky Note 93261649",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1856,
+        752
+      ],
+      "parameters": {
+        "color": 4,
+        "content": "## X Automation v2 — setup\nApify search ON by default. Auto-reply OFF by default.\n1. Apify API Token credential (Header Auth: Authorization / Bearer TOKEN)\n2. X account OAuth2\n3. xAI account — check the model id in Grok Lead Model against your account\n4. Google Sheets OAuth2\n5. In **Load Search Config**: set crmWebhookUrl, googleSheetId, googleSheetName\n6. Set autoReplyEnabled true only after testing",
+        "height": 260,
+        "width": 900
+      }
+    },
+    {
+      "id": "209af114-dcf1-476e-93b8-af7bb86911d4",
+      "name": "Sticky Note e00def59",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1856,
+        1040
+      ],
+      "parameters": {
+        "color": 6,
+        "content": "## Upgrades in v2\n- Apify advanced X search (toggle useApify)\n- CRM webhook export for HOT/WARM\n- Google Sheets append for HOT/WARM\n- Gated auto-reply on HOT leads",
+        "height": 160,
+        "width": 700
+      }
+    },
+    {
+      "id": "b7594d15-32f4-485c-826a-66eae1ec98f3",
+      "name": "Every 30 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        432
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "0e19a28f-2bac-43e6-8d8e-34ba5444411b",
+      "name": "Load Search Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        528
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const keywords = ['need automation', 'looking for n8n', 'workflow automation help', 'AI agent for business', 'missed calls', 'lead qualification'];\nconst keyword = keywords[Math.floor(Math.random() * keywords.length)];\nreturn [{ json: {\n  keyword,\n  useApify: true,\n  autoReplyEnabled: false,\n  autoReplyMinScore: 80,\n  crmWebhookUrl: 'https://YOUR-CRM-WEBHOOK-URL.example/webhook/x-leads',\n  googleSheetId: 'YOUR_GOOGLE_SHEET_ID',\n  googleSheetName: 'X Leads',\n  apifyActor: 'api-ninja/x-twitter-advanced-search',\n  minLikes: 3,\n  minReplies: 1,\n  minTextLength: 40,\n  searchQuery: keyword + ' lang:en -is:retweet -is:reply',\n  run_at: new Date().toISOString(),\n}}];"
+      }
+    },
+    {
+      "id": "a5ad1260-df2a-4a96-b068-070dce8a7694",
+      "name": "Manual Test Run",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        624
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "24f0ab3e-41bc-4c38-aa7e-6c4f0cf32ee0",
+      "name": "Get Processed Tweet IDs",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        528
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "UktDcGsNGu2Nd8sV",
+          "cachedResultName": "x_lead_qualification"
+        },
+        "returnAll": true
+      }
+    },
+    {
+      "id": "266bc8ed-c4ce-4b0b-9b46-3a6ebc70e1d6",
+      "name": "Use Apify Search?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        672,
+        528
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $(\"Load Search Config\").first().json.useApify }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "b991f776-370c-4d77-9143-ecddd3b213ec",
+      "name": "Apify X Twitter Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        896,
+        432
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.apify.com/v2/acts/{{ $(\"Load Search Config\").first().json.apifyActor.replace(\"/\", \"~\") }}/run-sync-get-dataset-items?timeout=120",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: $(\"Load Search Config\").first().json.keyword, numberOfTweets: 20, contentLanguage: \"en\", engagementMinLikes: $(\"Load Search Config\").first().json.minLikes, engagementMinReplies: $(\"Load Search Config\").first().json.minReplies, tweetTypes: [\"original\"], timeWithinTime: \"2d\" }) }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "executeOnce": true
+    },
+    {
+      "id": "228dbe16-0f9f-4955-b35d-abd448f11c14",
+      "name": "Normalize + Filter X Posts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        528
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const cfg = $('Load Search Config').first().json;\nconst processed = new Set(($('Get Processed Tweet IDs').all() || []).map((item) => String(item.json.tweet_id || '').trim()).filter(Boolean));\nconst out = [];\nfunction pushTweet(tweet, source) {\n  const tweetId = String(tweet.tweet_id || tweet.id || tweet.tweetId || '').trim();\n  const text = String(tweet.text || tweet.full_text || tweet.tweetText || '').replace(/\\s+/g, ' ').trim();\n  if (!tweetId || processed.has(tweetId)) return;\n  const likes = Number(tweet.like_count || tweet.likeCount || tweet.public_metrics?.like_count || tweet.favorite_count || 0);\n  const replies = Number(tweet.reply_count || tweet.replyCount || tweet.public_metrics?.reply_count || 0);\n  const screen = tweet.screen_name || tweet.username || tweet.user?.username || tweet.author?.userName || tweet.author_id || 'unknown';\n  if (text.length < cfg.minTextLength || likes < cfg.minLikes || replies < cfg.minReplies) return;\n  if (!/need|looking for|help|struggling|problem|urgent|asap|recommend|hire|budget|automation|agent|workflow/i.test(text)) return;\n  out.push({ json: { tweet_id: tweetId, screen_name: screen, tweet_text: text, tweet_url: 'https://x.com/' + screen + '/status/' + tweetId, keyword_matched: cfg.keyword, likes, replies, followers_count: Number(tweet.followers_count || tweet.followersCount || 0), received_at: new Date().toISOString(), source, message: text, service_needed: cfg.keyword, raw_payload: JSON.stringify(tweet) } });\n}\nfor (const item of items) {\n  const body = item.json || {};\n  if (Array.isArray(body)) { for (const tweet of body) pushTweet(tweet, 'apify'); continue; }\n  if (body.data && Array.isArray(body.data)) { for (const tweet of body.data) pushTweet(tweet, 'apify'); continue; }\n  pushTweet(body, body.source || (cfg.useApify ? 'apify' : 'x_api'));\n}\nreturn out;"
+      }
+    },
+    {
+      "id": "a3648b95-cc9a-4423-8679-c6716360e94b",
+      "name": "Any New Candidates?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1344,
+        528
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $input.all().length }}",
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              },
+              "rightValue": 0
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "a4a5f0ae-a9e7-48a8-90fd-6b17a50d6d00",
+      "name": "Grok X Lead Scoring Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1568,
+        288
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Qualify this X/Twitter post as a B2B lead. Tweet JSON: {{ JSON.stringify($json) }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a strict B2B lead qualification analyst monitoring X/Twitter. Score 0-100. HOT means clear pain, buying intent, and fit for workflow automation / AI agents / n8n services. WARM means real interest but less urgency. COLD means vague or weak. Do not invent facts. Suggest a short helpful reply under 220 characters. Output structured JSON only.",
+          "maxIterations": 2
+        },
+        "enableStreaming": false
+      }
+    },
+    {
+      "id": "a21316f3-9bbf-4d69-98ee-c34dba5ca654",
+      "name": "Grok Lead Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatXAiGrok",
+      "typeVersion": 1,
+      "position": [
+        1584,
+        512
+      ],
+      "parameters": {
+        "model": "grok-4.20-0309-reasoning",
+        "options": {
+          "temperature": 0.2,
+          "maxRetries": 2,
+          "timeout": 60000
+        }
+      }
+    },
+    {
+      "id": "fc8034e2-5712-43aa-b2c3-531d6476232a",
+      "name": "Lead Score JSON Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1712,
+        512
+      ],
+      "parameters": {
+        "schemaType": "fromJson",
+        "jsonSchemaExample": "{\"ai_score\":82,\"score_band\":\"HOT\",\"route\":\"sales_now\",\"fit_reason\":\"Clear pain and buying intent.\",\"next_action\":\"Reply within 15 minutes.\",\"suggested_reply\":\"Happy to share a quick automation setup for this.\",\"is_qualified_lead\":true}",
+        "autoFix": true
+      }
+    },
+    {
+      "id": "f7c5d1fe-420b-4b8c-ad27-95547845a759",
+      "name": "Combine AI Score + Guardrails",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        384
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "function clamp(v){return Math.max(0,Math.min(100,Math.round(Number(v)||0)));}\nfunction parse(raw){ if(raw?.output && typeof raw.output==='object') return raw.output; if(raw?.output && typeof raw.output==='string'){ try{return JSON.parse(raw.output)}catch(e){return {}} } return raw||{}; }\nfunction rule(lead){ let s=0; if(lead.tweet_text&&lead.tweet_text.length>60)s+=10; if(lead.likes>=10)s+=15; else if(lead.likes>=5)s+=10; else if(lead.likes>=3)s+=5; if(lead.replies>=3)s+=10; if(/urgent|asap|need|looking for|help|budget|hire|problem|struggling/i.test(lead.tweet_text||''))s+=20; if(/automation|n8n|workflow|agent|ai/i.test(lead.tweet_text||''))s+=15; return clamp(s); }\nfunction band(score){ if(score>=75)return 'HOT'; if(score>=50)return 'WARM'; if(score>=25)return 'COLD'; return 'MANUAL_REVIEW'; }\nconst lead = $('Normalize + Filter X Posts').item.json;\nconst ai = parse($json);\nconst deterministic = rule(lead);\nconst aiScore = Number.isFinite(Number(ai.ai_score ?? ai.score)) ? clamp(ai.ai_score ?? ai.score) : deterministic;\nconst finalScore = clamp(aiScore * 0.7 + deterministic * 0.3);\n// The blended score sets the ceiling. The model may lower the band but never raise it -\n// previously any score_band it returned overrode the blend, so a HOT label on a score of\n// 30 still triggered the CRM export and the phone alert.\nconst RANK = { MANUAL_REVIEW: 0, COLD: 1, WARM: 2, HOT: 3 };\nconst aiBand = ['HOT','WARM','COLD','MANUAL_REVIEW'].includes(ai.score_band) ? ai.score_band : null;\nlet status = band(finalScore);\nif (aiBand && RANK[aiBand] < RANK[status]) status = aiBand;\nif (ai.is_qualified_lead === false) status = 'COLD';\nconst route = status === 'HOT' ? 'sales_now' : status === 'WARM' ? 'sales_nurture' : status === 'COLD' ? 'marketing_nurture' : 'manual_review';\nreturn { json: { tweet_id: lead.tweet_id, status, ai_score: finalScore, route, fit_reason: ai.fit_reason || ('Rule score ' + deterministic + '; AI score ' + aiScore + '.'), next_action: ai.next_action || (status === 'HOT' ? 'Reply on X within 15 minutes.' : 'Queue for nurture follow-up.'), suggested_reply: ai.suggested_reply || '', model_used: 'grok-4.20-0309-reasoning', updated_at: new Date().toISOString() } };"
+      }
+    },
+    {
+      "id": "e4b58a3f-a404-4516-9076-cedde7427a1e",
+      "name": "Upsert Qualified X Lead",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2144,
+        384
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "UktDcGsNGu2Nd8sV",
+          "cachedResultName": "x_lead_qualification"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "tweet_id",
+              "condition": "eq",
+              "keyValue": "={{ $(\"Normalize + Filter X Posts\").item.json.tweet_id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tweet_id": "={{ $(\"Normalize + Filter X Posts\").item.json.tweet_id }}",
+            "received_at": "={{ $(\"Normalize + Filter X Posts\").item.json.received_at }}",
+            "updated_at": "={{ $now.toISO() }}",
+            "screen_name": "={{ $(\"Normalize + Filter X Posts\").item.json.screen_name }}",
+            "tweet_text": "={{ $(\"Normalize + Filter X Posts\").item.json.tweet_text }}",
+            "tweet_url": "={{ $(\"Normalize + Filter X Posts\").item.json.tweet_url }}",
+            "keyword_matched": "={{ $(\"Normalize + Filter X Posts\").item.json.keyword_matched }}",
+            "likes": "={{ $(\"Normalize + Filter X Posts\").item.json.likes }}",
+            "replies": "={{ $(\"Normalize + Filter X Posts\").item.json.replies }}",
+            "followers_count": "={{ $(\"Normalize + Filter X Posts\").item.json.followers_count }}",
+            "status": "={{ $(\"Combine AI Score + Guardrails\").item.json.status }}",
+            "ai_score": "={{ $(\"Combine AI Score + Guardrails\").item.json.ai_score }}",
+            "route": "={{ $(\"Combine AI Score + Guardrails\").item.json.route }}",
+            "fit_reason": "={{ $(\"Combine AI Score + Guardrails\").item.json.fit_reason }}",
+            "next_action": "={{ $(\"Combine AI Score + Guardrails\").item.json.next_action }}",
+            "suggested_reply": "={{ $(\"Combine AI Score + Guardrails\").item.json.suggested_reply }}",
+            "model_used": "={{ $(\"Combine AI Score + Guardrails\").item.json.model_used }}",
+            "raw_payload": "={{ $(\"Normalize + Filter X Posts\").item.json.raw_payload }}"
+          }
+        }
+      }
+    },
+    {
+      "id": "ce109ef9-ce8b-4fd5-87b1-00b3b30f0b86",
+      "name": "Export HOT/WARM Lead?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2368,
+        384
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ [\"HOT\",\"WARM\"].includes($(\"Combine AI Score + Guardrails\").item.json.status) }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "616c1157-ac68-4d97-9c79-32b9e4000337",
+      "name": "POST CRM Webhook",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2592,
+        240
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $(\"Load Search Config\").first().json.crmWebhookUrl }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ source: \"x_automation\", status: $(\"Combine AI Score + Guardrails\").item.json.status, ai_score: $(\"Combine AI Score + Guardrails\").item.json.ai_score, route: $(\"Combine AI Score + Guardrails\").item.json.route, tweet_id: $(\"Normalize + Filter X Posts\").item.json.tweet_id, screen_name: $(\"Normalize + Filter X Posts\").item.json.screen_name, tweet_text: $(\"Normalize + Filter X Posts\").item.json.tweet_text, tweet_url: $(\"Normalize + Filter X Posts\").item.json.tweet_url, keyword_matched: $(\"Normalize + Filter X Posts\").item.json.keyword_matched, fit_reason: $(\"Combine AI Score + Guardrails\").item.json.fit_reason, next_action: $(\"Combine AI Score + Guardrails\").item.json.next_action, suggested_reply: $(\"Combine AI Score + Guardrails\").item.json.suggested_reply, exported_at: $now.toISO() }) }}",
+        "options": {}
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "dc633521-c1fa-4778-a05d-9f3b894d2d64",
+      "name": "Append X Lead to Google Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2816,
+        240
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Load Search Config').first().json.googleSheetId }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "={{ $('Load Search Config').first().json.googleSheetName }}"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "received_at": "={{ $(\"Normalize + Filter X Posts\").item.json.received_at }}",
+            "status": "={{ $(\"Combine AI Score + Guardrails\").item.json.status }}",
+            "ai_score": "={{ $(\"Combine AI Score + Guardrails\").item.json.ai_score }}",
+            "screen_name": "={{ $(\"Normalize + Filter X Posts\").item.json.screen_name }}",
+            "tweet_text": "={{ $(\"Normalize + Filter X Posts\").item.json.tweet_text }}",
+            "tweet_url": "={{ $(\"Normalize + Filter X Posts\").item.json.tweet_url }}",
+            "keyword_matched": "={{ $(\"Normalize + Filter X Posts\").item.json.keyword_matched }}",
+            "fit_reason": "={{ $(\"Combine AI Score + Guardrails\").item.json.fit_reason }}",
+            "suggested_reply": "={{ $(\"Combine AI Score + Guardrails\").item.json.suggested_reply }}",
+            "route": "={{ $(\"Combine AI Score + Guardrails\").item.json.route }}"
+          }
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "395843f4-aa77-40ab-9860-285123d88b91",
+      "name": "Route by Lead Status",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        3040,
+        352
+      ],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "outputKey": "HOT",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $(\"Combine AI Score + Guardrails\").item.json.status }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "HOT"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "WARM",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $(\"Combine AI Score + Guardrails\").item.json.status }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "WARM"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "COLD",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $(\"Combine AI Score + Guardrails\").item.json.status }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "COLD"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Manual/Fallback"
+        }
+      }
+    },
+    {
+      "id": "57380dd1-6f38-4bae-babb-d7bbfefbda64",
+      "name": "Hot X Lead Push Alert",
+      "type": "n8n-nodes-base.pushover",
+      "typeVersion": 1,
+      "position": [
+        3264,
+        96
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "push",
+        "userKey": "<__PLACEHOLDER_VALUE__Pushover user/group key__>",
+        "message": "=HOT X LEAD @{{ $(\"Normalize + Filter X Posts\").item.json.screen_name }} | Score {{ $(\"Combine AI Score + Guardrails\").item.json.ai_score }} | {{ $(\"Normalize + Filter X Posts\").item.json.tweet_url }}",
+        "priority": 1,
+        "additionalFields": {
+          "title": "Hot X Lead Alert"
+        }
+      }
+    },
+    {
+      "id": "ce30ad96-4579-4775-b98b-9065e399dbc2",
+      "name": "Auto Reply Enabled?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3488,
+        96
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $(\"Load Search Config\").first().json.autoReplyEnabled }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            },
+            {
+              "leftValue": "={{ $(\"Combine AI Score + Guardrails\").item.json.ai_score }}",
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              },
+              "rightValue": "={{ $(\"Load Search Config\").first().json.autoReplyMinScore }}"
+            },
+            {
+              "leftValue": "={{ $(\"Combine AI Score + Guardrails\").item.json.suggested_reply }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "24c82fb5-e2ae-45c0-9528-a43226b67cf2",
+      "name": "Auto Reply on X",
+      "type": "n8n-nodes-base.twitter",
+      "typeVersion": 2,
+      "position": [
+        3712,
+        0
+      ],
+      "parameters": {
+        "resource": "tweet",
+        "operation": "create",
+        "text": "={{ $(\"Combine AI Score + Guardrails\").item.json.suggested_reply }}",
+        "additionalFields": {
+          "inReplyToStatusId": {
+            "__rl": true,
+            "mode": "id",
+            "value": "={{ $(\"Normalize + Filter X Posts\").item.json.tweet_id }}"
+          }
+        }
+      }
+    },
+    {
+      "id": "6546e2b7-e1c4-4ef6-a874-f275fba87aee",
+      "name": "Skip Auto Reply",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        3712,
+        192
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "e4be5f1a-4896-41ba-92d0-507bda1318f5",
+      "name": "Warm Lead Saved",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        3264,
+        288
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "dbcafc7d-f7fb-4b3d-93d1-531121faf928",
+      "name": "Cold Lead Saved",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        3264,
+        480
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "e6f24a7e-fbb7-4455-9cc6-262b48047b7b",
+      "name": "Manual Review Saved",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        3264,
+        672
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "1327f86e-c17a-48a0-b4f4-116a0dc5135e",
+      "name": "Skip CRM Export",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2816,
+        432
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "a6cca085-9357-4fdb-94bb-420e4ef821fa",
+      "name": "No New X Leads",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1632,
+        688
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "a6d843e9-1b31-44df-abd8-efd6dc899a46",
+      "name": "Search X Tweets (Native API)",
+      "type": "n8n-nodes-base.twitter",
+      "typeVersion": 2,
+      "position": [
+        896,
+        624
+      ],
+      "parameters": {
+        "resource": "tweet",
+        "operation": "search",
+        "searchText": "={{ $(\"Load Search Config\").first().json.searchQuery }}",
+        "returnAll": false,
+        "limit": 25,
+        "additionalFields": {
+          "sortOrder": "recency",
+          "tweetFieldsObject": [
+            "created_at",
+            "public_metrics",
+            "author_id",
+            "lang"
+          ]
+        }
+      },
+      "executeOnce": true
+    }
+  ],
+  "connections": {
+    "Every 30 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Load Search Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Search Config": {
+      "main": [
+        [
+          {
+            "node": "Get Processed Tweet IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Test Run": {
+      "main": [
+        [
+          {
+            "node": "Load Search Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Processed Tweet IDs": {
+      "main": [
+        [
+          {
+            "node": "Use Apify Search?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Use Apify Search?": {
+      "main": [
+        [
+          {
+            "node": "Apify X Twitter Search",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Search X Tweets (Native API)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apify X Twitter Search": {
+      "main": [
+        [
+          {
+            "node": "Normalize + Filter X Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize + Filter X Posts": {
+      "main": [
+        [
+          {
+            "node": "Any New Candidates?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any New Candidates?": {
+      "main": [
+        [
+          {
+            "node": "Grok X Lead Scoring Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No New X Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Grok X Lead Scoring Agent": {
+      "main": [
+        [
+          {
+            "node": "Combine AI Score + Guardrails",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Grok Lead Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Grok X Lead Scoring Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Lead Score JSON Parser",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Score JSON Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Grok X Lead Scoring Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine AI Score + Guardrails": {
+      "main": [
+        [
+          {
+            "node": "Upsert Qualified X Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Qualified X Lead": {
+      "main": [
+        [
+          {
+            "node": "Export HOT/WARM Lead?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Export HOT/WARM Lead?": {
+      "main": [
+        [
+          {
+            "node": "POST CRM Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip CRM Export",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST CRM Webhook": {
+      "main": [
+        [
+          {
+            "node": "Append X Lead to Google Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append X Lead to Google Sheet": {
+      "main": [
+        [
+          {
+            "node": "Route by Lead Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Lead Status": {
+      "main": [
+        [
+          {
+            "node": "Hot X Lead Push Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Warm Lead Saved",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Cold Lead Saved",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Manual Review Saved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hot X Lead Push Alert": {
+      "main": [
+        [
+          {
+            "node": "Auto Reply Enabled?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auto Reply Enabled?": {
+      "main": [
+        [
+          {
+            "node": "Auto Reply on X",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip Auto Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip CRM Export": {
+      "main": [
+        [
+          {
+            "node": "Route by Lead Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search X Tweets (Native API)": {
+      "main": [
+        [
+          {
+            "node": "Normalize + Filter X Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

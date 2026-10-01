@@ -1,0 +1,142 @@
+{
+  "name": "Pro 2b | Salon Dashboard API | Advanced",
+  "nodes": [
+    {
+      "id": "6d3f4a40-2ef8-485c-bfb1-f1a3d99e9dce",
+      "name": "Dashboard Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "salon-api-4f2b9c",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "6d416dc1-f10c-41c8-9473-54258e773842"
+    },
+    {
+      "id": "0ce5d08b-5585-4c7e-aa00-c8a0cfc487c7",
+      "name": "Validate Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// ===== Validate Request =====\n// The dashboard posts { key, action, payload }. Nothing here builds SQL:\n// the three values are passed to dashboard_api() as bound parameters.\nconst out = [];\nfor (const it of $input.all()) {\n  let b = it.json.body;\n  if (typeof b === 'string') { try { b = JSON.parse(b); } catch (e) { b = {}; } }\n  b = b || {};\n  out.push({ json: {\n    key: String(b.key || ''),                       // empty key -> dashboard_api returns {\"ok\":false,\"error\":\"auth\"}\n    action: String(b.action || 'state'),\n    payload: JSON.stringify(b.payload && typeof b.payload === 'object' ? b.payload : {}),\n  } });\n}\nreturn out;\n"
+      }
+    },
+    {
+      "id": "df9a0159-443f-4895-a371-fda9b2a959b8",
+      "name": "Dashboard API",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT dashboard_api($1, $2, $3::jsonb) AS r",
+        "options": {
+          "queryReplacement": "={{ [$json.key, $json.action, $json.payload] }}"
+        }
+      }
+    },
+    {
+      "id": "9d639d47-22a9-4020-9f05-29fe6b14f76d",
+      "name": "Send JSON",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json.r) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "6a0d6f1a-29ae-4e8e-9cd3-b85edd2ccdc8",
+      "name": "Sticky Note 2931a824",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        260
+      ],
+      "parameters": {
+        "content": "## Dashboard API\nOne webhook, one function, one round trip. Every statement inside\n`dashboard_api()` is scoped by the salon's `api_key`, so salon A\nphysically cannot read or write salon B's rows - proved by the tests.\n\n**Setup:** pick the same Postgres credential, activate, then paste the\n**production** URL and the salon's `api_key` into salon-dashboard.html.\n\n**Before real customers:** put this behind HTTPS (n8n Cloud already is),\nand rotate `api_key` if it is ever pasted into a chat or a screenshot.\nAccess-Control-Allow-Origin is `*` so the dashboard can be opened from\nany machine; the api_key is what actually guards the data.",
+        "color": 4,
+        "width": 760,
+        "height": 280
+      }
+    }
+  ],
+  "connections": {
+    "Dashboard Request": {
+      "main": [
+        [
+          {
+            "node": "Validate Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Request": {
+      "main": [
+        [
+          {
+            "node": "Dashboard API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dashboard API": {
+      "main": [
+        [
+          {
+            "node": "Send JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

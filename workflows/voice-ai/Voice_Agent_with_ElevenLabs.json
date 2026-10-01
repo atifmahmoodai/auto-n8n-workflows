@@ -1,0 +1,262 @@
+{
+  "name": "Voice Agent with ElevenLabs",
+  "nodes": [
+    {
+      "id": "491d98b9-0d00-4f14-aa31-d60065874761",
+      "name": "Chat Trigger",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        240,
+        304
+      ],
+      "parameters": {
+        "public": true,
+        "options": {
+          "inputPlaceholder": "Type your message...",
+          "loadPreviousSession": "memory",
+          "subtitle": "Chat with our AI voice assistant",
+          "title": "Voice Agent"
+        }
+      },
+      "webhookId": "4b18a711-f990-4bf7-a313-e0cf4d654ca6"
+    },
+    {
+      "id": "61928542-aac7-47d2-a260-1dcdbc60fa35",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        592,
+        304
+      ],
+      "parameters": {
+        "options": {
+          "systemMessage": "You are a helpful voice assistant. Provide clear, concise responses suitable for text-to-speech conversion."
+        }
+      }
+    },
+    {
+      "id": "426f21a8-d7d0-4d45-a3f8-4ab843161c2c",
+      "name": "OpenAI Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        600,
+        528
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "ebf67bb1-3db2-4632-a03c-e3fb66ce3046",
+      "name": "Conversation Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        728,
+        528
+      ],
+      "parameters": {
+        "contextWindowLength": 10
+      }
+    },
+    {
+      "id": "1f1a1065-c38d-4a4c-8aec-78a7f2f358a7",
+      "name": "Generate Voice with ElevenLabs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        944,
+        304
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "<__PLACEHOLDER_VALUE__ElevenLabs API URL (e.g., https://api.elevenlabs.io/v1/text-to-speech/VOICE_ID)__>",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"text\": $json.output, \"model_id\": \"eleven_monolingual_v1\", \"voice_settings\": { \"stability\": 0.5, \"similarity_boost\": 0.5 } } }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "audio"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "a87f3809-e7cc-4375-979a-d7397c308549",
+      "name": "AI Agent1",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        544,
+        304
+      ],
+      "parameters": {
+        "options": {
+          "systemMessage": "You are a helpful voice assistant. Provide clear, concise responses suitable for text-to-speech conversion."
+        }
+      }
+    },
+    {
+      "id": "5f3d44d1-933f-4e21-8423-fa564981b044",
+      "name": "OpenAI Model1",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        544,
+        512
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "40aacd6a-2e80-44e6-b825-8dbaf2f2035e",
+      "name": "Conversation Memory1",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        704,
+        512
+      ],
+      "parameters": {
+        "contextWindowLength": 10
+      }
+    },
+    {
+      "id": "1ed955bd-3266-4ba4-a58e-3fc421042e88",
+      "name": "Generate Voice with ElevenLabs1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        848,
+        304
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "<__PLACEHOLDER_VALUE__ElevenLabs API URL (e.g., https://api.elevenlabs.io/v1/text-to-speech/VOICE_ID)__>",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"text\": $json.output, \"model_id\": \"eleven_monolingual_v1\", \"voice_settings\": { \"stability\": 0.5, \"similarity_boost\": 0.5 } } }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "audio"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Chat Trigger": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Generate Voice with ElevenLabs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Conversation Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

@@ -1,0 +1,313 @@
+{
+  "name": "Work Order SLA Monitor: 30min Cron -> Slack",
+  "nodes": [
+    {
+      "id": "196a0df7-a979-495e-8c11-c86784094af2",
+      "name": "Sticky Note 16cdada4",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        100,
+        300
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "SLA Monitor Architecture",
+            "position": [
+              -220,
+              60
+            ],
+            "parameters": {
+              "width": 520,
+              "height": 260,
+              "content": "WORK ORDER SLA MONITOR (ZERO AI)\n\n1. Cron every 30 minutes\n2. Read Work_Orders sheet\n3. CODE calculates hours since created vs SLA tier\n4. Filters open breaches (status != completed/closed)\n5. Slack URGENT for emergency tier breaches\n6. Slack standard alert for other tier breaches\n\nSLA tiers: emergency=4h, urgent=24h, standard=72h"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "d1397466-fcd1-4b37-aa84-7086b93bb6e8",
+      "name": "Every 30 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/30 * * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "41e13e25-8f75-4bc1-a83b-a1028c8b62b2",
+      "name": "Sheet: Read Work_Orders",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Work_Orders"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "1dbde349-bcb6-418f-aaf6-93dac3f34e69",
+      "name": "Detect SLA Breaches",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const rows = $('Sheet: Read Work_Orders').all().map((i) => i.json);\nconst SLA_HOURS = { emergency: 4, urgent: 24, standard: 72 };\nconst CLOSED = new Set(['completed', 'closed', 'cancelled', 'resolved']);\nconst breaches = [];\n\nfor (const row of rows) {\n  const status = (row.status || '').toString().trim().toLowerCase();\n  if (CLOSED.has(status)) continue;\n\n  const tier = (row.sla_tier || row.priority || 'standard').toString().trim().toLowerCase();\n  const slaHours = SLA_HOURS[tier] ?? SLA_HOURS.standard;\n  const createdRaw = row.created_at || row.created_date || row.opened_at || '';\n  const created = DateTime.fromISO(createdRaw);\n  if (!created.isValid) continue;\n\n  const hoursOpen = $now.diff(created, 'hours').hours;\n  if (hoursOpen <= slaHours) continue;\n\n  const hoursOver = Math.round((hoursOpen - slaHours) * 10) / 10;\n  breaches.push({\n    work_order_id: row.work_order_id || row.id || '',\n    property_name: row.property_name || row.property || '',\n    unit: row.unit || row.unit_number || '',\n    sla_tier: tier,\n    sla_hours: slaHours,\n    hours_open: Math.round(hoursOpen * 10) / 10,\n    hours_over_sla: hoursOver,\n    status,\n    description: (row.description || row.issue || '').slice(0, 200),\n    assigned_to: row.assigned_to || row.vendor || '',\n    created_at: createdRaw,\n    is_emergency: tier === 'emergency',\n    alert_text: '*SLA BREACH* WO ' + (row.work_order_id || '') + ' | ' + (row.property_name || '') + ' | ' + tier.toUpperCase() + ' | ' + Math.round(hoursOpen) + 'h open (+' + hoursOver + 'h over)',\n  });\n}\n\nif (!breaches.length) {\n  return [{ json: { has_breaches: false, breach_count: 0, emergency_count: 0, alert_text: 'No SLA breaches detected.' } }];\n}\n\nreturn breaches.map((b) => ({ json: { ...b, has_breaches: true, breach_count: breaches.length, emergency_count: breaches.filter((x) => x.is_emergency).length } }));"
+      }
+    },
+    {
+      "id": "08539a7a-dfbc-4afb-bf14-b18c37580e72",
+      "name": "Has Breaches?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.has_breaches }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "d951e5f1-7957-4c74-a1d2-d7e5d9e32f3e",
+      "name": "Emergency Tier?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        960,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.is_emergency }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "274312ef-9dbe-493f-a4d3-208bce69456a",
+      "name": "Slack: Emergency SLA Breach",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.5,
+      "position": [
+        1200,
+        220
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SLACK_URGENT_CHANNEL_ID"
+        },
+        "messageType": "text",
+        "text": "={{ \":rotating_light: *EMERGENCY SLA BREACH*\\n\" + $json.alert_text + \"\\nProperty: \" + ($json.property_name || \"\") + \" | Unit: \" + ($json.unit || \"\") + \"\\nIssue: \" + ($json.description || \"\") + \"\\nAssigned: \" + ($json.assigned_to || \"unassigned\") }}",
+        "otherOptions": {
+          "mrkdwn": true
+        }
+      },
+      "webhookId": "7ab7e814-4828-4447-bdb4-f0ad66d6223c"
+    },
+    {
+      "id": "b19507ba-e669-468c-99c5-66a6d57816e0",
+      "name": "Slack: SLA Breach",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.5,
+      "position": [
+        1200,
+        400
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SLACK_CHANNEL_ID"
+        },
+        "messageType": "text",
+        "text": "={{ $json.alert_text }}",
+        "otherOptions": {
+          "mrkdwn": true
+        }
+      },
+      "webhookId": "0535d4ee-3ca3-4fe4-92ab-abe60c3b9652"
+    },
+    {
+      "id": "36e69a6c-f01f-4baf-8950-59493b381507",
+      "name": "Sticky Note e349ee2e",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        100,
+        300
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "No Breach Path",
+            "position": [
+              960,
+              520
+            ],
+            "parameters": {
+              "width": 260,
+              "height": 90,
+              "content": "No open SLA breaches.\nExecution ends quietly."
+            }
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 30 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Sheet: Read Work_Orders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheet: Read Work_Orders": {
+      "main": [
+        [
+          {
+            "node": "Detect SLA Breaches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detect SLA Breaches": {
+      "main": [
+        [
+          {
+            "node": "Has Breaches?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Breaches?": {
+      "main": [
+        [
+          {
+            "node": "Emergency Tier?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sticky Note e349ee2e",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Emergency Tier?": {
+      "main": [
+        [
+          {
+            "node": "Slack: Emergency SLA Breach",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Slack: SLA Breach",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

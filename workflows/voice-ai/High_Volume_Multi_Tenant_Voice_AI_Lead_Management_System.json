@@ -1,0 +1,429 @@
+{
+  "name": "High-Volume Multi-Tenant Voice AI Lead Management System",
+  "nodes": [
+    {
+      "id": "9ce2e1f4-99bc-469e-a782-5805a4a126b9",
+      "name": "Vapi Call Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        256,
+        816
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vapi-call-webhook",
+        "options": {}
+      },
+      "webhookId": "f828b1ac-1af3-4627-8cd4-96a770bd4126"
+    },
+    {
+      "id": "9157481c-1ad5-4e50-b81d-11b87ef8a879",
+      "name": "Extract Call Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        480,
+        816
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "callId",
+              "value": "={{ $json.body.call.id }}",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "phoneNumber",
+              "value": "={{ $json.body.call.customer.number }}",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "transcript",
+              "value": "={{ $json.body.transcript }}",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "duration",
+              "value": "={{ $json.body.call.duration }}",
+              "type": "number"
+            },
+            {
+              "id": "id-5",
+              "name": "timestamp",
+              "value": "={{ $json.body.call.startedAt }}",
+              "type": "string"
+            },
+            {
+              "id": "id-6",
+              "name": "status",
+              "value": "={{ $json.body.call.status }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "fbcfbe49-c4f3-42a5-8ccc-16da3d504465",
+      "name": "Structure Lead Score",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        928,
+        816
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "callId",
+              "value": "={{ $('Extract Call Data').item.json.callId }}",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "phoneNumber",
+              "value": "={{ $('Extract Call Data').item.json.phoneNumber }}",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "transcript",
+              "value": "={{ $('Extract Call Data').item.json.transcript }}",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "duration",
+              "value": "={{ $('Extract Call Data').item.json.duration }}",
+              "type": "number"
+            },
+            {
+              "id": "id-5",
+              "name": "timestamp",
+              "value": "={{ $('Extract Call Data').item.json.timestamp }}",
+              "type": "string"
+            },
+            {
+              "id": "id-6",
+              "name": "leadScore",
+              "value": "={{ $json.choices[0].message.content.split(':')[0].trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "id-7",
+              "name": "scoreReason",
+              "value": "={{ $json.choices[0].message.content.split(':')[1]?.trim() || 'No reason provided' }}",
+              "type": "string"
+            },
+            {
+              "id": "id-8",
+              "name": "callStatus",
+              "value": "={{ $('Extract Call Data').item.json.status }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ca5d7657-05ef-47ec-9fed-916be3454f9b",
+      "name": "OpenAI Lead Scoring",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        704,
+        816
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"gpt-4o-mini\",\n  \"temperature\": 0.2,\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a lead scoring expert for automotive and real estate. Analyze the call transcript and classify the lead as HOT, WARM, or COLD. HOT: Ready to buy/book immediately, clear intent, specific requirements. WARM: Interested but needs nurturing, asking questions, timeline 1-3 months. COLD: Just browsing, vague interest, no timeline. Respond with ONLY the classification and a brief 1-sentence reason.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"={{ $json.transcript }}\"\n    }\n  ]\n}",
+        "options": {}
+      }
+    },
+    {
+      "id": "74218c79-c915-4790-ba62-e6309a9003fa",
+      "name": "Save to Airtable",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1152,
+        720
+      ],
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "table": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Call ID": "={{ $json.callId }}",
+            "Phone Number": "={{ $json.phoneNumber }}",
+            "Transcript": "={{ $json.transcript }}",
+            "Duration (seconds)": "={{ $json.duration }}",
+            "Timestamp": "={{ $json.timestamp }}",
+            "Lead Score": "={{ $json.leadScore }}",
+            "Score Reason": "={{ $json.scoreReason }}",
+            "Call Status": "={{ $json.callStatus }}"
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cfa8dee9-d1a0-4e30-bf46-8b7f8498f7a1",
+      "name": "Save to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1152,
+        912
+      ],
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        }
+      }
+    },
+    {
+      "id": "c5e90364-ebce-4374-b699-bc9d764b6bfc",
+      "name": "Log API Error",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        256,
+        304
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "errorType",
+              "value": "OpenAI API Error",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "errorMessage",
+              "value": "={{ $json.error.message }}",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "callId",
+              "value": "={{ $('Extract Call Data').item.json.callId }}",
+              "type": "string"
+            },
+            {
+              "id": "id-5",
+              "name": "phoneNumber",
+              "value": "={{ $('Extract Call Data').item.json.phoneNumber }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "4e2cd9ed-53e9-45e0-8754-77c7d39ab6e5",
+      "name": "Log CRM Error",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        256,
+        496
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "errorType",
+              "value": "CRM Sync Error",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "errorMessage",
+              "value": "={{ $json.error.message }}",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "callId",
+              "value": "={{ $('Structure Lead Score').item.json.callId }}",
+              "type": "string"
+            },
+            {
+              "id": "id-5",
+              "name": "leadScore",
+              "value": "={{ $('Structure Lead Score').item.json.leadScore }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "86f51428-14ae-4c51-9f73-f94d6a96466b",
+      "name": "Error Log Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        480,
+        400
+      ],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Vapi Call Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract Call Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Call Data": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Lead Scoring",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Lead Scoring": {
+      "main": [
+        [
+          {
+            "node": "Structure Lead Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structure Lead Score": {
+      "main": [
+        [
+          {
+            "node": "Save to Airtable",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Save to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log API Error": {
+      "main": [
+        [
+          {
+            "node": "Error Log Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log CRM Error": {
+      "main": [
+        [
+          {
+            "node": "Error Log Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

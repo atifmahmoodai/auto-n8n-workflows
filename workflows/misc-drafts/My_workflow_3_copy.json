@@ -1,0 +1,743 @@
+{
+  "name": "My workflow 3 copy",
+  "nodes": [
+    {
+      "id": "b678dab0-272e-4ac9-aa95-77d92590361b",
+      "name": "When chat message received",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -624,
+        -32
+      ],
+      "parameters": {
+        "options": {}
+      },
+      "webhookId": "f79dd995-90b0-4acf-a1b8-e2b884e8c788"
+    },
+    {
+      "id": "c99cffd7-766f-42af-bd78-d02514685181",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -152,
+        -32
+      ],
+      "parameters": {
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are an advanced financial portfolio assistant with expertise in stock market analysis and portfolio management. Your responsibilities:\n\n1. PORTFOLIO ANALYSIS: Read and analyze stock portfolios from Google Sheets, understanding ticker symbols, quantities, and current prices.\n\n2. MARKET DATA RETRIEVAL: Fetch real-time end-of-day (EoD) market data for requested tickers using Marketstack API to get accurate pricing information.\n\n3. PORTFOLIO UPDATES: Update Google Sheets with latest market prices and calculate portfolio values, ensuring data accuracy and consistency.\n\n4. INSIGHTS & RECOMMENDATIONS: Provide detailed analysis including:\n   - Current portfolio value and performance\n   - Individual stock performance metrics\n   - Market trends and price movements\n   - Risk assessment and diversification analysis\n   - Actionable recommendations for portfolio optimization\n\n5. DATA VALIDATION: Always verify ticker symbols exist before fetching data, validate price data before updating sheets, and handle errors gracefully.\n\nCommunicate professionally with clear, structured responses. When updating portfolios, confirm actions taken and provide summary statistics."
+        }
+      }
+    },
+    {
+      "id": "9ab7f18a-45f8-43ae-87ce-033b50c8dbc6",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -400,
+        192
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {
+          "maxTokens": 2000,
+          "temperature": 0.3
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "d3b620dd-2a24-4897-9f05-4e6bd8e9483d",
+      "name": "Simple Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        -272,
+        192
+      ],
+      "parameters": {
+        "contextWindowLength": 10
+      }
+    },
+    {
+      "id": "0f6be8bd-d708-40e3-aa4b-6b66d44fc3ca",
+      "name": "Get row(s) in sheet in Google Sheets",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        -144,
+        192
+      ],
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Retrieves current portfolio data from Google Sheets including ticker symbols, quantities, and prices. Use this to analyze the user portfolio before making recommendations or updates.",
+        "documentId": {
+          "__rl": true,
+          "value": "1_hAv37R4BzrvvxnTEOKdbZE1CcNNtCcgjaE6CUwL-rU",
+          "mode": "list",
+          "cachedResultName": "Untitled spreadsheet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_hAv37R4BzrvvxnTEOKdbZE1CcNNtCcgjaE6CUwL-rU/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_hAv37R4BzrvvxnTEOKdbZE1CcNNtCcgjaE6CUwL-rU/edit#gid=0"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "b29cfd16-a631-452b-b421-d15894bed3ba",
+      "name": "Get many EoD data in Marketstack",
+      "type": "n8n-nodes-base.marketstackTool",
+      "typeVersion": 1,
+      "position": [
+        -16,
+        192
+      ],
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Fetches real-time end-of-day market data for specified stock ticker symbols from Marketstack API. Returns current prices, volume, and market statistics. Always validate ticker symbols before calling.",
+        "symbols": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Ticker', ``, 'string') }}",
+        "filters": {
+          "latest": true
+        }
+      }
+    },
+    {
+      "id": "20a6dad5-727d-40c1-a7be-67286c5f1396",
+      "name": "Update row in sheet in Google Sheets",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        112,
+        192
+      ],
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Updates portfolio prices in Google Sheets by matching ticker symbols and writing new price data. Use after fetching market data to keep portfolio values current. Always verify data accuracy before updating.",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1_hAv37R4BzrvvxnTEOKdbZE1CcNNtCcgjaE6CUwL-rU",
+          "mode": "list",
+          "cachedResultName": "Untitled spreadsheet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_hAv37R4BzrvvxnTEOKdbZE1CcNNtCcgjaE6CUwL-rU/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_hAv37R4BzrvvxnTEOKdbZE1CcNNtCcgjaE6CUwL-rU/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ticker": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('ticker', ``, 'string') }}",
+            "price": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('price', ``, 'string') }}"
+          },
+          "matchingColumns": [
+            "ticker"
+          ],
+          "schema": [
+            {
+              "id": "ticker",
+              "displayName": "ticker",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "quantity ",
+              "displayName": "quantity ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "price",
+              "displayName": "price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "788fafca-2219-41ae-abd6-120cabf25a01",
+      "name": "Structured Output Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        240,
+        192
+      ],
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"action\": {\n      \"type\": \"string\",\n      \"enum\": [\"portfolio_analysis\", \"price_update\", \"market_research\", \"recommendation\"],\n      \"description\": \"The type of action performed\"\n    },\n    \"tickers\": {\n      \"type\": \"array\",\n      \"items\": {\"type\": \"string\"},\n      \"description\": \"List of stock tickers involved\"\n    },\n    \"summary\": {\n      \"type\": \"string\",\n      \"description\": \"Brief summary of the response\"\n    },\n    \"data\": {\n      \"type\": \"object\",\n      \"description\": \"Structured data from the operation\"\n    },\n    \"recommendations\": {\n      \"type\": \"array\",\n      \"items\": {\"type\": \"string\"},\n      \"description\": \"List of actionable recommendations\"\n    },\n    \"confidence\": {\n      \"type\": \"number\",\n      \"minimum\": 0,\n      \"maximum\": 1,\n      \"description\": \"Confidence score of the analysis\"\n    }\n  },\n  \"required\": [\"action\", \"summary\", \"confidence\"]\n}"
+      }
+    },
+    {
+      "id": "957fd232-ad51-416e-9c38-0799b4ae87db",
+      "name": "Validate Agent Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        448,
+        -32
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "sessionId",
+              "value": "={{ $('When chat message received').item.json.sessionId }}",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "userQuery",
+              "value": "={{ $('When chat message received').item.json.chatInput }}",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "agentAction",
+              "value": "={{ $json.action }}",
+              "type": "string"
+            },
+            {
+              "id": "id-5",
+              "name": "confidence",
+              "value": "={{ $json.confidence }}",
+              "type": "number"
+            },
+            {
+              "id": "id-6",
+              "name": "tickersProcessed",
+              "value": "={{ $json.tickers ? $json.tickers.join(', ') : 'none' }}",
+              "type": "string"
+            },
+            {
+              "id": "id-7",
+              "name": "summary",
+              "value": "={{ $json.summary }}",
+              "type": "string"
+            },
+            {
+              "id": "id-8",
+              "name": "hasRecommendations",
+              "value": "={{ $json.recommendations && $json.recommendations.length > 0 }}",
+              "type": "boolean"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "7b612b7a-724c-4a3c-b44c-408f673d87f6",
+      "name": "Check Response Quality",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        672,
+        -32
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $json.confidence }}",
+              "rightValue": "0.7",
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "87c3f6f0-c932-4ea9-9be6-9be194f441cc",
+      "name": "Log Interactions",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        -128
+      ],
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "PsIoCXDPomyPUE3F"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "fd469440-52b8-49c7-ae06-680cc3225008",
+      "name": "Prepare High Quality Log",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        896,
+        -128
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "timestamp",
+              "value": "={{ $json.timestamp }}",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "sessionId",
+              "value": "={{ $json.sessionId }}",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "userQuery",
+              "value": "={{ $json.userQuery }}",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "action",
+              "value": "={{ $json.agentAction }}",
+              "type": "string"
+            },
+            {
+              "id": "id-5",
+              "name": "confidence",
+              "value": "={{ $json.confidence }}",
+              "type": "number"
+            },
+            {
+              "id": "id-6",
+              "name": "tickers",
+              "value": "={{ $json.tickersProcessed }}",
+              "type": "string"
+            },
+            {
+              "id": "id-7",
+              "name": "summary",
+              "value": "={{ $json.summary }}",
+              "type": "string"
+            },
+            {
+              "id": "id-8",
+              "name": "status",
+              "value": "success",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "c3f2b85f-2750-48aa-8e61-ce7625da494c",
+      "name": "Prepare Low Quality Log",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        896,
+        64
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "timestamp",
+              "value": "={{ $json.timestamp }}",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "sessionId",
+              "value": "={{ $json.sessionId }}",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "userQuery",
+              "value": "={{ $json.userQuery }}",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "action",
+              "value": "={{ $json.agentAction }}",
+              "type": "string"
+            },
+            {
+              "id": "id-5",
+              "name": "confidence",
+              "value": "={{ $json.confidence }}",
+              "type": "number"
+            },
+            {
+              "id": "id-6",
+              "name": "tickers",
+              "value": "={{ $json.tickersProcessed }}",
+              "type": "string"
+            },
+            {
+              "id": "id-7",
+              "name": "summary",
+              "value": "={{ $json.summary }}",
+              "type": "string"
+            },
+            {
+              "id": "id-8",
+              "name": "flagReason",
+              "value": "Low confidence response - requires review",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "628951c7-7b0c-4253-9e21-72ad9c3e1972",
+      "name": "Flag Low Confidence Responses",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        64
+      ],
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "GGw1sRzmn0an66Og"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "e2ffb45e-3a8e-474a-9139-9f87695eeb27",
+      "name": "Aggregate Analytics",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        1344,
+        -128
+      ],
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      }
+    },
+    {
+      "id": "59f085e4-e448-45e4-a16f-af7945f066b7",
+      "name": "Calculate Session Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        -128
+      ],
+      "parameters": {
+        "jsCode": "// Advanced session analytics calculation\nconst items = $input.all();\n\nif (items.length === 0) {\n  return [];\n}\n\nconst sessionId = items[0].json.sessionId;\nconst totalInteractions = items.length;\n\n// Calculate confidence metrics\nconst confidenceScores = items.map(item => item.json.confidence || 0);\nconst avgConfidence = confidenceScores.reduce((a, b) => a + b, 0) / totalInteractions;\nconst minConfidence = Math.min(...confidenceScores);\nconst maxConfidence = Math.max(...confidenceScores);\n\n// Count actions by type\nconst actionCounts = {};\nitems.forEach(item => {\n  const action = item.json.agentAction || 'unknown';\n  actionCounts[action] = (actionCounts[action] || 0) + 1;\n});\n\n// Count high vs low quality responses\nconst highQualityCount = confidenceScores.filter(score => score >= 0.7).length;\nconst lowQualityCount = totalInteractions - highQualityCount;\n\n// Extract unique tickers processed\nconst allTickers = items\n  .map(item => item.json.tickersProcessed || '')\n  .filter(t => t && t !== 'none')\n  .join(', ')\n  .split(', ')\n  .filter(t => t.trim());\nconst uniqueTickers = [...new Set(allTickers)];\n\n// Calculate session duration\nconst timestamps = items.map(item => new Date(item.json.timestamp));\nconst sessionStart = new Date(Math.min(...timestamps));\nconst sessionEnd = new Date(Math.max(...timestamps));\nconst durationMinutes = (sessionEnd - sessionStart) / 1000 / 60;\n\nreturn [{\n  json: {\n    sessionId,\n    totalInteractions,\n    highQualityResponses: highQualityCount,\n    lowQualityResponses: lowQualityCount,\n    qualityRate: (highQualityCount / totalInteractions * 100).toFixed(2) + '%',\n    avgConfidence: avgConfidence.toFixed(3),\n    minConfidence: minConfidence.toFixed(3),\n    maxConfidence: maxConfidence.toFixed(3),\n    actionBreakdown: actionCounts,\n    uniqueTickersProcessed: uniqueTickers.length,\n    tickersList: uniqueTickers.join(', '),\n    sessionStart: sessionStart.toISOString(),\n    sessionEnd: sessionEnd.toISOString(),\n    durationMinutes: durationMinutes.toFixed(2),\n    timestamp: new Date().toISOString()\n  }\n}];"
+      }
+    },
+    {
+      "id": "9ed5dc9d-b39f-42a9-92df-2a7d8a474766",
+      "name": "Store Session Analytics",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        2016,
+        -128
+      ],
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "OoSGgBFYLlVtngyL"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ac68b772-7a81-4e44-8326-45af8f8ac12f",
+      "name": "Prepare Analytics Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1792,
+        -128
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": []
+        },
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet in Google Sheets": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many EoD data in Marketstack": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update row in sheet in Google Sheets": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Validate Agent Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Agent Response": {
+      "main": [
+        [
+          {
+            "node": "Check Response Quality",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Response Quality": {
+      "main": [
+        [
+          {
+            "node": "Prepare High Quality Log",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Low Quality Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare High Quality Log": {
+      "main": [
+        [
+          {
+            "node": "Log Interactions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Low Quality Log": {
+      "main": [
+        [
+          {
+            "node": "Flag Low Confidence Responses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Interactions": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Analytics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Analytics": {
+      "main": [
+        [
+          {
+            "node": "Calculate Session Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Session Metrics": {
+      "main": [
+        [
+          {
+            "node": "Prepare Analytics Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Analytics Data": {
+      "main": [
+        [
+          {
+            "node": "Store Session Analytics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

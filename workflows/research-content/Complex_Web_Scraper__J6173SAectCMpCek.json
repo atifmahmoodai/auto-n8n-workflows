@@ -1,0 +1,690 @@
+{
+  "name": "Complex Web Scraper",
+  "nodes": [
+    {
+      "id": "02d26293-2228-4f4f-86c2-64084fa30832",
+      "name": "Start Scraping",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        616
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "c2aedabd-6f9f-468d-9c11-be9f0a94e641",
+      "name": "Generate URL List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        464,
+        616
+      ],
+      "parameters": {
+        "jsCode": "// Generate URLs to scrape\nconst baseUrl = 'https://example.com/page/';\nconst startPage = 1;\nconst endPage = 50;\n\nconst urls = [];\nfor (let i = startPage; i <= endPage; i++) {\n  urls.push({\n    url: baseUrl + i,\n    pageNumber: i\n  });\n}\n\nreturn urls;"
+      }
+    },
+    {
+      "id": "8c52f54d-0b6c-4c65-928d-b64614fb86b3",
+      "name": "Generate Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        912,
+        208
+      ],
+      "parameters": {
+        "jsCode": "// Generate summary statistics\nconst items = $input.all();\n\nconst summary = {\n  totalProcessed: items.length,\n  successful: items.filter(i => i.json.status === 'success').length,\n  duplicates: items.filter(i => i.json.status === 'duplicate').length,\n  failed: items.filter(i => i.json.status === 'failed').length,\n  completedAt: new Date().toISOString()\n};\n\nreturn [summary];"
+      }
+    },
+    {
+      "id": "66bd2fe2-95ff-4351-860d-74e7c64c2972",
+      "name": "Rate Limit Delay",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        912,
+        400
+      ],
+      "parameters": {
+        "amount": 2
+      },
+      "webhookId": "04e3b74e-0e26-4685-9c9d-c823be7d1aa1"
+    },
+    {
+      "id": "5401af04-ee72-4470-a41e-c5ffb33f8c8d",
+      "name": "Fetch Page HTML",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1136,
+        400
+      ],
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {
+          "redirect": {
+            "redirect": {
+              "maxRedirects": 5
+            }
+          },
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "9d206407-0070-49aa-b0ad-7ddef1bef036",
+      "name": "Extract Content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        400
+      ],
+      "parameters": {
+        "jsCode": "// Extract data from HTML\nconst items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const html = item.json.data;\n  \n  // Simple regex-based extraction (in production, use a proper HTML parser)\n  const titleMatch = html.match(/<h1[^>]*>(.*?)<\\/h1>/i);\n  const contentMatch = html.match(/<div class=\"content\"[^>]*>(.*?)<\\/div>/i);\n  \n  results.push({\n    url: item.json.url,\n    pageNumber: item.json.pageNumber,\n    title: titleMatch ? titleMatch[1].trim() : '',\n    content: contentMatch ? contentMatch[1].trim() : '',\n    scrapedAt: new Date().toISOString()\n  });\n}\n\nreturn results;"
+      }
+    },
+    {
+      "id": "9385578d-e726-4343-9d17-de57c6aac95c",
+      "name": "Filter Valid Data",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        1584,
+        400
+      ],
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.title }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              },
+              "rightValue": ""
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "1cee8170-3fa4-403e-8ed2-0fc4a9e72b6a",
+      "name": "Check Duplicate",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1808,
+        400
+      ],
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.title }}",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              },
+              "rightValue": "duplicate"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a26a7a90-c02a-4f6d-8329-b25524dfdfe8",
+      "name": "Mark as Duplicate",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2032,
+        400
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "status",
+              "value": "duplicate",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "e0d97d2a-8e54-4cad-8d81-5aa816fcff12",
+      "name": "Batch URLs",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        688,
+        616
+      ],
+      "parameters": {
+        "batchSize": 5,
+        "options": {}
+      }
+    },
+    {
+      "id": "142e9344-8e9e-481e-9fcf-66be453b7d51",
+      "name": "Transform for Storage",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2032,
+        640
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "url",
+              "value": "={{ $json.url }}",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "page_number",
+              "value": "={{ $json.pageNumber }}",
+              "type": "number"
+            },
+            {
+              "id": "3",
+              "name": "title",
+              "value": "={{ $json.title }}",
+              "type": "string"
+            },
+            {
+              "id": "4",
+              "name": "content",
+              "value": "={{ $json.content }}",
+              "type": "string"
+            },
+            {
+              "id": "5",
+              "name": "scraped_at",
+              "value": "={{ $json.scrapedAt }}",
+              "type": "string"
+            },
+            {
+              "id": "6",
+              "name": "status",
+              "value": "success",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "4aafbf8e-0edb-47bd-a9f1-cc33abd13573",
+      "name": "Store Scraped Data",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2256,
+        736
+      ],
+      "parameters": {
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "url",
+              "keyValue": "={{ $json.url }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "url": "={{ $json.url }}",
+            "page_number": "={{ $json.page_number }}",
+            "title": "={{ $json.title }}",
+            "content": "={{ $json.content }}",
+            "scraped_at": "={{ $json.scraped_at }}",
+            "status": "={{ $json.status }}"
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "f03b984d-afe1-4141-99aa-79ba2822e116",
+      "name": "Log Error",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1360,
+        592
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "error",
+              "value": "={{ $json.message ?? \"Unknown error\" }}",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "url",
+              "value": "={{ $json.url ?? \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "3",
+              "name": "status",
+              "value": "failed",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "5c7596ef-20dc-4da6-9c0c-c734d79fcca9",
+      "name": "Sticky Note 02bd8449",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        138,
+        576
+      ],
+      "parameters": {
+        "content": "## 🚀 Start Scraping\n\nManual trigger to start the web scraping workflow. Click \"Test workflow\" to begin.",
+        "height": 200,
+        "width": 300,
+        "color": 3
+      }
+    },
+    {
+      "id": "cd8aca39-4b2f-4dc5-a93b-ce6e014608b2",
+      "name": "Sticky Note 5680f0e7",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        362,
+        576
+      ],
+      "parameters": {
+        "content": "## 📋 Generate URL List\n\nCreates 50 URLs to scrape (pages 1-50). Modify baseUrl, startPage, and endPage in the code to customize your scraping targets.",
+        "height": 200,
+        "width": 300,
+        "color": 4
+      }
+    },
+    {
+      "id": "0d4e54a8-ab60-407c-86c4-800025b375aa",
+      "name": "Sticky Note b20a6f00",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        586,
+        576
+      ],
+      "parameters": {
+        "content": "## 📦 Batch URLs\n\nProcesses URLs in batches of 5 to avoid overwhelming the target server. Each batch goes through the scraping pipeline before the next batch starts.",
+        "height": 200,
+        "width": 300,
+        "color": 5
+      }
+    },
+    {
+      "id": "3d955996-b3ad-4287-b378-c71c2a3e2804",
+      "name": "Sticky Note 7bcf2cc0",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        810,
+        360
+      ],
+      "parameters": {
+        "content": "## ⏱️ Rate Limit Delay\n\nWaits 2 seconds between requests to be respectful to the target server and avoid getting blocked. Adjust the delay as needed.",
+        "height": 200,
+        "width": 300,
+        "color": 6
+      }
+    },
+    {
+      "id": "b1e5470c-11d6-40d1-8655-311a06010e81",
+      "name": "Sticky Note a8a049d4",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1034,
+        360
+      ],
+      "parameters": {
+        "content": "## 🌐 Fetch Page HTML\n\nMakes HTTP GET request to retrieve the HTML content. Has error handling enabled - if request fails, execution continues to error logging instead of stopping.",
+        "height": 200,
+        "width": 300,
+        "color": 7
+      }
+    },
+    {
+      "id": "03b2832f-bcbf-4366-9013-9328b46d603f",
+      "name": "Sticky Note 35ebdb38",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1258,
+        360
+      ],
+      "parameters": {
+        "content": "## 🔍 Extract Content\n\nParses HTML using regex to extract title and content. In production, use a proper HTML parser library for more robust extraction.",
+        "height": 200,
+        "width": 300,
+        "color": 4
+      }
+    },
+    {
+      "id": "f8022ebc-a0e7-4c94-97ff-1fc6dd9e412d",
+      "name": "Sticky Note 76a44e0a",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1482,
+        360
+      ],
+      "parameters": {
+        "content": "## ✅ Filter Valid Data\n\nRemoves items with empty titles. Only pages with valid extracted data proceed to the next step.",
+        "height": 200,
+        "width": 300,
+        "color": 5
+      }
+    },
+    {
+      "id": "a4c332a0-c8b3-468c-9b8d-489e4bbed736",
+      "name": "Sticky Note 74883a6d",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1706,
+        360
+      ],
+      "parameters": {
+        "content": "## 🔄 Check Duplicate\n\nChecks if the title contains \"duplicate\" (simplified logic). In production, query your database to check for existing records.",
+        "height": 200,
+        "width": 300,
+        "color": 6
+      }
+    },
+    {
+      "id": "769ce8be-526c-4c27-9eeb-ccc2c369e7e3",
+      "name": "Sticky Note 51467049",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1930,
+        360
+      ],
+      "parameters": {
+        "content": "## ⚠️ Mark as Duplicate\n\nTags duplicate items with status=\"duplicate\" and sends them back to continue the batch loop without storing.",
+        "height": 200,
+        "width": 300,
+        "color": 2
+      }
+    },
+    {
+      "id": "eaefc976-2c3e-4e94-81ec-513bb5f2a476",
+      "name": "Sticky Note 1a35da6c",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1930,
+        600
+      ],
+      "parameters": {
+        "content": "## 🔧 Transform for Storage\n\nReformats data fields to match database schema: url, page_number, title, content, scraped_at, status.",
+        "height": 200,
+        "width": 300,
+        "color": 4
+      }
+    },
+    {
+      "id": "6c17a80c-3d68-4f74-88de-5b9296f20aca",
+      "name": "Sticky Note 98c61047",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2154,
+        696
+      ],
+      "parameters": {
+        "content": "## 💾 Store Scraped Data\n\nUpserts data into n8n Data Table. If URL already exists, updates the record; otherwise creates new. Configure dataTableId before running.",
+        "height": 200,
+        "width": 300,
+        "color": 3
+      }
+    },
+    {
+      "id": "6ed55ee2-dd1d-4378-82c6-0a31bbf28f7e",
+      "name": "Sticky Note d7c62e17",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1258,
+        552
+      ],
+      "parameters": {
+        "content": "## ❌ Log Error\n\nCaptures failed HTTP requests and formats error information. Triggered when Fetch Page HTML encounters errors (404, timeout, etc).",
+        "height": 200,
+        "width": 300,
+        "color": 2
+      }
+    },
+    {
+      "id": "a3cd8d56-3900-4465-88cc-f19779bc4bf9",
+      "name": "Sticky Note 5a19e711",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        810,
+        168
+      ],
+      "parameters": {
+        "content": "## 📊 Generate Summary\n\nRuns after all batches complete. Calculates total processed, successful, duplicate, and failed items with completion timestamp.",
+        "height": 200,
+        "width": 300,
+        "color": 3
+      }
+    },
+    {
+      "id": "55a4680f-7105-4f4a-bd41-91b9d543ce3c",
+      "name": "Sticky Note ad25c06d",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        240,
+        112
+      ],
+      "parameters": {
+        "content": "## 🔁 Workflow Flow\n\n1. Generate 50 URLs\n2. Process in batches of 5\n3. Wait 2s between requests\n4. Fetch HTML (with error handling)\n5. Extract title & content\n6. Filter valid data\n7. Check duplicates\n8. Store or skip\n9. Summarize results"
+      }
+    }
+  ],
+  "connections": {
+    "Start Scraping": {
+      "main": [
+        [
+          {
+            "node": "Generate URL List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate URL List": {
+      "main": [
+        [
+          {
+            "node": "Batch URLs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rate Limit Delay": {
+      "main": [
+        [
+          {
+            "node": "Fetch Page HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Page HTML": {
+      "main": [
+        [
+          {
+            "node": "Extract Content",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Content": {
+      "main": [
+        [
+          {
+            "node": "Filter Valid Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Valid Data": {
+      "main": [
+        [
+          {
+            "node": "Check Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Duplicate": {
+      "main": [
+        [
+          {
+            "node": "Mark as Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Transform for Storage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark as Duplicate": {
+      "main": [
+        [
+          {
+            "node": "Batch URLs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Batch URLs": {
+      "main": [
+        [
+          {
+            "node": "Generate Summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Rate Limit Delay",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform for Storage": {
+      "main": [
+        [
+          {
+            "node": "Store Scraped Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Scraped Data": {
+      "main": [
+        [
+          {
+            "node": "Batch URLs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Error": {
+      "main": [
+        [
+          {
+            "node": "Batch URLs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

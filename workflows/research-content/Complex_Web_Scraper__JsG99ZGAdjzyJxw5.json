@@ -1,0 +1,469 @@
+{
+  "name": "Complex Web Scraper",
+  "nodes": [
+    {
+      "id": "02d26293-2228-4f4f-86c2-64084fa30832",
+      "name": "Start Scraping",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        616
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "c2aedabd-6f9f-468d-9c11-be9f0a94e641",
+      "name": "Generate URL List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        464,
+        616
+      ],
+      "parameters": {
+        "jsCode": "// Generate URLs to scrape\nconst baseUrl = 'https://example.com/page/';\nconst startPage = 1;\nconst endPage = 50;\n\nconst urls = [];\nfor (let i = startPage; i <= endPage; i++) {\n  urls.push({\n    url: baseUrl + i,\n    pageNumber: i\n  });\n}\n\nreturn urls;"
+      }
+    },
+    {
+      "id": "8c52f54d-0b6c-4c65-928d-b64614fb86b3",
+      "name": "Generate Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        912,
+        208
+      ],
+      "parameters": {
+        "jsCode": "// Generate summary statistics\nconst items = $input.all();\n\nconst summary = {\n  totalProcessed: items.length,\n  successful: items.filter(i => i.json.status === 'success').length,\n  duplicates: items.filter(i => i.json.status === 'duplicate').length,\n  failed: items.filter(i => i.json.status === 'failed').length,\n  completedAt: new Date().toISOString()\n};\n\nreturn [summary];"
+      }
+    },
+    {
+      "id": "66bd2fe2-95ff-4351-860d-74e7c64c2972",
+      "name": "Rate Limit Delay",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        912,
+        400
+      ],
+      "parameters": {
+        "amount": 2
+      },
+      "webhookId": "1ec18d0e-dcd3-4b88-b1d3-e05b2de3ab92"
+    },
+    {
+      "id": "5401af04-ee72-4470-a41e-c5ffb33f8c8d",
+      "name": "Fetch Page HTML",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1136,
+        400
+      ],
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {
+          "redirect": {
+            "redirect": {
+              "maxRedirects": 5
+            }
+          },
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "9d206407-0070-49aa-b0ad-7ddef1bef036",
+      "name": "Extract Content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        400
+      ],
+      "parameters": {
+        "jsCode": "// Extract data from HTML\nconst items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const html = item.json.data;\n  \n  // Simple regex-based extraction (in production, use a proper HTML parser)\n  const titleMatch = html.match(/<h1[^>]*>(.*?)<\\/h1>/i);\n  const contentMatch = html.match(/<div class=\"content\"[^>]*>(.*?)<\\/div>/i);\n  \n  results.push({\n    url: item.json.url,\n    pageNumber: item.json.pageNumber,\n    title: titleMatch ? titleMatch[1].trim() : '',\n    content: contentMatch ? contentMatch[1].trim() : '',\n    scrapedAt: new Date().toISOString()\n  });\n}\n\nreturn results;"
+      }
+    },
+    {
+      "id": "9385578d-e726-4343-9d17-de57c6aac95c",
+      "name": "Filter Valid Data",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        1584,
+        400
+      ],
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.title }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              },
+              "rightValue": ""
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "1cee8170-3fa4-403e-8ed2-0fc4a9e72b6a",
+      "name": "Check Duplicate",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1808,
+        400
+      ],
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.title }}",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              },
+              "rightValue": "duplicate"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a26a7a90-c02a-4f6d-8329-b25524dfdfe8",
+      "name": "Mark as Duplicate",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2032,
+        400
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "status",
+              "value": "duplicate",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "e0d97d2a-8e54-4cad-8d81-5aa816fcff12",
+      "name": "Batch URLs",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        688,
+        616
+      ],
+      "parameters": {
+        "batchSize": 5,
+        "options": {}
+      }
+    },
+    {
+      "id": "142e9344-8e9e-481e-9fcf-66be453b7d51",
+      "name": "Transform for Storage",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2032,
+        640
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "url",
+              "value": "={{ $json.url }}",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "page_number",
+              "value": "={{ $json.pageNumber }}",
+              "type": "number"
+            },
+            {
+              "id": "3",
+              "name": "title",
+              "value": "={{ $json.title }}",
+              "type": "string"
+            },
+            {
+              "id": "4",
+              "name": "content",
+              "value": "={{ $json.content }}",
+              "type": "string"
+            },
+            {
+              "id": "5",
+              "name": "scraped_at",
+              "value": "={{ $json.scrapedAt }}",
+              "type": "string"
+            },
+            {
+              "id": "6",
+              "name": "status",
+              "value": "success",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "4aafbf8e-0edb-47bd-a9f1-cc33abd13573",
+      "name": "Store Scraped Data",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2256,
+        736
+      ],
+      "parameters": {
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "url",
+              "keyValue": "={{ $json.url }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "url": "={{ $json.url }}",
+            "page_number": "={{ $json.page_number }}",
+            "title": "={{ $json.title }}",
+            "content": "={{ $json.content }}",
+            "scraped_at": "={{ $json.scraped_at }}",
+            "status": "={{ $json.status }}"
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "f03b984d-afe1-4141-99aa-79ba2822e116",
+      "name": "Log Error",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1360,
+        592
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "error",
+              "value": "={{ $json.message ?? \"Unknown error\" }}",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "url",
+              "value": "={{ $json.url ?? \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "3",
+              "name": "status",
+              "value": "failed",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Start Scraping": {
+      "main": [
+        [
+          {
+            "node": "Generate URL List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate URL List": {
+      "main": [
+        [
+          {
+            "node": "Batch URLs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rate Limit Delay": {
+      "main": [
+        [
+          {
+            "node": "Fetch Page HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Page HTML": {
+      "main": [
+        [
+          {
+            "node": "Extract Content",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Content": {
+      "main": [
+        [
+          {
+            "node": "Filter Valid Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Valid Data": {
+      "main": [
+        [
+          {
+            "node": "Check Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Duplicate": {
+      "main": [
+        [
+          {
+            "node": "Mark as Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Transform for Storage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark as Duplicate": {
+      "main": [
+        [
+          {
+            "node": "Batch URLs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Batch URLs": {
+      "main": [
+        [
+          {
+            "node": "Generate Summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Rate Limit Delay",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform for Storage": {
+      "main": [
+        [
+          {
+            "node": "Store Scraped Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Scraped Data": {
+      "main": [
+        [
+          {
+            "node": "Batch URLs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Error": {
+      "main": [
+        [
+          {
+            "node": "Batch URLs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

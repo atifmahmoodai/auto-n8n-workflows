@@ -1,0 +1,1098 @@
+{
+  "name": "Pro 4b | Ad Leads: WhatsApp Qualification | Expert",
+  "nodes": [
+    {
+      "id": "6fcb417b-bb9d-465a-a84d-a3cc929da0b4",
+      "name": "WhatsApp Verify (GET)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "lead-chat-7c31a9",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "c97901df-e17d-46a9-b0a6-c57acca45440"
+    },
+    {
+      "id": "7161a255-1d1d-4c28-819c-34873090ba4b",
+      "name": "Verify Token",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "6cedccd6-ad25-4e7d-ac8e-420950ead110",
+              "name": "verify_token",
+              "value": "CHANGE_ME_verify_token",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "3745c66a-f475-4d8c-b536-62c41564196f",
+      "name": "Answer Challenge",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.query['hub.verify_token'] === $json.verify_token ? $json.query['hub.challenge'] : 'forbidden' }}",
+        "options": {
+          "responseCode": "={{ $json.query['hub.verify_token'] === $json.verify_token ? 200 : 403 }}"
+        }
+      }
+    },
+    {
+      "id": "c967c707-4006-4681-a49c-c14eeb745c4d",
+      "name": "Lead Replies",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        620
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-chat-7c31a9",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "webhookId": "a8c0a4c6-847a-4a49-9d4d-b7c871b9a08a"
+    },
+    {
+      "id": "c6ac90fc-2187-4c79-b525-21d2c38e91b9",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        620
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "882a41e4-42f1-46b0-b814-8d7e17bfeb2c",
+              "name": "hubspot_token",
+              "value": "PASTE_HUBSPOT_PRIVATE_APP_TOKEN",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "e6764fb2-55aa-4c23-9aa3-75ba45ea5b5d",
+      "name": "Read WhatsApp Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        620
+      ],
+      "parameters": {
+        "jsCode": "// ===== Read WhatsApp Message =====\n// One item per inbound message, plus the single query that loads the lead, the\n// campaign script and where the conversation had got to.\nconst out = [];\nconst digits = (s) => String(s == null ? '' : s).replace(/\\D/g, '');\n\nfor (const it of $input.all()) {\n  const j = it.json || {};\n  const body = (j.body && j.body.entry) ? j.body : (j.entry ? j : null);\n  if (!body) continue;\n\n  for (const entry of body.entry || []) {\n    for (const change of entry.changes || []) {\n      const v = change.value || {};\n      const pnid = (v.metadata || {}).phone_number_id;\n      if (!pnid) continue;\n\n      for (const m of v.messages || []) {          // delivery receipts carry no .messages\n        const wa = digits(m.from);\n        if (!wa) continue;\n        let kind = 'other'; let id = ''; let text = '';\n        if (m.type === 'text') { kind = 'text'; text = String((m.text || {}).body || '').trim(); }\n        else if (m.type === 'interactive') {\n          const r = (m.interactive || {}).list_reply || (m.interactive || {}).button_reply;\n          if (r) { kind = 'choice'; id = String(r.id || ''); text = String(r.title || ''); }\n        } else if (m.type === 'button') {\n          // a quick reply on the welcome template: this is what opens the 24-hour window\n          kind = 'choice'; id = String((m.button || {}).payload || ''); text = String((m.button || {}).text || '');\n        }\n        const msg = { wa_id: wa, phone_number_id: pnid, kind, id, text,\n          msg_id: m.id || ('gen-' + Date.now() + '-' + Math.random().toString(36).slice(2)) };\n        out.push({ json: {\n          sql: 'SELECT lead_context($1,$2) AS ctx, claim_once($3) AS fresh, $4::jsonb AS msg',\n          params: [pnid, wa, 'wa:' + msg.msg_id, JSON.stringify(msg)],\n        } });\n      }\n    }\n  }\n}\nreturn out;\n"
+      }
+    },
+    {
+      "id": "da4d0e21-582d-4ca5-a0e7-f976e82979ae",
+      "name": "Load Lead + Script",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        880,
+        620
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.sql }}",
+        "options": {
+          "queryReplacement": "={{ $json.params }}"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2500
+    },
+    {
+      "id": "0ca2b806-ba12-499c-a16c-0ac60d263ec1",
+      "name": "Known lead?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1100,
+        620
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "db532087-2287-4626-bb36-e8ab4ffb2624",
+              "leftValue": "={{ !!$json.ctx && $json.fresh === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "c51aa5dd-41fb-4be2-b3e0-a605be4f7322",
+      "name": "Qualification Engine",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        520
+      ],
+      "parameters": {
+        "jsCode": "// ===== Qualification Engine =====\n// A question script, not a chatbot. The questions, the points and the closing lines all\n// live in campaigns.script, so a new campaign is a database row, not a new workflow.\n\nconst row = $input.first().json;\nconst ctx = row.ctx;\nconst msg = row.msg || {};\nconst S = (v) => (v == null ? '' : String(v));\nconst clip = (s, n) => (S(s).length > n ? S(s).slice(0, n - 1) + '\\u2026' : S(s));\n\n// ---------- WhatsApp payloads ----------\nconst base = (to) => ({ messaging_product: 'whatsapp', recipient_type: 'individual', to });\nconst txt = (to, body) => ({ ...base(to), type: 'text', text: { preview_url: false, body: clip(body, 4096) } });\nconst btns = (to, body, opts) => ({\n  ...base(to), type: 'interactive',\n  interactive: { type: 'button', body: { text: clip(body, 1024) },\n    action: { buttons: opts.slice(0, 3).map((o) => ({ type: 'reply', reply: { id: clip(o.id, 256), title: clip(o.title, 20) } })) } },\n});\nconst lst = (to, body, buttonText, sectionTitle, rows) => ({\n  ...base(to), type: 'interactive',\n  interactive: { type: 'list', body: { text: clip(body, 1024) },\n    action: { button: clip(buttonText, 20), sections: [{ title: clip(sectionTitle, 24),\n      rows: rows.slice(0, 10).map((r) => { const o = { id: clip(r.id, 200), title: clip(r.title, 24) };\n        if (r.description) o.description = clip(r.description, 72); return o; }) }] } },\n});\n\n// ---------- the script ----------\nconst campaign = ctx.campaign || {};\nconst lead = ctx.lead || {};\nconst script = campaign.script || {};\nconst questions = Array.isArray(script.questions) ? script.questions : [];\nconst answers = ctx.answers || [];\nconst to = S(lead.wa_id);\nconst firstName = S(lead.name).split(' ')[0] || 'there';\n\nconst fill = (t) => S(t).replace(/\\{name\\}/g, firstName).replace(/\\{full_name\\}/g, S(lead.name) || firstName)\n  .replace(/\\{campaign\\}/g, S(campaign.name));\n\nconst answeredIds = new Set(answers.map((a) => a.question_id));\nconst answerOf = (id) => (answers.find((a) => a.question_id === id) || {}).answer;\n\n// a question is skipped when its ask_if condition does not hold\nfunction applies(q, extra) {\n  const cond = q.ask_if;\n  if (!cond || !cond.question) return true;\n  const given = (extra && extra.question_id === cond.question) ? extra.answer : answerOf(cond.question);\n  if (given === undefined) return true;\n  if (Array.isArray(cond.in)) return cond.in.includes(given);\n  if (Array.isArray(cond.not_in)) return !cond.not_in.includes(given);\n  return true;\n}\nfunction nextQuestion(afterId, extra) {\n  const start = afterId ? questions.findIndex((q) => q.id === afterId) + 1 : 0;\n  for (let i = start; i < questions.length; i++) {\n    const q = questions[i];\n    if (answeredIds.has(q.id) && (!extra || extra.question_id !== q.id)) continue;\n    if (!applies(q, extra)) continue;\n    return q;\n  }\n  return null;\n}\nfunction render(q, lead_in) {\n  const body = (lead_in ? lead_in + '\\n\\n' : '') + fill(q.text);\n  if (q.type === 'choice') {\n    const opts = (q.options || []).map((o, i) => ({ id: 'o:' + q.id + ':' + i, title: S(o.label) }));\n    const longLabel = opts.some((o) => o.title.length > 20);\n    if (opts.length <= 3 && !longLabel) return btns(to, body, opts);\n    const rows = opts.map((o) => (o.title.length > 24 ? { id: o.id, title: clip(o.title, 24), description: o.title } : o));\n    const numbered = opts.map((o, i) => (i + 1) + '. ' + o.title).join('\\n');\n    return lst(to, body + '\\n\\n' + numbered, 'Choose', clip(fill(q.text), 24), rows);\n  }\n  return txt(to, body);\n}\n\n// ---------- reading the reply ----------\nfunction readMsg(m) {\n  if (m.kind === 'choice') return { kind: 'choice', id: S(m.id), text: S(m.text) };\n  if (m.kind === 'text') return { kind: 'text', id: '', text: S(m.text).trim() };\n  return { kind: 'other', id: '', text: '' };\n}\nconst input = readMsg(msg);\nconst low = input.text.toLowerCase().trim();\n\nconst OPTOUT = /^(stop|unsubscribe|opt ?out|remove me|not interested|no thanks|no thank you|do not contact|don'?t contact me)\\.?$/i;\nconst isOptOut = (input.kind === 'text' && OPTOUT.test(low))\n  || (input.kind === 'choice' && /not interested|no thanks|opt.?out/i.test(input.text));\n\n// ---------- validating an answer ----------\nfunction validateText(q, value) {\n  const v = S(value).trim();\n  const kind = S(q.validate).toLowerCase();\n  if (!v) return null;\n  if (kind === 'postcode') {\n    const m = v.toUpperCase().replace(/[^A-Z0-9]/g, '').match(/^([A-Z]{1,2}\\d[A-Z\\d]?)(\\d[A-Z]{2})$/);\n    return m ? m[1] + ' ' + m[2] : null;\n  }\n  if (kind === 'email') return /^[^@\\s]+@[^@\\s]+\\.[^@\\s]{2,}$/.test(v) ? v.toLowerCase() : null;\n  if (kind === 'number') { const n = v.replace(/[^\\d.]/g, ''); return n ? n : null; }\n  return v.length >= 2 ? v.slice(0, 500) : null;\n}\nfunction matchOption(q, inp) {\n  const opts = q.options || [];\n  if (inp.kind === 'choice') {\n    const idx = opts.findIndex((o, i) => 'o:' + q.id + ':' + i === inp.id);\n    if (idx >= 0) return opts[idx];\n    return opts.find((o) => S(o.label).toLowerCase() === S(inp.text).toLowerCase()) || null;\n  }\n  if (inp.kind !== 'text' || !low) return null;\n  if (/^\\d{1,2}$/.test(low)) return opts[parseInt(low, 10) - 1] || null;\n  const exact = opts.find((o) => S(o.label).toLowerCase() === low);\n  if (exact) return exact;\n  return opts.find((o) => low.length >= 3 && S(o.label).toLowerCase().includes(low)) || null;\n}\n\n// ---------- the turn ----------\nlet state = (ctx.session && ctx.session.step) ? { ...ctx.session } : null;\nlet answer = null; let status = ''; let band = ''; let done = false; let reply;\n\nconst totalWith = (extra) => answers.filter((a) => !extra || a.question_id !== extra.question_id)\n  .reduce((n, a) => n + (Number(a.points) || 0), 0) + (extra ? (Number(extra.points) || 0) : 0);\n\nfunction finish(extra, forced) {\n  const score = totalWith(extra);\n  const b = forced || (score >= (campaign.hot_threshold || 10) ? 'hot'\n    : score >= (campaign.warm_threshold || 5) ? 'warm' : 'cold');\n  const closing = script.closing || {};\n  const text = fill(forced === 'disqualified'\n    ? (closing.disqualified || closing.cold || 'Thanks for your time.')\n    : (closing[b] || closing.cold || 'Thanks - someone will be in touch shortly.'));\n  return { score, band: forced === 'disqualified' ? 'cold' : b,\n    status: forced === 'disqualified' ? 'disqualified' : 'qualified',\n    reply: txt(to, text), state: { step: 'done' }, done: true };\n}\n\nif (isOptOut) {\n  status = 'opted_out'; done = true; state = { step: 'done' }; band = S(lead.band);\n  reply = txt(to, fill(script.optout || 'No problem - I will not message you again.'));\n} else if (!questions.length) {\n  state = { step: 'done' }; status = 'engaged';\n  reply = txt(to, fill(script.intro || 'Thanks for getting in touch - someone will be with you shortly.'));\n} else if (!state) {\n  // their first reply opens the 24-hour window, so free-form messages work from here\n  const q = nextQuestion(null);\n  if (!q) { const f = finish(null); ({ status, band, reply, state, done } = f); }\n  else { state = { step: 'asking', qid: q.id, retries: 0 }; status = 'engaged';\n    reply = render(q, fill(script.intro || '')); }\n} else if (state.step === 'done') {\n  reply = txt(to, fill(script.after_done || 'Thanks {name} - your details are with the team and someone will be in touch.'));\n} else {\n  const q = questions.find((x) => x.id === state.qid) || nextQuestion(null);\n  if (!q) { const f = finish(null); ({ status, band, reply, state, done } = f); }\n  else if (q.type === 'choice') {\n    const opt = matchOption(q, input);\n    if (!opt) {\n      const retries = (state.retries || 0) + 1;\n      if (retries >= 3) {                                     // stop badgering them\n        answer = { question_id: q.id, question: fill(q.text), answer: '(no clear answer)', points: 0 };\n        const nq = nextQuestion(q.id, answer);\n        if (nq) { state = { step: 'asking', qid: nq.id, retries: 0 }; status = 'engaged'; reply = render(nq, 'No problem, let us move on.'); }\n        else { const f = finish(answer); ({ status, band, reply, state, done } = f); }\n      } else {\n        state = { ...state, retries }; status = 'engaged';\n        reply = render(q, 'Sorry, I did not catch that - please tap one of the options.');\n      }\n    } else {\n      answer = { question_id: q.id, question: fill(q.text), answer: S(opt.label), points: Number(opt.points) || 0 };\n      if (opt.disqualify) { const f = finish(answer, 'disqualified'); ({ status, band, reply, state, done } = f); }\n      else {\n        const nq = nextQuestion(q.id, answer);\n        if (nq) { state = { step: 'asking', qid: nq.id, retries: 0 }; status = 'engaged'; reply = render(nq); }\n        else { const f = finish(answer); ({ status, band, reply, state, done } = f); }\n      }\n    }\n  } else {\n    const value = input.kind === 'text' ? validateText(q, input.text) : null;\n    if (!value) {\n      const retries = (state.retries || 0) + 1;\n      const skipping = q.optional === true || retries >= 3;\n      if (skipping) {\n        answer = { question_id: q.id, question: fill(q.text),\n          answer: q.optional === true ? '(skipped)' : '(no clear answer)', points: 0 };\n        const nq = nextQuestion(q.id, answer);\n        if (nq) { state = { step: 'asking', qid: nq.id, retries: 0 }; status = 'engaged'; reply = render(nq, 'No problem.'); }\n        else { const f = finish(answer); ({ status, band, reply, state, done } = f); }\n      } else {\n        state = { ...state, retries }; status = 'engaged';\n        reply = render(q, S(q.retry_hint) || 'Sorry, that does not look right - could you send it again?');\n      }\n    } else {\n      answer = { question_id: q.id, question: fill(q.text), answer: value, points: Number(q.points) || 0 };\n      const nq = nextQuestion(q.id, answer);\n      if (nq) { state = { step: 'asking', qid: nq.id, retries: 0 }; status = 'engaged'; reply = render(nq); }\n      else { const f = finish(answer); ({ status, band, reply, state, done } = f); }\n    }\n  }\n}\n\nconst allAnswers = answer\n  ? answers.filter((a) => a.question_id !== answer.question_id).concat([answer])\n  : answers;\n\nreturn [{\n  json: {\n    lead_id: lead.id,\n    campaign_id: campaign.id,\n    to,\n    phone_number_id: campaign.phone_number_id,\n    graph_version: campaign.graph_version || 'v25.0',\n    token: campaign.wa_token,\n    waPayload: reply,\n    state: JSON.stringify(state || { step: 'asking' }),\n    answer: answer ? JSON.stringify(answer) : null,\n    status, score: totalWith(answer), band, done,\n    pushToCrm: done && (status === 'qualified' || status === 'disqualified'),\n    alertOwner: done && band === 'hot' && !!campaign.owner_wa && !!campaign.owner_template,\n    lead, campaign, allAnswers,\n  },\n}];\n"
+      }
+    },
+    {
+      "id": "8714c420-47ff-403a-9a4b-5a8558bac774",
+      "name": "Save Turn",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1540,
+        520
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT save_turn($1::int,$2::jsonb,$3::jsonb,$4,$5::int,$6) AS lead",
+        "options": {
+          "queryReplacement": "={{ [$json.lead_id, $json.state, $json.answer, $json.status, $json.score, $json.band] }}"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2500
+    },
+    {
+      "id": "b3444046-5299-4d8b-a76d-1cb685f49083",
+      "name": "Send Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        520
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/{{ $('Qualification Engine').first().json.graph_version }}/{{ $('Qualification Engine').first().json.phone_number_id }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Qualification Engine').first().json.token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Qualification Engine').first().json.waPayload) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2500
+    },
+    {
+      "id": "6fd0d17f-afc2-4589-a666-7444d0888ce7",
+      "name": "Finished?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1980,
+        520
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "abcb2b96-31d3-42be-9976-0dc3b2163768",
+              "leftValue": "={{ $('Qualification Engine').first().json.pushToCrm }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "aa5d6cf1-a75f-451e-b07d-6b46af49ffda",
+      "name": "Build CRM Payloads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        420
+      ],
+      "parameters": {
+        "jsCode": "// ===== Build CRM Payloads =====\n// Everything HubSpot needs, assembled once. Nothing here is a string-concatenated URL.\nconst e = $input.first().json;\nconst lead = e.lead || {};\nconst campaign = e.campaign || {};\nconst S = (v) => (v == null ? '' : String(v));\nconst esc = (s) => S(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n\nconst name = S(lead.name).trim();\nconst parts = name ? name.split(/\\s+/) : [];\nconst firstname = parts.length > 1 ? parts.slice(0, -1).join(' ') : (parts[0] || '');\nconst lastname = parts.length > 1 ? parts[parts.length - 1] : '';\n\n// find them by email or by phone: filter groups are OR'd, filters inside a group are AND'd\nconst filterGroups = [];\nif (lead.email) filterGroups.push({ filters: [{ propertyName: 'email', operator: 'EQ', value: S(lead.email) }] });\nif (lead.phone) filterGroups.push({ filters: [{ propertyName: 'phone', operator: 'EQ', value: S(lead.phone) }] });\n\nconst answers = e.allAnswers || [];\nconst rows = answers.map((a) => '<tr><td>' + esc(a.question) + '</td><td><b>' + esc(a.answer) + '</b></td><td>'\n  + (Number(a.points) || 0) + '</td></tr>').join('');\nconst noteBody = '<p><b>WhatsApp qualification - ' + esc(campaign.name) + '</b></p>'\n  + '<p>' + esc(name || S(lead.phone)) + ' &middot; ' + esc(S(lead.phone)) + (lead.email ? ' &middot; ' + esc(S(lead.email)) : '') + '</p>'\n  + '<p>Result: <b>' + S(e.band).toUpperCase() + '</b> (' + e.score + ' points) &middot; status ' + esc(e.status) + '</p>'\n  + (rows ? '<table>' + rows + '</table>' : '<p>No answers recorded.</p>')\n  + '<p>Source: ' + esc(lead.source || 'facebook') + (lead.source_ref ? ' &middot; ref ' + esc(lead.source_ref) : '') + '</p>';\n\nreturn [{\n  json: {\n    ...e,\n    hs: {\n      searchBody: filterGroups.length\n        ? { filterGroups, properties: ['email', 'phone', 'firstname', 'lastname'], limit: 1 }\n        : { filterGroups: [{ filters: [{ propertyName: 'phone', operator: 'EQ', value: '__none__' }] }], limit: 1 },\n      contactProps: Object.fromEntries(Object.entries({\n        firstname, lastname,\n        phone: S(lead.phone),\n        email: S(lead.email),\n        lifecyclestage: 'lead',\n      }).filter(([, v]) => v !== '')),\n      noteBody: { properties: { hs_timestamp: new Date().toISOString(), hs_note_body: noteBody.slice(0, 65000) } },\n      dealBody: {\n        properties: Object.fromEntries(Object.entries({\n          dealname: (name || S(lead.phone)) + ' - ' + S(campaign.name),\n          pipeline: S(campaign.crm_pipeline),\n          dealstage: S(campaign.crm_dealstage),\n        }).filter(([, v]) => v !== '')),\n      },\n    },\n  },\n}];\n"
+      }
+    },
+    {
+      "id": "15ae65d2-a186-434d-b502-f95d526d9631",
+      "name": "HubSpot: Find Contact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2420,
+        420
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v3/objects/contacts/search",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.hubspot_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.hs.searchBody) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2500
+    },
+    {
+      "id": "9f483e6c-32ba-4fef-b08c-943b141b2e4d",
+      "name": "Contact: Create or Update",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        420
+      ],
+      "parameters": {
+        "jsCode": "// ===== Contact: Create or Update =====\n// HubSpot's search is eventually consistent, so a contact created seconds ago may not\n// appear yet. A duplicate contact is recoverable; a lost lead is not, so we go ahead.\nconst ctx = $('Build CRM Payloads').first().json;\nconst res = $input.first().json || {};\nconst S = (v) => (v == null ? '' : String(v));\nconst notes = [];\n\nlet contactId = '';\nif (res.status && res.status !== 'COMPLETE' && res.message) notes.push('search_failed:' + S(res.message).slice(0, 120));\nconst hit = ((res.results || [])[0]) || null;\nif (hit && hit.id) contactId = S(hit.id);\n\nreturn [{\n  json: {\n    ...ctx,\n    contactId,\n    contactUrl: contactId\n      ? 'https://api.hubapi.com/crm/v3/objects/contacts/' + encodeURIComponent(contactId)\n      : 'https://api.hubapi.com/crm/v3/objects/contacts',\n    contactMethod: contactId ? 'PATCH' : 'POST',\n    contactBody: { properties: ctx.hs.contactProps },\n    crmNotes: notes,\n  },\n}];\n"
+      }
+    },
+    {
+      "id": "95165637-5260-4ea5-b723-cc135d47f077",
+      "name": "HubSpot: Save Contact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2860,
+        420
+      ],
+      "parameters": {
+        "method": "={{ $json.contactMethod }}",
+        "url": "={{ $json.contactUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.hubspot_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.contactBody) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2500
+    },
+    {
+      "id": "4c0fdf95-6676-4c65-ab21-ae4fd1f1dd5c",
+      "name": "Prepare Note",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3080,
+        420
+      ],
+      "parameters": {
+        "jsCode": "// ===== Prepare Note =====\nconst ctx = $('Contact: Create or Update').first().json;\nconst res = $input.first().json || {};\nconst S = (v) => (v == null ? '' : String(v));\nconst notes = [...(ctx.crmNotes || [])];\n\nconst contactId = S(res.id) || S(ctx.contactId);\nif (!contactId) notes.push('no_contact_id:' + S(res.message || res.status || 'unknown').slice(0, 120));\n\nreturn [{\n  json: {\n    ...ctx,\n    contactId,\n    contactCreated: ctx.contactMethod === 'POST' && !!res.id,\n    hasContact: !!contactId,\n    noteBody: ctx.hs.noteBody,\n    dealBody: ctx.hs.dealBody,\n    hot: ctx.band === 'hot' && !!contactId,\n    crmNotes: notes,\n  },\n}];\n"
+      }
+    },
+    {
+      "id": "de78eb38-6852-4b14-b389-92f60ac3396f",
+      "name": "HubSpot: Create Note",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3300,
+        420
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v3/objects/notes",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.hubspot_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.noteBody) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2500
+    },
+    {
+      "id": "a4471067-7298-43ee-a517-a476d71b91de",
+      "name": "HubSpot: Link Note",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3520,
+        420
+      ],
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.hubapi.com/crm/v4/objects/notes/{{ $json.id }}/associations/default/contacts/{{ $('Prepare Note').first().json.contactId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.hubspot_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2500,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "b99fac10-3926-4ce0-8fbd-81c74c8f5bb6",
+      "name": "Hot lead?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3740,
+        420
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0d6ed471-6fe8-4f40-bb66-39050869f601",
+              "leftValue": "={{ $('Prepare Note').first().json.hot }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "14eee42f-d25c-45b2-b855-09b120815f25",
+      "name": "HubSpot: Create Deal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3960,
+        320
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v3/objects/deals",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.hubspot_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Prepare Note').first().json.dealBody) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2500
+    },
+    {
+      "id": "836f45d3-de4e-42cf-8ad2-ee517c82e66b",
+      "name": "HubSpot: Link Deal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4180,
+        320
+      ],
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.hubapi.com/crm/v4/objects/deals/{{ $json.id }}/associations/default/contacts/{{ $('Prepare Note').first().json.contactId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.hubspot_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2500,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "cb7d86d7-c878-48fc-838b-4902d9ad811b",
+      "name": "Record CRM (Deal)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4400,
+        320
+      ],
+      "parameters": {
+        "jsCode": "// ===== Record CRM (Deal) =====\n// Hot leads only. The deal was created a moment ago on this same path, so reading it is safe.\nconst ctx = $('Prepare Note').first().json;\nconst S = (v) => (v == null ? '' : String(v));\nconst notes = [...(ctx.crmNotes || [])];\n\nlet dealId = '';\nconst d = $('HubSpot: Create Deal').first().json;\nif (d && d.id) dealId = S(d.id);\nelse notes.push('deal_failed:' + S((d && (d.message || (d.error && d.error.message))) || 'no id').slice(0, 120));\n\nlet noteId = '';\ntry { const n = $('HubSpot: Create Note').first().json; if (n && n.id) noteId = S(n.id); else if (n && n.message) notes.push('note_failed:' + S(n.message).slice(0, 120)); }\ncatch (err) { notes.push('note_missing'); }\n\nconst detail = [ctx.band, ctx.contactCreated ? 'contact_created' : 'contact_updated',\n  noteId ? 'note' : 'no_note', dealId ? 'deal' : 'no_deal'].concat(notes).join(' ');\n\nreturn [{\n  json: {\n    ...ctx,\n    crm: { contactId: ctx.contactId, dealId, noteId, ok: !!ctx.contactId, notes },\n    sql: 'SELECT save_crm($1::int,$2,$3,$4)',\n    params: [ctx.lead_id, ctx.contactId, dealId, detail.slice(0, 400)],\n  },\n}];\n"
+      }
+    },
+    {
+      "id": "6b5da214-6ff5-4d43-ba24-c1421cfadb1e",
+      "name": "Save CRM Ids",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        4620,
+        420
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.sql }}",
+        "options": {
+          "queryReplacement": "={{ $json.params }}"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2500,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "dcffc7e6-4d26-4f5e-b55f-2ca7f4be4567",
+      "name": "Record CRM",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4400,
+        520
+      ],
+      "parameters": {
+        "jsCode": "// ===== Record CRM =====\n// Warm, cold and disqualified leads. This step never reads the deal node: inside a loop, a node that was\n// skipped on this pass still returns an earlier pass's output, so a warm lead could inherit another lead's deal.\nconst ctx = $('Prepare Note').first().json;\nconst S = (v) => (v == null ? '' : String(v));\nconst notes = [...(ctx.crmNotes || [])];\n\nlet dealId = '';\n\nlet noteId = '';\ntry { const n = $('HubSpot: Create Note').first().json; if (n && n.id) noteId = S(n.id); else if (n && n.message) notes.push('note_failed:' + S(n.message).slice(0, 120)); }\ncatch (err) { notes.push('note_missing'); }\n\nconst detail = [ctx.band, ctx.contactCreated ? 'contact_created' : 'contact_updated',\n  noteId ? 'note' : 'no_note', dealId ? 'deal' : 'no_deal'].concat(notes).join(' ');\n\nreturn [{\n  json: {\n    ...ctx,\n    crm: { contactId: ctx.contactId, dealId, noteId, ok: !!ctx.contactId, notes },\n    sql: 'SELECT save_crm($1::int,$2,$3,$4)',\n    params: [ctx.lead_id, ctx.contactId, dealId, detail.slice(0, 400)],\n  },\n}];\n"
+      }
+    },
+    {
+      "id": "3a15e9bc-fe30-4180-9bdd-c8f3f0c06f65",
+      "name": "Loop Over Messages",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        660,
+        620
+      ],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "be869995-a1e5-487a-be13-1637c0b3bb48",
+      "name": "Tell the rep?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4840,
+        420
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "5ffabd78-b85d-40b6-8f94-6920a336e4f8",
+              "leftValue": "={{ $('Qualification Engine').first().json.alertOwner }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "4addccc0-6fc6-43ae-99b6-4bc81b09ea67",
+      "name": "Alert the Rep",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5060,
+        320
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/{{ $('Qualification Engine').first().json.graph_version }}/{{ $('Qualification Engine').first().json.phone_number_id }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Qualification Engine').first().json.token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ messaging_product: 'whatsapp', to: String($('Qualification Engine').first().json.campaign.owner_wa).replace(/\\D/g,''), type: 'template', template: { name: $('Qualification Engine').first().json.campaign.owner_template, language: { code: $('Qualification Engine').first().json.campaign.template_lang || 'en' }, components: [{ type: 'body', parameters: [ { type: 'text', text: String($('Qualification Engine').first().json.lead.name || 'New lead').slice(0,60) }, { type: 'text', text: String($('Qualification Engine').first().json.lead.phone).slice(0,60) }, { type: 'text', text: ('score ' + $('Qualification Engine').first().json.score).slice(0,60) } ] }] } }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2500,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "fde020fc-a933-471b-8a8d-398480fed5a8",
+      "name": "Sticky Note 6b057ce2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        820,
+        860
+      ],
+      "parameters": {
+        "content": "## 2. The conversation, then the CRM\n**Qualification Engine** is a script runner, not a chatbot. The questions, the points\nand the closing lines live in `campaigns.script`, so a second campaign with different\nquestions is a database row - this workflow does not change.\n\nIt handles: tapped and typed answers, branching (`ask_if`), a disqualifying option,\noptional questions, three strikes on an unclear answer, and STOP at any point.\n\n**Loop Over Messages** keeps it to one message at a time, which is what makes\n`$('Node').first()` safe everywhere below.",
+        "color": 5,
+        "width": 700,
+        "height": 300
+      }
+    },
+    {
+      "id": "34db6a09-5162-4a1e-9084-c300a515fea9",
+      "name": "Sticky Note 221e6eeb",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2600,
+        700
+      ],
+      "parameters": {
+        "content": "## HubSpot\n**Credential:** none. A **Private App token** in **Config** is simplest; scopes\n`crm.objects.contacts.write`, `crm.objects.deals.write`, `tickets` not needed.\n\n**Save Contact** switches between POST and PATCH from an expression, so create and\nupdate are one node rather than a branch.\n\nAssociations use the **v4 default** endpoint:\n`PUT /crm/v4/objects/notes/{id}/associations/default/contacts/{id}`\nwhich needs no association type id, so there is nothing to look up or get wrong.\n\nHubSpot's search is eventually consistent - a contact created seconds ago may not be\nfound yet. A duplicate contact is recoverable; a lost lead is not, so the flow\ncontinues either way and records what happened.",
+        "color": 3,
+        "width": 700,
+        "height": 340
+      }
+    }
+  ],
+  "connections": {
+    "WhatsApp Verify (GET)": {
+      "main": [
+        [
+          {
+            "node": "Verify Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Token": {
+      "main": [
+        [
+          {
+            "node": "Answer Challenge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Replies": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Read WhatsApp Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read WhatsApp Message": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Lead + Script": {
+      "main": [
+        [
+          {
+            "node": "Known lead?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Known lead?": {
+      "main": [
+        [
+          {
+            "node": "Qualification Engine",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Over Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qualification Engine": {
+      "main": [
+        [
+          {
+            "node": "Save Turn",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Turn": {
+      "main": [
+        [
+          {
+            "node": "Send Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Reply": {
+      "main": [
+        [
+          {
+            "node": "Finished?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finished?": {
+      "main": [
+        [
+          {
+            "node": "Build CRM Payloads",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Over Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build CRM Payloads": {
+      "main": [
+        [
+          {
+            "node": "HubSpot: Find Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot: Find Contact": {
+      "main": [
+        [
+          {
+            "node": "Contact: Create or Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contact: Create or Update": {
+      "main": [
+        [
+          {
+            "node": "HubSpot: Save Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot: Save Contact": {
+      "main": [
+        [
+          {
+            "node": "Prepare Note",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Note": {
+      "main": [
+        [
+          {
+            "node": "HubSpot: Create Note",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot: Create Note": {
+      "main": [
+        [
+          {
+            "node": "HubSpot: Link Note",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot: Link Note": {
+      "main": [
+        [
+          {
+            "node": "Hot lead?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hot lead?": {
+      "main": [
+        [
+          {
+            "node": "HubSpot: Create Deal",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Record CRM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot: Create Deal": {
+      "main": [
+        [
+          {
+            "node": "HubSpot: Link Deal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot: Link Deal": {
+      "main": [
+        [
+          {
+            "node": "Record CRM (Deal)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record CRM (Deal)": {
+      "main": [
+        [
+          {
+            "node": "Save CRM Ids",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save CRM Ids": {
+      "main": [
+        [
+          {
+            "node": "Tell the rep?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record CRM": {
+      "main": [
+        [
+          {
+            "node": "Save CRM Ids",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Messages": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Load Lead + Script",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tell the rep?": {
+      "main": [
+        [
+          {
+            "node": "Alert the Rep",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Over Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert the Rep": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

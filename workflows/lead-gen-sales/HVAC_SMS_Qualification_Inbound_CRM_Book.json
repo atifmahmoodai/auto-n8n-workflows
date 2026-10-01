@@ -1,0 +1,672 @@
+{
+  "name": "HVAC SMS Qualification: Inbound -> CRM -> Book",
+  "nodes": [
+    {
+      "id": "b15ac75d-4f4d-49cf-aaf6-c13b0fdc70e2",
+      "name": "Sticky Note 097d86e7",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        100,
+        300
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "SMS Bot Architecture",
+            "position": [
+              -220,
+              60
+            ],
+            "parameters": {
+              "width": 500,
+              "height": 240,
+              "content": "HVAC SMS QUALIFICATION\n\n1. Twilio inbound SMS trigger\n2. Load lead state from sheet\n3. 3-step conversation (emergency -> address -> book)\n4. HubSpot contact + deal on qualified\n5. Slack alert on emergency leads\n\nA2P 10DLC registration required before production SMS volume."
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "ad2f5be5-f9c8-41ee-97b1-22921c9f261a",
+      "name": "Twilio: Inbound SMS",
+      "type": "n8n-nodes-base.twilioTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "updates": [
+          "com.twilio.messaging.inbound-message.received"
+        ]
+      },
+      "webhookId": "5b4cc66a-e256-405d-a587-4d698a06a712"
+    },
+    {
+      "id": "61d66cb0-eda5-4b0b-9aa1-0e134c1c6ce1",
+      "name": "Normalize SMS Payload",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "from-phone",
+              "name": "from_phone",
+              "value": "={{ $json.From || $json.from || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "to-phone",
+              "name": "to_phone",
+              "value": "={{ $json.To || $json.to || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "body",
+              "name": "message_body",
+              "value": "={{ ($json.Body || $json.body || \"\").trim() }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "eee8ee7b-a8e9-44e8-a172-9eceef4eb960",
+      "name": "Sheet: Read All Leads",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_YOUR_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Lead_Pipeline"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a79d09e3-911c-4a77-a0eb-6db75547ed47",
+      "name": "SMS Qualification State Machine",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const inbound = $('Normalize SMS Payload').item.json;\nconst body = (inbound.message_body || '').trim();\nconst bodyUp = body.toUpperCase();\nconst phone = inbound.from_phone;\nconst calLink = 'REPLACE_WITH_HVAC_CAL_BOOKING_LINK';\nconst company = 'REPLACE_WITH_HVAC_COMPANY_NAME';\n\nconst rows = $('Sheet: Read All Leads').all().map((i) => i.json);\nlet lead = rows.find((r) => (r.caller_phone || '') === phone);\n\nif (!lead) {\n  lead = {\n    lead_id: 'HVAC-SMS-' + $now.toFormat('yyyyLLdd-HHmmss'),\n    created_at: $now.toISO(),\n    caller_phone: phone,\n    called_number: inbound.to_phone,\n    call_sid: '',\n    call_status: 'sms_inbound',\n    direction: 'inbound',\n    vertical: 'HVAC',\n    lead_source: 'sms_inbound',\n    qualify_step: 0,\n    pipeline_status: 'qualifying',\n    issue_type: 'unknown',\n    service_address: '',\n    preferred_time: '',\n    last_message: body,\n    sms_sent_at: '',\n    sms_reply_count: 0,\n    hubspot_contact_id: '',\n    hubspot_deal_id: '',\n    estimated_job_value: 800,\n    owner_notified: 'pending',\n    notes: 'Inbound SMS without prior missed call row',\n  };\n}\n\nlet step = Number(lead.qualify_step) || 0;\nlet reply = '';\nlet pipeline = lead.pipeline_status || 'qualifying';\nlet issue = lead.issue_type || 'unknown';\nlet address = lead.service_address || '';\nlet prefTime = lead.preferred_time || '';\nlet qualified = false;\nlet optedOut = false;\nlet isEmergency = false;\nlet replyCount = Number(lead.sms_reply_count) || 0;\nreplyCount += 1;\n\nif (bodyUp === 'STOP' || bodyUp === 'UNSUBSCRIBE' || bodyUp === 'CANCEL') {\n  optedOut = true;\n  pipeline = 'opted_out';\n  reply = company + ' HVAC: You are unsubscribed. Reply START to re-join.';\n} else if (bodyUp === 'START') {\n  pipeline = 'qualifying';\n  step = 0;\n  reply = 'Welcome back to ' + company + ' HVAC. AC/heat emergency? Reply YES or NO.';\n} else if (step === 0) {\n  if (bodyUp.includes('YES') || bodyUp === 'Y' || bodyUp.includes('EMERGENCY')) {\n    issue = 'emergency';\n    isEmergency = true;\n    step = 1;\n    reply = 'Got it - emergency noted. What is the service address? (street + city)';\n  } else if (bodyUp.includes('NO') || bodyUp === 'N') {\n    issue = 'routine';\n    step = 1;\n    reply = 'No problem. What service do you need and what is your address?';\n  } else {\n    reply = 'Please reply YES for AC/heat emergency or NO for routine service.';\n  }\n} else if (step === 1) {\n  if (body.length < 5) {\n    reply = 'Please send your full service address (street + city).';\n  } else {\n    address = body;\n    step = 2;\n    reply = 'Thanks! Book here: ' + calLink + ' — or reply BEST TIME and your preferred callback window.';\n  }\n} else if (step === 2) {\n  prefTime = body;\n  step = 3;\n  qualified = true;\n  pipeline = 'qualified';\n  reply = 'Perfect - we have your info. A tech will confirm shortly. For faster booking use: ' + calLink;\n} else {\n  reply = 'Thanks! Our team will follow up shortly. Book online: ' + calLink;\n}\n\nreturn {\n  json: {\n    ...lead,\n    qualify_step: step,\n    pipeline_status: pipeline,\n    issue_type: issue,\n    service_address: address,\n    preferred_time: prefTime,\n    last_message: body,\n    sms_reply_count: replyCount,\n    reply_sms: reply,\n    qualified,\n    opted_out: optedOut,\n    is_emergency: isEmergency,\n    hubspot_email: (phone.replace(/[^0-9]/g, '') + '@hvac-lead.local'),\n  },\n};"
+      }
+    },
+    {
+      "id": "c0ccbc23-e6c7-46bb-9101-2aece5147fd5",
+      "name": "Lead Qualified?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        960,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.qualified }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "d4a0e890-b02e-4518-8c90-3716bbfadfa2",
+      "name": "HubSpot: Upsert Contact",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        1200,
+        200
+      ],
+      "parameters": {
+        "resource": "contact",
+        "operation": "upsert",
+        "email": "={{ $json.hubspot_email }}",
+        "additionalFields": {
+          "phoneNumber": "={{ $json.caller_phone }}",
+          "lifeCycleStage": "lead",
+          "leadStatus": "NEW",
+          "message": "={{ \"HVAC lead. Issue: \" + $json.issue_type + \". Address: \" + $json.service_address }}"
+        }
+      }
+    },
+    {
+      "id": "a115e4f8-acf1-4d20-98ba-54aea9af1ae4",
+      "name": "HubSpot: Create Deal",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        1440,
+        200
+      ],
+      "parameters": {
+        "resource": "deal",
+        "operation": "create",
+        "stage": "REPLACE_WITH_HUBSPOT_DEAL_STAGE_ID",
+        "additionalFields": {
+          "dealName": "={{ \"HVAC - \" + $json.issue_type + \" - \" + $json.caller_phone }}",
+          "amount": "={{ String($json.estimated_job_value || 800) }}",
+          "description": "={{ \"Address: \" + $json.service_address + \" | Preferred: \" + $json.preferred_time }}",
+          "pipeline": "default"
+        }
+      }
+    },
+    {
+      "id": "fbc86841-21ef-4193-bffb-69616ecbe232",
+      "name": "Attach CRM IDs",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1680,
+        200
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "hs-contact",
+              "name": "hubspot_contact_id",
+              "value": "={{ $(\"HubSpot: Upsert Contact\").item.json.id || $(\"HubSpot: Upsert Contact\").item.json.vid || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "hs-deal",
+              "name": "hubspot_deal_id",
+              "value": "={{ $(\"HubSpot: Create Deal\").item.json.id || \"\" }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "db6d2ad0-398e-4b83-8527-c4c3211a44e7",
+      "name": "Emergency Lead?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1920,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.is_emergency }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "bc362b2b-7558-4ec1-9ff7-4bbc34a9fd14",
+      "name": "Slack: EMERGENCY Lead",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.5,
+      "position": [
+        2160,
+        140
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SLACK_CHANNEL_ID"
+        },
+        "messageType": "text",
+        "text": "={{ \":rotating_light: HVAC EMERGENCY LEAD\\n*Phone:* \" + $json.caller_phone + \"\\n*Address:* \" + $json.service_address + \"\\n*Call back ASAP*\"}}",
+        "otherOptions": {
+          "includeLinkToWorkflow": true,
+          "mrkdwn": true
+        }
+      },
+      "webhookId": "a69be064-cf70-43d4-ab5b-21d9f5b35cd5"
+    },
+    {
+      "id": "00a8648b-8509-458f-809c-d127ca417cb2",
+      "name": "Twilio: Send Reply SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        2160,
+        300
+      ],
+      "parameters": {
+        "resource": "sms",
+        "operation": "send",
+        "from": "REPLACE_WITH_TWILIO_FROM_NUMBER",
+        "to": "={{ $json.caller_phone }}",
+        "message": "={{ $json.reply_sms }}"
+      }
+    },
+    {
+      "id": "4d22e135-0047-4d4a-9df7-1102c39a397f",
+      "name": "Sheet: Update Lead State",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2400,
+        300
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_YOUR_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Lead_Pipeline"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": [
+            "caller_phone"
+          ],
+          "value": {},
+          "schema": [
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "type": "string"
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "type": "string"
+            },
+            {
+              "id": "caller_phone",
+              "displayName": "caller_phone",
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "called_number",
+              "displayName": "called_number",
+              "type": "string"
+            },
+            {
+              "id": "call_sid",
+              "displayName": "call_sid",
+              "type": "string"
+            },
+            {
+              "id": "call_status",
+              "displayName": "call_status",
+              "type": "string"
+            },
+            {
+              "id": "direction",
+              "displayName": "direction",
+              "type": "string"
+            },
+            {
+              "id": "vertical",
+              "displayName": "vertical",
+              "type": "string"
+            },
+            {
+              "id": "lead_source",
+              "displayName": "lead_source",
+              "type": "string"
+            },
+            {
+              "id": "qualify_step",
+              "displayName": "qualify_step",
+              "type": "number"
+            },
+            {
+              "id": "pipeline_status",
+              "displayName": "pipeline_status",
+              "type": "string"
+            },
+            {
+              "id": "issue_type",
+              "displayName": "issue_type",
+              "type": "string"
+            },
+            {
+              "id": "service_address",
+              "displayName": "service_address",
+              "type": "string"
+            },
+            {
+              "id": "preferred_time",
+              "displayName": "preferred_time",
+              "type": "string"
+            },
+            {
+              "id": "last_message",
+              "displayName": "last_message",
+              "type": "string"
+            },
+            {
+              "id": "sms_sent_at",
+              "displayName": "sms_sent_at",
+              "type": "string"
+            },
+            {
+              "id": "sms_reply_count",
+              "displayName": "sms_reply_count",
+              "type": "number"
+            },
+            {
+              "id": "hubspot_contact_id",
+              "displayName": "hubspot_contact_id",
+              "type": "string"
+            },
+            {
+              "id": "hubspot_deal_id",
+              "displayName": "hubspot_deal_id",
+              "type": "string"
+            },
+            {
+              "id": "estimated_job_value",
+              "displayName": "estimated_job_value",
+              "type": "number"
+            },
+            {
+              "id": "owner_notified",
+              "displayName": "owner_notified",
+              "type": "string"
+            },
+            {
+              "id": "notes",
+              "displayName": "notes",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "c482d8c7-468d-4504-808c-9901bd6e52f1",
+      "name": "Notify If Qualified?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2640,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.qualified }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "bc3c3dc0-eb44-43e6-8b24-7f527d3fe8ce",
+      "name": "Slack: Qualified Lead",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.5,
+      "position": [
+        2880,
+        220
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SLACK_CHANNEL_ID"
+        },
+        "messageType": "text",
+        "text": "={{ \":white_check_mark: HVAC lead qualified\\n*Phone:* \" + $json.caller_phone + \"\\n*Issue:* \" + $json.issue_type + \"\\n*Address:* \" + $json.service_address + \"\\n*Deal:* \" + ($json.hubspot_deal_id || \"pending\") }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": true,
+          "mrkdwn": true
+        }
+      },
+      "webhookId": "c4187896-364a-4d26-8b00-903e08ed56b2"
+    }
+  ],
+  "connections": {
+    "Twilio: Inbound SMS": {
+      "main": [
+        [
+          {
+            "node": "Normalize SMS Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize SMS Payload": {
+      "main": [
+        [
+          {
+            "node": "Sheet: Read All Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheet: Read All Leads": {
+      "main": [
+        [
+          {
+            "node": "SMS Qualification State Machine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SMS Qualification State Machine": {
+      "main": [
+        [
+          {
+            "node": "Lead Qualified?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Qualified?": {
+      "main": [
+        [
+          {
+            "node": "HubSpot: Upsert Contact",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Emergency Lead?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot: Upsert Contact": {
+      "main": [
+        [
+          {
+            "node": "HubSpot: Create Deal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot: Create Deal": {
+      "main": [
+        [
+          {
+            "node": "Attach CRM IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attach CRM IDs": {
+      "main": [
+        [
+          {
+            "node": "Emergency Lead?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Emergency Lead?": {
+      "main": [
+        [
+          {
+            "node": "Slack: EMERGENCY Lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Twilio: Send Reply SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack: EMERGENCY Lead": {
+      "main": [
+        [
+          {
+            "node": "Twilio: Send Reply SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Twilio: Send Reply SMS": {
+      "main": [
+        [
+          {
+            "node": "Sheet: Update Lead State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheet: Update Lead State": {
+      "main": [
+        [
+          {
+            "node": "Notify If Qualified?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify If Qualified?": {
+      "main": [
+        [
+          {
+            "node": "Slack: Qualified Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

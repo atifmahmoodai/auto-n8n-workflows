@@ -1,0 +1,362 @@
+{
+  "name": "Scenario 1b: Approved Lead Outreach",
+  "nodes": [
+    {
+      "id": "ad45e333-6004-448f-a05b-97655e1e402d",
+      "name": "Sticky Note d2b585a2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        100,
+        300
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "Setup",
+            "position": [
+              -200,
+              60
+            ],
+            "parameters": {
+              "width": 480,
+              "height": 180,
+              "content": "SCENARIO 1b — Send approved outreach only.\nPOST /execute-approved-lead with { lead_id, approval_id }\nOr wire Scenario 5 Approval Hub to call this sub-workflow on approve."
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "f7766bca-4ac4-43d3-ab81-db6ea3efe474",
+      "name": "Execute Approved Lead",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        420
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "execute-approved-lead",
+        "responseMode": "responseNode"
+      },
+      "webhookId": "3db3f999-a14d-416d-bf12-6febdd1e9b37"
+    },
+    {
+      "id": "229a0d91-8638-411f-b655-6c09608dcca2",
+      "name": "Parse Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const j = $input.first()?.json || {};\nconst body = j.body && typeof j.body === 'object' ? j.body : j;\nconst source = j.headers || j.webhookUrl ? 'webhook' : 'subworkflow';\nconst leadId = String(body.lead_id || body.leadId || j.lead_id || '').trim();\nlet payload = body.payload || body.lead || j.payload || j;\nif (typeof payload === 'string') { try { payload = JSON.parse(payload); } catch(e) { payload = {}; } }\nif (!leadId && payload.lead_id) payload.lead_id = payload.lead_id;\nconst id = leadId || String(payload.lead_id || '').trim();\nif (!id) return [{ json: { ok: false, error: 'lead_id required', source } }];\nreturn [{ json: { ok: true, source, lead_id: id, email: payload.email || '', email_subject: payload.email_subject || 'Following up', email_body: payload.email_body || payload.message || '', name: payload.name || '', tier: payload.tier || '', approval_id: body.approval_id || j.approval_id || '' } }];"
+      }
+    },
+    {
+      "id": "7da2b05c-8afb-4026-95aa-bafced9eb50c",
+      "name": "Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.ok }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "dd62c5ed-be47-40fa-b1da-cb900231c361",
+      "name": "Send Approved Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        720,
+        220
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.email }}",
+        "subject": "={{ $json.email_subject }}",
+        "emailType": "text",
+        "message": "={{ $json.email_body }}"
+      },
+      "webhookId": "b2861b7d-5b40-488f-904a-2f539ee50fb0"
+    },
+    {
+      "id": "9d6bdd6c-c5eb-40de-aef0-204d46acb9b8",
+      "name": "Mark Lead Sent",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        960,
+        220
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "tableId": "leads",
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "lead_id",
+              "condition": "eq",
+              "keyValue": "={{ $(\"Parse Request\").item.json.lead_id }}"
+            }
+          ]
+        },
+        "dataToSend": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "outreach_sent"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "cd60a14e-b30f-4e9a-a7c7-ffb82e0c7e8f",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1200,
+        220
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, lead_id: $(\"Parse Request\").item.json.lead_id, status: \"outreach_sent\" } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "e0a205ac-cb05-4b44-b48c-fd02cea45437",
+      "name": "Respond Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        720,
+        420
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": 400
+        }
+      }
+    },
+    {
+      "id": "bea58973-8b7a-4bdc-80f6-3d906a09c57a",
+      "name": "When Called by Approval Hub",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        180
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "9b7dcd57-4cb1-4029-acf1-7d516a0103bf",
+      "name": "Called as Sub-workflow?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1200,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $(\"Parse Request\").item.json.source }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "subworkflow"
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "1248e222-d463-4b79-8ffc-4debdc43877c",
+      "name": "Sub-workflow Result",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1440,
+        200
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ok",
+              "name": "ok",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "lead",
+              "name": "lead_id",
+              "value": "={{ $(\"Parse Request\").item.json.lead_id }}",
+              "type": "string"
+            },
+            {
+              "id": "status",
+              "name": "status",
+              "value": "outreach_sent",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Execute Approved Lead": {
+      "main": [
+        [
+          {
+            "node": "Parse Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Request": {
+      "main": [
+        [
+          {
+            "node": "Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid?": {
+      "main": [
+        [
+          {
+            "node": "Send Approved Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Approved Email": {
+      "main": [
+        [
+          {
+            "node": "Mark Lead Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Called by Approval Hub": {
+      "main": [
+        [
+          {
+            "node": "Parse Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Lead Sent": {
+      "main": [
+        [
+          {
+            "node": "Called as Sub-workflow?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Called as Sub-workflow?": {
+      "main": [
+        [
+          {
+            "node": "Sub-workflow Result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

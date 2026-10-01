@@ -1,0 +1,700 @@
+{
+  "name": "OPD Voice Appointment Automation - Production v2",
+  "nodes": [
+    {
+      "id": "61720ff7-4699-4aa3-9c5f-62aaf08dfb27",
+      "name": "POST /opd/route-call",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        224,
+        160
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "opd/route-call",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "20efdf0e-f839-4612-bbb5-454f5301838c"
+    },
+    {
+      "id": "6514c9d2-e8e7-40a1-a171-4678dccc2c09",
+      "name": "Route Engine",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        160
+      ],
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst body = (items[0] && items[0].json && (items[0].json.body || items[0].json)) || {};\nconst text = String(body.caller_text || body.message || body.transcript || body.query || '').toLowerCase();\nconst callId = String(body.call_id || body.conversation_id || 'unknown');\nconst phone = String(body.patient_phone || body.phone || body.cell_no || '');\nconst requestId = 'route_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);\nconst nowIso = new Date().toISOString();\nconst SAFETY = ' If your symptoms are severe or get worse at any point, hang up and call 1122 immediately.';\n// Broadened, bilingual (English + Roman Urdu) emergency detector, biased toward OVER-triage.\n// A false positive only tells a patient to call 1122; a false negative routes an emergency to a routine slot. We accept the former to avoid the latter.\nconst emergencyRe = /(chest pain|heart attack|cardiac arrest|can ?not breathe|can'?t breathe|not breathing|can'?t catch (my )?breath|gasping|choking|severe bleeding|bleeding heavily|unconscious|uncons?ious|passed out|pass(ing)? out|blacked out|faint|collapse|no pulse|stroke|suicide|overdose|anaphylaxis|severe allergic|blue lips|turning blue|going blue|seizure|convuls|coughing (up )?blood|vomiting blood|blood in (my )?(vomit|stool)|heart (is )?racing|racing heart|going to die|feel like.*(die|dying)|drowning|severe pain|crushing pain|saans nahi|saans nai|saans ruk|dam ghut|behosh|be-?hosh|dil ka daura|dil bohat tez|dil bahut tez|seenay? me(i)?n dard|seene me(i)?n dard|khoon a ?raha|khoon araha)/i;\nif (emergencyRe.test(text)) {\n  const response = { ok: true, action: 'emergency_redirect', is_emergency: true, department: null, doctor_id: null, receptionist_message: 'This sounds like a medical emergency. Do not book a routine appointment. Please call 1122 (Rescue) immediately or go to the nearest emergency department.', emergency_number: '1122' };\n  return [{ json: { response, audit: { event_type: 'route_call', request_id: requestId, call_id: callId, doctor_id: '', patient_phone: phone, payload_json: JSON.stringify(body).slice(0, 5000), severity: 'critical', created_iso: nowIso } } }];\n}\nconst doctors = { ali_ent: { doctor_id: 'ali_ent', doctor_name: 'Dr Ali', department: 'ENT', pa_agent: 'Dr Ali ENT PA' }, khan_heart: { doctor_id: 'khan_heart', doctor_name: 'Dr Khan', department: 'Heart', pa_agent: 'Dr Khan Heart PA' }, ahmed_chest: { doctor_id: 'ahmed_chest', doctor_name: 'Dr Ahmed', department: 'Chest', pa_agent: 'Dr Ahmed Chest PA' } };\nlet doctor = null; let confidence = 0.2;\nif (/(ear|nose|throat|ent|tonsil|sinus|hearing|voice|allergy|nasal)/i.test(text)) { doctor = doctors.ali_ent; confidence = 0.9; }\nelse if (/(heart|cardio|cardiac|bp|blood pressure|ecg|palpitation|hypertension)/i.test(text)) { doctor = doctors.khan_heart; confidence = 0.9; }\nelse if (/(chest|cough|lung|breath|breathing|asthma|pneumonia|wheez|sputum|tb|tuberculosis)/i.test(text)) { doctor = doctors.ahmed_chest; confidence = 0.88; }\nconst response = doctor ? { ok: true, action: 'transfer_to_pa', is_emergency: false, department: doctor.department, doctor_id: doctor.doctor_id, doctor_name: doctor.doctor_name, pa_agent: doctor.pa_agent, confidence, receptionist_message: 'I will connect you to ' + doctor.pa_agent + ' for appointment booking.' + SAFETY } : { ok: false, action: 'clarify_department', is_emergency: false, department: null, doctor_id: null, confidence, receptionist_message: 'I can help book ENT, Heart, or Chest OPD. Could you tell me the main symptom or which department you need?' + SAFETY };\nreturn [{ json: { response, audit: { event_type: 'route_call', request_id: requestId, call_id: callId, doctor_id: doctor ? doctor.doctor_id : '', patient_phone: phone, payload_json: JSON.stringify(body).slice(0, 5000), severity: response.ok ? 'info' : 'warning', created_iso: nowIso } } }];"
+      }
+    },
+    {
+      "id": "9c5fbb6b-35ad-4fe4-bae3-ca9f01732c2b",
+      "name": "Respond Route",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        672,
+        160
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.response }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "48bf11c4-ba71-4884-8ad0-270174d6421e",
+      "name": "Log Route Audit",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        880,
+        160
+      ],
+      "parameters": {
+        "tableId": "opd_audit_log",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "event_type",
+              "fieldValue": "={{ $('Route Engine').item.json.audit.event_type }}"
+            },
+            {
+              "fieldId": "request_id",
+              "fieldValue": "={{ $('Route Engine').item.json.audit.request_id }}"
+            },
+            {
+              "fieldId": "call_id",
+              "fieldValue": "={{ $('Route Engine').item.json.audit.call_id }}"
+            },
+            {
+              "fieldId": "doctor_id",
+              "fieldValue": "={{ $('Route Engine').item.json.audit.doctor_id }}"
+            },
+            {
+              "fieldId": "patient_phone",
+              "fieldValue": "={{ $('Route Engine').item.json.audit.patient_phone }}"
+            },
+            {
+              "fieldId": "payload_json",
+              "fieldValue": "={{ $('Route Engine').item.json.audit.payload_json }}"
+            },
+            {
+              "fieldId": "severity",
+              "fieldValue": "={{ $('Route Engine').item.json.audit.severity }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "51d1c1d5-74a4-44c7-977c-06daa1ea8318",
+      "name": "POST /opd/check-slots",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        224,
+        448
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "opd/check-slots",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "50b576b8-d225-4d70-b71e-464d8097087e"
+    },
+    {
+      "id": "b4cebb57-2f89-48eb-8ca3-970258051e7c",
+      "name": "Normalize Slots",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        448
+      ],
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst body = (items[0] && items[0].json && (items[0].json.body || items[0].json)) || {};\nconst doctors = { ali_ent: { doctor_id: 'ali_ent', doctor_name: 'Dr Ali', department: 'ENT', startHour: 9, endHour: 13, slotMinutes: 30 }, khan_heart: { doctor_id: 'khan_heart', doctor_name: 'Dr Khan', department: 'Heart', startHour: 10, endHour: 15, slotMinutes: 30 }, ahmed_chest: { doctor_id: 'ahmed_chest', doctor_name: 'Dr Ahmed', department: 'Chest', startHour: 11, endHour: 16, slotMinutes: 30 } };\nconst raw = String(body.doctor_id || body.department || '').toLowerCase();\nlet doctorId = doctors[raw] ? raw : raw.includes('heart') || raw.includes('cardio') ? 'khan_heart' : raw.includes('chest') || raw.includes('lung') || raw.includes('pulmo') ? 'ahmed_chest' : raw.includes('ent') || raw.includes('ear') || raw.includes('nose') || raw.includes('throat') ? 'ali_ent' : '';\nconst doctor = doctorId ? doctors[doctorId] : null;\nconst daysAhead = Math.min(Math.max(parseInt(body.days_ahead, 10) || 7, 1), 21);\nconst nowIso = new Date().toISOString();\nconst callId = String(body.call_id || body.conversation_id || '');\nconst phone = String(body.patient_phone || body.phone || body.cell_no || '');\nconst requestId = 'slots_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);\nreturn [{ json: { ctx: { doctor_id: doctorId, doctor_name: doctor ? doctor.doctor_name : '', department: doctor ? doctor.department : '', start_hour: doctor ? doctor.startHour : 0, end_hour: doctor ? doctor.endHour : 0, slot_minutes: doctor ? doctor.slotMinutes : 30, days_ahead: daysAhead, now_iso: nowIso, resolved: !!doctor, call_id: callId, patient_phone: phone, request_id: requestId, payload_json: JSON.stringify(body).slice(0, 5000) } } }];"
+      }
+    },
+    {
+      "id": "0c470900-b021-4983-af9f-87255bb397f2",
+      "name": "Fetch Taken Slots",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        672,
+        448
+      ],
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "opd_appointments",
+        "returnAll": true,
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "doctor_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Normalize Slots').item.json.ctx.doctor_id }}"
+            },
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "confirmed"
+            },
+            {
+              "keyName": "slot_start",
+              "condition": "gte",
+              "keyValue": "={{ $('Normalize Slots').item.json.ctx.now_iso }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "188b1d30-9a8a-40af-ae70-5f4562715b41",
+      "name": "Slots Engine",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        448
+      ],
+      "parameters": {
+        "jsCode": "const ctx = $('Normalize Slots').first().json.ctx;\nconst takenRows = $input.all().map(i => i.json).filter(r => r && r.slot_start);\n// Compare instants, not strings. Postgres returns timestamptz normalised to UTC\n// (2026-09-28T04:00:00+00:00) while the slots below are built as +05:00, so a string\n// match would never fire and booked slots would keep being offered.\nconst takenSet = new Set(takenRows.map(r => new Date(r.slot_start).getTime()).filter(t => !Number.isNaN(t)));\nconst nowMs = Date.now();\nfunction pad(n) { return String(n).padStart(2, '0'); }\nfunction pktParts(ms) { const d = new Date(ms + 5 * 3600 * 1000); return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1, day: d.getUTCDate(), dow: d.getUTCDay() }; }\nconst slots = [];\nif (ctx.resolved) {\n  for (let dayOffset = 0; dayOffset < ctx.days_ahead && slots.length < 6; dayOffset++) {\n    const p = pktParts(nowMs + dayOffset * 86400000);\n    if (p.dow === 0 || p.dow === 6) continue;\n    const datePart = p.y + '-' + pad(p.m) + '-' + pad(p.day);\n    for (let hour = ctx.start_hour; hour < ctx.end_hour && slots.length < 6; hour++) {\n      for (let minute = 0; minute < 60 && slots.length < 6; minute += ctx.slot_minutes) {\n        const start = datePart + 'T' + pad(hour) + ':' + pad(minute) + ':00+05:00';\n        const startMs = new Date(start).getTime();\n        if (startMs <= nowMs) continue;\n        if (takenSet.has(startMs)) continue;\n        const endTotal = minute + ctx.slot_minutes;\n        const endHour = hour + Math.floor(endTotal / 60);\n        const endMin = endTotal % 60;\n        const end = datePart + 'T' + pad(endHour) + ':' + pad(endMin) + ':00+05:00';\n        slots.push({ slot_start: start, slot_end: end, display: datePart + ' ' + pad(hour) + ':' + pad(minute) + ' PKT' });\n      }\n    }\n  }\n}\nconst response = ctx.resolved ? { ok: true, doctor_id: ctx.doctor_id, doctor_name: ctx.doctor_name, department: ctx.department, timezone: 'Asia/Karachi', available_slots: slots, slots_count: slots.length, message: slots.length ? ('I have ' + slots.length + ' available slots for ' + ctx.doctor_name + '.') : ('No open slots for ' + ctx.doctor_name + ' in the next ' + ctx.days_ahead + ' days.') } : { ok: false, doctor_id: '', available_slots: [], slots_count: 0, message: 'Could not identify the department. Please specify ENT, Heart, or Chest.' };\nreturn [{ json: { response, audit: { event_type: 'check_slots', request_id: ctx.request_id, call_id: ctx.call_id, doctor_id: ctx.doctor_id, patient_phone: ctx.patient_phone, payload_json: ctx.payload_json, severity: ctx.resolved ? 'info' : 'warning', created_iso: ctx.now_iso } } }];"
+      }
+    },
+    {
+      "id": "1afba6b8-31af-4e53-b13f-0c00952d7ee2",
+      "name": "Respond Slots",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1104,
+        448
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.response }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "36c1df98-5e89-42b7-9112-16bec4969e17",
+      "name": "Log Slots Audit",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1328,
+        448
+      ],
+      "parameters": {
+        "tableId": "opd_audit_log",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "event_type",
+              "fieldValue": "={{ $('Slots Engine').item.json.audit.event_type }}"
+            },
+            {
+              "fieldId": "request_id",
+              "fieldValue": "={{ $('Slots Engine').item.json.audit.request_id }}"
+            },
+            {
+              "fieldId": "call_id",
+              "fieldValue": "={{ $('Slots Engine').item.json.audit.call_id }}"
+            },
+            {
+              "fieldId": "doctor_id",
+              "fieldValue": "={{ $('Slots Engine').item.json.audit.doctor_id }}"
+            },
+            {
+              "fieldId": "patient_phone",
+              "fieldValue": "={{ $('Slots Engine').item.json.audit.patient_phone }}"
+            },
+            {
+              "fieldId": "payload_json",
+              "fieldValue": "={{ $('Slots Engine').item.json.audit.payload_json }}"
+            },
+            {
+              "fieldId": "severity",
+              "fieldValue": "={{ $('Slots Engine').item.json.audit.severity }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "d1e2f6a9-92b5-41de-b024-8f9e2c68b004",
+      "name": "POST /opd/book-appointment",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        224,
+        784
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "opd/book-appointment",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "17b67b94-80b3-4623-b622-7cb9560f5d4e"
+    },
+    {
+      "id": "21c87e5c-4b6d-4c5e-a29c-2714bbe989e6",
+      "name": "Validate Booking",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        784
+      ],
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst body = (items[0] && items[0].json && (items[0].json.body || items[0].json)) || {};\nconst doctors = { ali_ent: { doctor_id: 'ali_ent', doctor_name: 'Dr Ali', department: 'ENT', startHour: 9, endHour: 13, slotMinutes: 30 }, khan_heart: { doctor_id: 'khan_heart', doctor_name: 'Dr Khan', department: 'Heart', startHour: 10, endHour: 15, slotMinutes: 30 }, ahmed_chest: { doctor_id: 'ahmed_chest', doctor_name: 'Dr Ahmed', department: 'Chest', startHour: 11, endHour: 16, slotMinutes: 30 } };\nfunction normPhone(v) { let s = String(v || '').replace(/[^0-9+]/g, ''); if (s.startsWith('+')) { s = '+' + s.slice(1).replace(/[+]/g, ''); } else if (s.startsWith('00')) { s = '+' + s.slice(2); } else if (s.startsWith('0')) { s = '+92' + s.slice(1); } else if (s.startsWith('92')) { s = '+' + s; } else if (s.length > 0) { s = '+92' + s; } return s; }\n// DST-safe PKT wall-clock via the IANA tz database (no hardcoded +05:00 offset).\nfunction pktParts(ms) { const f = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', weekday: 'short', hour12: false }).formatToParts(new Date(ms)).reduce((a, p) => (a[p.type] = p.value, a), {}); return { y: +f.year, mo: +f.month, day: +f.day, hour: (f.hour === '24' ? 0 : +f.hour), min: +f.minute, sec: +f.second, dow: f.weekday }; }\nfunction pad(n) { return String(n).padStart(2, '0'); }\nconst doctorId = String(body.doctor_id || '').toLowerCase();\nconst doctor = doctors[doctorId] || null;\nconst patientName = String(body.patient_name || body.name || '').trim();\nconst patientPhone = normPhone(body.patient_phone || body.phone || body.cell_no || '');\nconst slotStart = String(body.slot_start || body.selected_slot || '').trim();\nconst callId = String(body.call_id || body.conversation_id || '');\nconst nowIso = new Date().toISOString();\nconst requestId = 'book_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);\nconst reasons = [];\nif (!doctor) reasons.push('unknown_or_missing_doctor_id');\nif (!patientName) reasons.push('missing_patient_name');\nif (!/^[+]92[0-9]{10}$/.test(patientPhone)) reasons.push('invalid_phone');\nconst startMs = slotStart ? new Date(slotStart).getTime() : NaN;\nif (!slotStart || isNaN(startMs)) { reasons.push('missing_or_invalid_slot_start'); } else { if (startMs <= Date.now()) reasons.push('slot_in_the_past'); if (doctor) { const p = pktParts(startMs); if (p.dow === 'Sat' || p.dow === 'Sun') reasons.push('slot_on_weekend'); if (!(p.hour >= doctor.startHour && p.hour < doctor.endHour)) reasons.push('slot_outside_clinic_hours'); if (p.min % doctor.slotMinutes !== 0 || p.sec !== 0) reasons.push('slot_not_on_grid'); } }\nlet slotEnd = String(body.slot_end || '').trim();\nlet slotDisplay = '';\nif (doctor && !isNaN(startMs)) { if (!slotEnd) { slotEnd = new Date(startMs + doctor.slotMinutes * 60000).toISOString(); } const p = pktParts(startMs); slotDisplay = p.y + '-' + pad(p.mo) + '-' + pad(p.day) + ' ' + pad(p.hour) + ':' + pad(p.min) + ' PKT'; }\nconst valid = reasons.length === 0;\nconst ctx = { valid, reasons, doctor_id: doctorId, doctor_name: doctor ? doctor.doctor_name : '', department: doctor ? doctor.department : '', patient_name: patientName, patient_phone: patientPhone, slot_start: slotStart, slot_end: slotEnd, slot_display: slotDisplay, call_id: callId, request_id: requestId, now_iso: nowIso, payload_json: JSON.stringify(Object.assign({}, body, { patient_phone: patientPhone })).slice(0, 5000) };\nreturn [{ json: { valid, ctx } }];"
+      }
+    },
+    {
+      "id": "e789c9ae-51fb-4f7c-9a31-a96957aecac4",
+      "name": "Booking Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        672,
+        784
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "c0befcc4-422a-497e-81aa-957e29c56c59",
+      "name": "Insert Appointment",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        880,
+        704
+      ],
+      "parameters": {
+        "tableId": "opd_appointments",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "doctor_id",
+              "fieldValue": "={{ $('Validate Booking').item.json.ctx.doctor_id }}"
+            },
+            {
+              "fieldId": "patient_name",
+              "fieldValue": "={{ $('Validate Booking').item.json.ctx.patient_name }}"
+            },
+            {
+              "fieldId": "patient_phone",
+              "fieldValue": "={{ $('Validate Booking').item.json.ctx.patient_phone }}"
+            },
+            {
+              "fieldId": "slot_start",
+              "fieldValue": "={{ $('Validate Booking').item.json.ctx.slot_start }}"
+            },
+            {
+              "fieldId": "slot_end",
+              "fieldValue": "={{ $('Validate Booking').item.json.ctx.slot_end }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "confirmed"
+            },
+            {
+              "fieldId": "source_call_id",
+              "fieldValue": "={{ $('Validate Booking').item.json.ctx.call_id }}"
+            },
+            {
+              "fieldId": "sms_status",
+              "fieldValue": "verbal_confirmed"
+            },
+            {
+              "fieldId": "notes",
+              "fieldValue": "Booked via OPD voice PA agent."
+            }
+          ]
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "9e1a775c-ba53-4219-9d96-f5294f59cb41",
+      "name": "Confirm Booking",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1104,
+        640
+      ],
+      "parameters": {
+        "jsCode": "const c = $('Validate Booking').first().json.ctx;\nconst inserted = $input.first().json || {};\nconst apptId = inserted.id !== undefined ? inserted.id : null;\nconst response = { ok: true, status: 'confirmed', appointment_id: apptId, doctor_id: c.doctor_id, doctor_name: c.doctor_name, department: c.department, patient_name: c.patient_name, patient_phone: c.patient_phone, slot_start: c.slot_start, slot_end: c.slot_end, slot_display: c.slot_display, timezone: 'Asia/Karachi', sms_status: 'verbal_confirmed', pa_message: 'Appointment confirmed with ' + c.doctor_name + ' (' + c.department + ') on ' + c.slot_display + '. Read this confirmation aloud to the patient and ask them to arrive 10 minutes early. No SMS is sent yet.' };\nreturn [{ json: { response, audit: { event_type: 'book_confirmed', request_id: c.request_id, call_id: c.call_id, doctor_id: c.doctor_id, patient_phone: c.patient_phone, payload_json: c.payload_json, severity: 'info', created_iso: c.now_iso } } }];"
+      }
+    },
+    {
+      "id": "3c90f90b-8262-4405-aa92-8ec1f39edc23",
+      "name": "Finalize Booking",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1328,
+        784
+      ],
+      "parameters": {
+        "jsCode": "return $input.all();"
+      }
+    },
+    {
+      "id": "97f398be-457e-4613-9a33-da328a7868a2",
+      "name": "Slot Conflict",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1104,
+        864
+      ],
+      "parameters": {
+        "jsCode": "const c = $('Validate Booking').first().json.ctx;\nconst errItem = $input.first().json || {};\nconst errMsg = String((errItem.error && (errItem.error.message || errItem.error)) || errItem.message || '').toLowerCase();\nconst isConflict = errMsg.includes('duplicate') || errMsg.includes('unique') || errMsg.includes('23505') || errMsg.includes('already exists') || errMsg.includes('conflict');\nlet response; let audit;\nif (isConflict) {\n  response = { ok: false, status: 'slot_unavailable', doctor_id: c.doctor_id, doctor_name: c.doctor_name, department: c.department, requested_slot: c.slot_start, slot_display: c.slot_display, timezone: 'Asia/Karachi', sms_status: 'not_sent', pa_message: 'That slot was just taken by another patient. Tell the patient it is no longer available, then call check-slots again to offer the next open time for ' + c.doctor_name + '.' };\n  audit = { event_type: 'book_conflict', request_id: c.request_id, call_id: c.call_id, doctor_id: c.doctor_id, patient_phone: c.patient_phone, payload_json: c.payload_json, severity: 'warning', created_iso: c.now_iso };\n} else {\n  response = { ok: false, status: 'system_error', doctor_id: c.doctor_id, timezone: 'Asia/Karachi', sms_status: 'not_sent', pa_message: 'A temporary system error stopped the booking. Apologise to the patient and ask them to try again in a moment. Do not tell them the slot is taken.' };\n  audit = { event_type: 'book_error', request_id: c.request_id, call_id: c.call_id, doctor_id: c.doctor_id, patient_phone: c.patient_phone, payload_json: JSON.stringify({ ctx_payload: c.payload_json, error: errMsg }).slice(0, 5000), severity: 'error', created_iso: c.now_iso };\n}\nreturn [{ json: { response, audit } }];"
+      }
+    },
+    {
+      "id": "b1f1fe0c-43d5-403d-a678-d60cb421fb30",
+      "name": "Reject Booking",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        944
+      ],
+      "parameters": {
+        "jsCode": "const c = $('Validate Booking').first().json.ctx;\nconst reasonText = { unknown_or_missing_doctor_id: 'the department or doctor was not recognised', missing_patient_name: 'the patient name is missing', invalid_phone: 'the phone number is not a valid Pakistani mobile number (must be +92 followed by exactly 10 digits)', missing_or_invalid_slot_start: 'the appointment time is missing or invalid', slot_in_the_past: 'the requested time is in the past', slot_on_weekend: 'the requested day falls on a weekend when the clinic is closed', slot_outside_clinic_hours: 'the requested time is outside the doctor clinic hours', slot_not_on_grid: 'the requested time does not line up with a real 30-minute appointment slot' };\nconst human = (c.reasons || []).map(r => reasonText[r] || r).join('; ');\nconst response = { ok: false, status: 'rejected_invalid_request', reasons: c.reasons, doctor_id: c.doctor_id, timezone: 'Asia/Karachi', sms_status: 'not_sent', pa_message: 'I could not confirm the booking because ' + human + '. Please collect the correct details and try again. Required: department or doctor, patient full name, a valid +92 phone number, and a future appointment time that falls within clinic hours on a weekday.' };\nreturn [{ json: { response, audit: { event_type: 'book_rejected', request_id: c.request_id, call_id: c.call_id, doctor_id: c.doctor_id, patient_phone: c.patient_phone, payload_json: c.payload_json, severity: 'warning', created_iso: c.now_iso } } }];"
+      }
+    },
+    {
+      "id": "8035b8bd-7341-4ad4-994e-683b4df746d3",
+      "name": "Respond Booking",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1552,
+        784
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.response }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "de234f66-ff4d-4471-9001-0e7e5225ec45",
+      "name": "Log Booking Audit",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1760,
+        784
+      ],
+      "parameters": {
+        "tableId": "opd_audit_log",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "event_type",
+              "fieldValue": "={{ $('Finalize Booking').item.json.audit.event_type }}"
+            },
+            {
+              "fieldId": "request_id",
+              "fieldValue": "={{ $('Finalize Booking').item.json.audit.request_id }}"
+            },
+            {
+              "fieldId": "call_id",
+              "fieldValue": "={{ $('Finalize Booking').item.json.audit.call_id }}"
+            },
+            {
+              "fieldId": "doctor_id",
+              "fieldValue": "={{ $('Finalize Booking').item.json.audit.doctor_id }}"
+            },
+            {
+              "fieldId": "patient_phone",
+              "fieldValue": "={{ $('Finalize Booking').item.json.audit.patient_phone }}"
+            },
+            {
+              "fieldId": "payload_json",
+              "fieldValue": "={{ $('Finalize Booking').item.json.audit.payload_json }}"
+            },
+            {
+              "fieldId": "severity",
+              "fieldValue": "={{ $('Finalize Booking').item.json.audit.severity }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "932c6f23-01ca-4c42-b420-3623ed6d5721",
+      "name": "Sticky Note 2ae4b8c6",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        112,
+        304
+      ],
+      "parameters": {
+        "content": "## OPD Voice Appointment Automation v2\n\nThree authenticated endpoints for ElevenLabs PA tools (header auth: \"OPD Webhook Auth\"):\n- POST /opd/route-call  -> emergency triage + department routing\n- POST /opd/check-slots -> live availability from Supabase (future, untaken)\n- POST /opd/book-appointment -> validated booking\n\nRace-safety: opd_appointments has UNIQUE(doctor_id, slot_start). A double-book makes the Insert Appointment node throw; its ERROR output is the \"slot taken\" branch. The DB is the lock.\n\nSMS: verbal-only for now (sms_status = verbal_confirmed). Add a real SMS node after Confirm Booking once an SMS provider credential is connected.\n\nEmergency number 1122 (Rescue Pakistan) - confirm before go-live.",
+        "color": 4
+      }
+    }
+  ],
+  "connections": {
+    "POST /opd/route-call": {
+      "main": [
+        [
+          {
+            "node": "Route Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Engine": {
+      "main": [
+        [
+          {
+            "node": "Respond Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond Route": {
+      "main": [
+        [
+          {
+            "node": "Log Route Audit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST /opd/check-slots": {
+      "main": [
+        [
+          {
+            "node": "Normalize Slots",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Slots": {
+      "main": [
+        [
+          {
+            "node": "Fetch Taken Slots",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Taken Slots": {
+      "main": [
+        [
+          {
+            "node": "Slots Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slots Engine": {
+      "main": [
+        [
+          {
+            "node": "Respond Slots",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond Slots": {
+      "main": [
+        [
+          {
+            "node": "Log Slots Audit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST /opd/book-appointment": {
+      "main": [
+        [
+          {
+            "node": "Validate Booking",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Booking": {
+      "main": [
+        [
+          {
+            "node": "Booking Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Booking Valid?": {
+      "main": [
+        [
+          {
+            "node": "Insert Appointment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reject Booking",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Appointment": {
+      "main": [
+        [
+          {
+            "node": "Confirm Booking",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Slot Conflict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirm Booking": {
+      "main": [
+        [
+          {
+            "node": "Finalize Booking",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finalize Booking": {
+      "main": [
+        [
+          {
+            "node": "Respond Booking",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slot Conflict": {
+      "main": [
+        [
+          {
+            "node": "Finalize Booking",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reject Booking": {
+      "main": [
+        [
+          {
+            "node": "Finalize Booking",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond Booking": {
+      "main": [
+        [
+          {
+            "node": "Log Booking Audit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

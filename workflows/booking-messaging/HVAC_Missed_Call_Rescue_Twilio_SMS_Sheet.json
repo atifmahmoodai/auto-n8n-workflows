@@ -1,0 +1,428 @@
+{
+  "name": "HVAC Missed Call Rescue: Twilio -> SMS -> Sheet",
+  "nodes": [
+    {
+      "id": "2728de75-4891-407a-bc5a-6360d036f8be",
+      "name": "Sticky Note d7cc7444",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        100,
+        300
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "Missed Call Architecture",
+            "position": [
+              -220,
+              60
+            ],
+            "parameters": {
+              "width": 520,
+              "height": 260,
+              "content": "HVAC MISSED CALL RESCUE\n\n1. Twilio voice status callback (no-answer/busy)\n2. Instant SMS within 30 seconds\n3. Log lead in Google Sheets pipeline\n4. Slack alert to owner\n\nNiche: HVAC emergency speed-to-lead\nConfigure Twilio status callback URL to this webhook."
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "7d7a11ea-7bcd-4402-b74a-82cb85a1163e",
+      "name": "Twilio: Voice Status Callback",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "twilio/hvac-voice-status",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": false
+        }
+      },
+      "webhookId": "9bd8324e-eb09-4e30-9af8-1d7b5fd0eab2"
+    },
+    {
+      "id": "badb51d4-2da3-42eb-af67-a7e4b26979a5",
+      "name": "Missed Inbound Call?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ ($json.Direction || $json.direction || \"inbound\").toLowerCase() }}",
+              "rightValue": "inbound",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "leftValue": "={{ [\"no-answer\",\"busy\",\"failed\",\"canceled\"].includes(($json.CallStatus || $json.call_status || \"\").toLowerCase()) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "92fca28c-b1dc-4aba-9535-c2a289b4ab65",
+      "name": "Build Lead Record",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const p = $input.item.json;\nconst caller = p.From || p.from || '';\nconst called = p.To || p.to || '';\nconst callSid = p.CallSid || p.call_sid || ('CALL-' + Date.now());\nconst company = 'REPLACE_WITH_HVAC_COMPANY_NAME';\nconst leadId = 'HVAC-' + $now.toFormat('yyyyLLdd-HHmmss') + '-' + callSid.slice(-6);\nreturn {\n  json: {\n    lead_id: leadId,\n    created_at: $now.toISO(),\n    caller_phone: caller,\n    called_number: called,\n    call_sid: callSid,\n    call_status: (p.CallStatus || p.call_status || '').toLowerCase(),\n    direction: 'inbound',\n    vertical: 'HVAC',\n    lead_source: 'missed_call',\n    qualify_step: 0,\n    pipeline_status: 'new',\n    issue_type: 'unknown',\n    service_address: '',\n    preferred_time: '',\n    last_message: '',\n    sms_sent_at: '',\n    sms_reply_count: 0,\n    hubspot_contact_id: '',\n    hubspot_deal_id: '',\n    estimated_job_value: 800,\n    owner_notified: 'pending',\n    notes: 'Auto-created from missed call',\n    sms_body: 'Sorry we missed you at ' + company + ' HVAC! AC/heat emergency? Reply YES or NO. Reply STOP to opt out.',\n  },\n};"
+      }
+    },
+    {
+      "id": "2035d09d-3412-492e-a356-049577312db3",
+      "name": "Twilio: Send Rescue SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "resource": "sms",
+        "operation": "send",
+        "from": "REPLACE_WITH_TWILIO_FROM_NUMBER",
+        "to": "={{ $json.caller_phone }}",
+        "message": "={{ $json.sms_body }}"
+      }
+    },
+    {
+      "id": "1624152b-38ae-4a02-857d-8f10fdd0b19d",
+      "name": "Mark SMS Sent",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        960,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "sms-sent",
+              "name": "sms_sent_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "pipeline",
+              "name": "pipeline_status",
+              "value": "sms_sent",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "f50b425b-0395-454c-add5-e46934a26119",
+      "name": "Sheet: Upsert Lead",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1200,
+        300
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_YOUR_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Lead_Pipeline"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": [
+            "caller_phone"
+          ],
+          "value": {},
+          "schema": [
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "type": "string"
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "type": "string"
+            },
+            {
+              "id": "caller_phone",
+              "displayName": "caller_phone",
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "called_number",
+              "displayName": "called_number",
+              "type": "string"
+            },
+            {
+              "id": "call_sid",
+              "displayName": "call_sid",
+              "type": "string"
+            },
+            {
+              "id": "call_status",
+              "displayName": "call_status",
+              "type": "string"
+            },
+            {
+              "id": "direction",
+              "displayName": "direction",
+              "type": "string"
+            },
+            {
+              "id": "vertical",
+              "displayName": "vertical",
+              "type": "string"
+            },
+            {
+              "id": "lead_source",
+              "displayName": "lead_source",
+              "type": "string"
+            },
+            {
+              "id": "qualify_step",
+              "displayName": "qualify_step",
+              "type": "number"
+            },
+            {
+              "id": "pipeline_status",
+              "displayName": "pipeline_status",
+              "type": "string"
+            },
+            {
+              "id": "issue_type",
+              "displayName": "issue_type",
+              "type": "string"
+            },
+            {
+              "id": "service_address",
+              "displayName": "service_address",
+              "type": "string"
+            },
+            {
+              "id": "preferred_time",
+              "displayName": "preferred_time",
+              "type": "string"
+            },
+            {
+              "id": "last_message",
+              "displayName": "last_message",
+              "type": "string"
+            },
+            {
+              "id": "sms_sent_at",
+              "displayName": "sms_sent_at",
+              "type": "string"
+            },
+            {
+              "id": "sms_reply_count",
+              "displayName": "sms_reply_count",
+              "type": "number"
+            },
+            {
+              "id": "hubspot_contact_id",
+              "displayName": "hubspot_contact_id",
+              "type": "string"
+            },
+            {
+              "id": "hubspot_deal_id",
+              "displayName": "hubspot_deal_id",
+              "type": "string"
+            },
+            {
+              "id": "estimated_job_value",
+              "displayName": "estimated_job_value",
+              "type": "number"
+            },
+            {
+              "id": "owner_notified",
+              "displayName": "owner_notified",
+              "type": "string"
+            },
+            {
+              "id": "notes",
+              "displayName": "notes",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "12ef284e-02b8-4d38-a122-62e4fbc214d1",
+      "name": "Slack: Missed Call Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.5,
+      "position": [
+        1440,
+        300
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SLACK_CHANNEL_ID"
+        },
+        "messageType": "text",
+        "text": "={{ \":phone: MISSED HVAC CALL\\n*From:* \" + $json.caller_phone + \"\\n*Status:* \" + $json.call_status + \"\\n*Rescue SMS sent*\\n*Lead ID:* \" + $json.lead_id }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": true,
+          "mrkdwn": true
+        }
+      },
+      "webhookId": "dcc379eb-51e4-4d1d-bc41-69fc2573100f"
+    },
+    {
+      "id": "644f3384-5859-4068-8553-fa54d55c1e8c",
+      "name": "Respond 200 OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1680,
+        300
+      ],
+      "parameters": {
+        "respondWith": "noData",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Twilio: Voice Status Callback": {
+      "main": [
+        [
+          {
+            "node": "Missed Inbound Call?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Missed Inbound Call?": {
+      "main": [
+        [
+          {
+            "node": "Build Lead Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Lead Record": {
+      "main": [
+        [
+          {
+            "node": "Twilio: Send Rescue SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Twilio: Send Rescue SMS": {
+      "main": [
+        [
+          {
+            "node": "Mark SMS Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark SMS Sent": {
+      "main": [
+        [
+          {
+            "node": "Sheet: Upsert Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheet: Upsert Lead": {
+      "main": [
+        [
+          {
+            "node": "Slack: Missed Call Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack: Missed Call Alert": {
+      "main": [
+        [
+          {
+            "node": "Respond 200 OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

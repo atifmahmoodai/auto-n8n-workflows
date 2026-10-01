@@ -1,0 +1,503 @@
+{
+  "name": "My workflow 14",
+  "nodes": [
+    {
+      "id": "21e9fa5c-6932-4a07-ab40-29860583330b",
+      "name": "On form submission",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.5,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "formTitle": "Portfolio",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "how would you like to rebalance your portfolio",
+              "defaultValue": "Ensure the portfolio is 60% equity and 40% fixed income "
+            }
+          ]
+        },
+        "options": {}
+      },
+      "webhookId": "d5a622f0-364d-4374-bd68-a6812ca0c7bc"
+    },
+    {
+      "id": "aa6a7c2f-951e-4914-a63c-1bfd00ff9638",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=You have access to the user's Equity portfolio which is in Google Sheet. You also have access to market data. The user has asked you to rebalance their portfolio  with this instruction:\n\n\n{{ $json[\"how would you like to rebalance your portfolio\"] }}\n\nIn order to achieve this:\n1. Read the portfolio from the sheet\n2. Fetch latest prices of the positions\n3. Update the table with the prices\n4. Make decisions on portfolio rebalancing\n5. Update the table with portfolio rebalancing decisions\n6. Read the table again to check the rebalancing achieved the objective. IMPORTANT: you must confirm that you have achieve your goal by reading the spreadsheet.\n7. Make any further changes to improve rebalancing, updating the table\n8. Finally, send an email with trading decisions and concise push notification\n\nAlways use tools until complete. only respond \"OK\" after using all tools when your mission is complete.",
+        "options": {
+          "maxIterations": 30
+        }
+      }
+    },
+    {
+      "id": "59df609e-8a0a-4b3b-8f35-e5281d294dcf",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -320,
+        208
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4.1-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "d8eb1524-fea8-4300-9a26-af98d802eace",
+      "name": "Get row(s) in sheet in Google Sheets",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        -128,
+        208
+      ],
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "This tool provides details of the user's portfolio in Google Sheet. This includes the positions and the equity / fixed income breakdown. Use this tool to retrieve the Google Sheet  to see the positions before updating the prices and making rebalancing decisions. IMPORTANT: you MUST also use this tool after rebalancing decisions to check that  the new equity / fixed income breakdown achieves your goal. If not, keep iterating.",
+        "documentId": {
+          "__rl": true,
+          "value": "1ELlMDbTLz_uy_0pLrr1K-1tV25Wjx6ATjCJ7qq507uw",
+          "mode": "list",
+          "cachedResultName": "portfolio",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1ELlMDbTLz_uy_0pLrr1K-1tV25Wjx6ATjCJ7qq507uw/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1683045812,
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1ELlMDbTLz_uy_0pLrr1K-1tV25Wjx6ATjCJ7qq507uw/edit#gid=1683045812"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "d1dba769-8e20-439b-9777-48d1ab83268c",
+      "name": "Get many EoD data in Marketstack",
+      "type": "n8n-nodes-base.marketstackTool",
+      "typeVersion": 1,
+      "position": [
+        48,
+        208
+      ],
+      "parameters": {
+        "symbols": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Ticker', ``, 'string') }}",
+        "filters": {
+          "latest": true
+        }
+      }
+    },
+    {
+      "id": "cb633d88-170b-4b69-8fc7-fed1362f8fd8",
+      "name": "Update row in sheet in Google Sheets",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        224,
+        208
+      ],
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1ELlMDbTLz_uy_0pLrr1K-1tV25Wjx6ATjCJ7qq507uw",
+          "mode": "list",
+          "cachedResultName": "portfolio",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1ELlMDbTLz_uy_0pLrr1K-1tV25Wjx6ATjCJ7qq507uw/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1683045812,
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1ELlMDbTLz_uy_0pLrr1K-1tV25Wjx6ATjCJ7qq507uw/edit#gid=1683045812"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Ticker": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Ticker__using_to_match_', ``, 'string') }}",
+            "Price": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Price', ``, 'string') }}"
+          },
+          "matchingColumns": [
+            "Ticker"
+          ],
+          "schema": [
+            {
+              "id": "Ticker",
+              "displayName": "Ticker",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Quantity",
+              "displayName": "Quantity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Equity ratio",
+              "displayName": "Equity ratio",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Fixed income ratio",
+              "displayName": "Fixed income ratio",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Price",
+              "displayName": "Price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Total Value",
+              "displayName": "Total Value",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "New Quantity After Rebalancing",
+              "displayName": "New Quantity After Rebalancing",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "New Total Value",
+              "displayName": "New Total Value",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "c3db6638-3826-4e94-9cfa-d7cd2ae23d8b",
+      "name": "Update row in sheet in Google Sheets1",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        384,
+        208
+      ],
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1ELlMDbTLz_uy_0pLrr1K-1tV25Wjx6ATjCJ7qq507uw",
+          "mode": "list",
+          "cachedResultName": "portfolio",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1ELlMDbTLz_uy_0pLrr1K-1tV25Wjx6ATjCJ7qq507uw/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1683045812,
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1ELlMDbTLz_uy_0pLrr1K-1tV25Wjx6ATjCJ7qq507uw/edit#gid=1683045812"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Ticker": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Ticker__using_to_match_', ``, 'string') }}",
+            "New Quantity After Rebalancing": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('New_Quantity_After_Rebalancing', ``, 'string') }}"
+          },
+          "matchingColumns": [
+            "Ticker"
+          ],
+          "schema": [
+            {
+              "id": "Ticker",
+              "displayName": "Ticker",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Quantity",
+              "displayName": "Quantity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Equity ratio",
+              "displayName": "Equity ratio",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Fixed income ratio",
+              "displayName": "Fixed income ratio",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Price",
+              "displayName": "Price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Total Value",
+              "displayName": "Total Value",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "New Quantity After Rebalancing",
+              "displayName": "New Quantity After Rebalancing",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "New Total Value",
+              "displayName": "New Total Value",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "fefc946f-a781-4b10-a929-dd2e2080b4d7",
+      "name": "Push a message in Pushover",
+      "type": "n8n-nodes-base.pushoverTool",
+      "typeVersion": 1,
+      "position": [
+        560,
+        208
+      ],
+      "parameters": {
+        "userKey": "uzfmrnrdxm1mygsf8o65iu5qj8vgs3",
+        "message": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Message', ``, 'string') }}",
+        "priority": 1,
+        "additionalFields": {}
+      }
+    },
+    {
+      "id": "2fc87262-05cf-4dc1-9fb3-1f566dfebca7",
+      "name": "Send a message in Gmail",
+      "type": "n8n-nodes-base.gmailTool",
+      "typeVersion": 2.2,
+      "position": [
+        752,
+        208
+      ],
+      "parameters": {
+        "sendTo": "atifmah428@gmail.com",
+        "subject": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Subject', ``, 'string') }}",
+        "message": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Message', ``, 'string') }}",
+        "options": {}
+      },
+      "webhookId": "40525e0a-2b48-4fe6-85b5-315ccda4ac73"
+    }
+  ],
+  "connections": {
+    "On form submission": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet in Google Sheets": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many EoD data in Marketstack": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update row in sheet in Google Sheets": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update row in sheet in Google Sheets1": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Push a message in Pushover": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message in Gmail": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

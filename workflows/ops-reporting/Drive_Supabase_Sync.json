@@ -1,0 +1,319 @@
+{
+  "name": "Drive → Supabase Sync",
+  "nodes": [
+    {
+      "id": "fc579aed-5ec0-443b-ad3b-b86c981f568a",
+      "name": "New File in Drive Folder",
+      "type": "n8n-nodes-base.googleDriveTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        96
+      ],
+      "parameters": {
+        "authentication": "oAuth2",
+        "triggerOn": "specificFolder",
+        "folderToWatch": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_YOUR_FOLDER_ID"
+        },
+        "event": "={{ \"fileCreated\" }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "8eeb17cc-f873-4348-aaf5-9505b343b9b9",
+      "name": "Download Spreadsheet",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        224,
+        96
+      ],
+      "parameters": {
+        "resource": "file",
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.id }}"
+        },
+        "options": {
+          "binaryPropertyName": "data"
+        }
+      }
+    },
+    {
+      "id": "9fca0f40-6bbf-4a4b-a3b7-779583b63cbb",
+      "name": "Parse Spreadsheet",
+      "type": "n8n-nodes-base.spreadsheetFile",
+      "typeVersion": 2,
+      "position": [
+        448,
+        96
+      ],
+      "parameters": {
+        "operation": "fromFile",
+        "options": {}
+      }
+    },
+    {
+      "id": "107f44d6-5f76-4579-835c-5c4120a5cdc5",
+      "name": "Validate & Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        96
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const REQUIRED = ['name','category','sku','compatible_with','price_pkr','stock','warranty','description'];\nconst ALIASES = { 'product name':'name','product sku':'sku','compatible with':'compatible_with','price':'price_pkr','pkr':'price_pkr','qty':'stock','quantity':'stock' };\nconst norm = (k) => { const key = String(k).trim().toLowerCase().replace(/\\s+/g,' '); return ALIASES[key] || key.replace(/ /g,'_'); };\nconst rows = $input.all().map(i => { const o = {}; for (const [k,v] of Object.entries(i.json)) o[norm(k)] = v; return o; });\nif (rows.length === 0) return [{ json: { __ok: false, __error: 'Uploaded file has no rows' } }];\nconst headers = Object.keys(rows[0]);\nconst missing = REQUIRED.filter(r => !headers.includes(r));\nif (missing.length) return [{ json: { __ok: false, __error: 'Missing columns: ' + missing.join(', ') } }];\nreturn rows.filter(r => r.sku != null && String(r.sku).trim() !== '').map(r => ({ json: { ...r, __ok: true } }));"
+      }
+    },
+    {
+      "id": "c70f949b-bf48-4bec-b7af-d8cc2e3e24ca",
+      "name": "Spreadsheet Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        896,
+        96
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.__ok }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "0c623e1b-9083-40f5-892f-68ad8eb7a3ee",
+      "name": "Build Document",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "return $input.all().map(i => {\n  const r = i.json;\n  const content = 'Product name: ' + r.name + '\\ncategory: ' + r.category + '\\ncompatible with: ' + r.compatible_with + '\\nwarranty: ' + r.warranty + '\\ndescription: ' + r.description;\n  return { json: {\n    sku: String(r.sku).trim(),\n    content,\n    metadata: { sku: String(r.sku).trim(), category: r.category ?? null, price_pkr: r.price_pkr ?? null, stock: r.stock ?? null, warranty: r.warranty ?? null }\n  } };\n});"
+      }
+    },
+    {
+      "id": "be27428f-dfea-4e0f-9d3f-ae015c80b0b0",
+      "name": "Hash Content",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        0
+      ],
+      "parameters": {
+        "action": "hash",
+        "type": "SHA256",
+        "value": "={{ $json.content }}",
+        "dataPropertyName": "content_hash",
+        "encoding": "hex",
+        "binaryData": false
+      }
+    },
+    {
+      "id": "47569922-c7e3-434a-9c7d-4e760121521a",
+      "name": "Embed Product",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1568,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/embeddings",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"model\": \"text-embedding-3-small\", \"input\": $json.content } }}"
+      }
+    },
+    {
+      "id": "4802000b-4131-4458-b341-9cc650f779ad",
+      "name": "Upsert Product Row",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1792,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "<__PLACEHOLDER_VALUE__Supabase REST upsert URL, e.g. https://YOUR-PROJECT.supabase.co/rest/v1/product_database?on_conflict=sku__>",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"sku\": $(\"Build Document\").item.json.sku, \"content\": $(\"Build Document\").item.json.content, \"metadata\": $(\"Build Document\").item.json.metadata, \"content_hash\": $(\"Hash Content\").item.json.content_hash, \"embedding\": JSON.stringify($json.data[0].embedding), \"active\": true, \"last_seen_at\": $now.toISO(), \"updated_at\": $now.toISO() } }}"
+      }
+    },
+    {
+      "id": "1b01fbaa-1d13-4560-803f-5a85cabcc90f",
+      "name": "Alert Bad File",
+      "type": "n8n-nodes-base.pushover",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        192
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "push",
+        "userKey": "<__PLACEHOLDER_VALUE__Your Pushover USER_KEY__>",
+        "message": "={{ \"Accessories sync rejected a file: \" + ($json.__error || \"validation failed\") }}",
+        "priority": 1
+      }
+    }
+  ],
+  "connections": {
+    "New File in Drive Folder": {
+      "main": [
+        [
+          {
+            "node": "Download Spreadsheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Spreadsheet": {
+      "main": [
+        [
+          {
+            "node": "Parse Spreadsheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Spreadsheet": {
+      "main": [
+        [
+          {
+            "node": "Validate & Normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate & Normalize": {
+      "main": [
+        [
+          {
+            "node": "Spreadsheet Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Spreadsheet Valid?": {
+      "main": [
+        [
+          {
+            "node": "Build Document",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Alert Bad File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Document": {
+      "main": [
+        [
+          {
+            "node": "Hash Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hash Content": {
+      "main": [
+        [
+          {
+            "node": "Embed Product",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embed Product": {
+      "main": [
+        [
+          {
+            "node": "Upsert Product Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

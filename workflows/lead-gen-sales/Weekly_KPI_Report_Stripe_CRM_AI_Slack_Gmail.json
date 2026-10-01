@@ -1,0 +1,401 @@
+{
+  "name": "Weekly KPI Report: Stripe + CRM -> AI -> Slack/Gmail",
+  "nodes": [
+    {
+      "id": "1e9d18ea-a97e-4f29-903e-4b2ea3cafa92",
+      "name": "Sticky Note 47f1e897",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        960,
+        464
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "KPI Report Architecture",
+            "position": [
+              -220,
+              60
+            ],
+            "parameters": {
+              "width": 520,
+              "height": 260,
+              "content": "WEEKLY KPI REPORT\n\nMonday 7 AM cron -> Stripe HTTP + CRM Sheets -> AI narrative -> Slack + Gmail"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "ac8c5bec-7835-44ff-a842-5ca870815eae",
+      "name": "Monday 7 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7 * * 1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "5696fda7-9fbd-4e02-b520-64d4b4af4e9e",
+      "name": "Stripe: Balance",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        240,
+        180
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.stripe.com/v1/balance",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "responseFormat": "json"
+          }
+        }
+      }
+    },
+    {
+      "id": "c4fdd921-4552-4608-847b-2df443363fd0",
+      "name": "Combine Data Sources",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "mode": "append"
+      }
+    },
+    {
+      "id": "9b11fea7-22b8-434e-a63c-56249c1c6a19",
+      "name": "Stripe: Last Week Transactions",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        240,
+        420
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ \"https://api.stripe.com/v1/balance_transactions?limit=100&created[gte]=\" + Math.floor($now.minus({days: 7}).toSeconds()) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "responseFormat": "json"
+          }
+        }
+      }
+    },
+    {
+      "id": "099347b9-a6ae-4e0a-94ef-bcb7c4fe9b55",
+      "name": "Sheet: Read CRM Metrics",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_CRM_KPI_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "CRM_Metrics"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "2e68fe30-f683-43dc-99c1-1b5e12ecea86",
+      "name": "Aggregate KPIs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const balance = $('Stripe: Balance').first()?.json || {};\nconst txResp = $('Stripe: Last Week Transactions').first()?.json || {};\nconst crmRows = $('Sheet: Read CRM Metrics').all().map((i) => i.json);\nconst available = (balance.available || []).reduce((s,b)=>s+(Number(b.amount)||0),0)/100;\nconst transactions = Array.isArray(txResp.data)?txResp.data:[];\nconst grossVolume = transactions.reduce((s,t)=>s+Math.abs(Number(t.amount)||0),0)/100;\nconst latest = crmRows[crmRows.length-1]||{};\nconst prior = crmRows[crmRows.length-2]||{};\nconst num=v=>Number(v)||0;\nconst delta=(c,p)=>{c=num(c);p=num(p);return p?(((c-p)/p)*100).toFixed(1)+'%':'0%'};\nconst kpis={report_week_ending:$now.toFormat('yyyy-MM-dd'),stripe_available_usd:available,stripe_gross_volume_usd:grossVolume,new_leads:num(latest.new_leads),deals_closed:num(latest.deals_closed),pipeline_value_usd:num(latest.pipeline_value_usd),leads_delta:delta(latest.new_leads,prior.new_leads),deals_delta:delta(latest.deals_closed,prior.deals_closed)};\nconst summary=['Week ending: '+kpis.report_week_ending,'Stripe available: $'+kpis.stripe_available_usd,'Gross volume (7d): $'+kpis.stripe_gross_volume_usd,'New leads: '+kpis.new_leads+' ('+kpis.leads_delta+')','Deals closed: '+kpis.deals_closed+' ('+kpis.deals_delta+')'].join('\\n');\nreturn [{json:{...kpis,kpi_summary:summary,ai_prompt:'Analyze weekly KPIs and explain what changed.\\n'+JSON.stringify(kpis,null,2)}}];"
+      }
+    },
+    {
+      "id": "631f37bd-271c-4aaa-8fba-9bbb5f69ba52",
+      "name": "AI: What Changed Summary",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        960,
+        300
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.ai_prompt }}",
+        "options": {
+          "systemMessage": "Write a concise Monday KPI brief with wins, risks, and one action.",
+          "maxIterations": 2
+        }
+      }
+    },
+    {
+      "id": "f53c2132-8f88-4efb-95fc-d8e2ca94d25c",
+      "name": "GPT-5 Mini",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        976,
+        416
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "81d7ee4e-24c0-427e-9597-bc7798686130",
+      "name": "Build Final Report",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1200,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "report-subject",
+              "name": "report_subject",
+              "value": "={{ \"Weekly KPI Report - week ending \" + ($(\"Aggregate KPIs\").item.json.report_week_ending || $now.toFormat(\"yyyy-MM-dd\")) }}",
+              "type": "string"
+            },
+            {
+              "id": "report-body",
+              "name": "report_body",
+              "value": "={{ \"WEEKLY KPI REPORT\\n\\n\" + ($(\"Aggregate KPIs\").item.json.kpi_summary || \"\") + \"\\n\\n--- WHAT CHANGED ---\\n\" + ($json.output || $json.text || \"\") }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "74bfdbea-6303-4ec2-abc5-30fa35405f46",
+      "name": "Slack: KPI Report",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.5,
+      "position": [
+        1440,
+        300
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SLACK_CHANNEL_ID"
+        },
+        "messageType": "text",
+        "text": "={{ $json.report_body }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": true,
+          "mrkdwn": true
+        }
+      },
+      "webhookId": "37972e25-e3cd-4e6a-bcc4-05193710de3c"
+    },
+    {
+      "id": "d65cd10d-1d68-49dd-8f94-bc228b5b612c",
+      "name": "Gmail: Send KPI Report",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1680,
+        300
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "REPLACE_WITH_OWNER_EMAIL",
+        "subject": "={{ $json.report_subject }}",
+        "emailType": "text",
+        "message": "={{ $json.report_body }}"
+      },
+      "webhookId": "899fb7b9-46a7-438d-97fe-e22266d2daa8"
+    }
+  ],
+  "connections": {
+    "Monday 7 AM": {
+      "main": [
+        [
+          {
+            "node": "Stripe: Balance",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Stripe: Last Week Transactions",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Sheet: Read CRM Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stripe: Balance": {
+      "main": [
+        [
+          {
+            "node": "Combine Data Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine Data Sources": {
+      "main": [
+        [
+          {
+            "node": "Aggregate KPIs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stripe: Last Week Transactions": {
+      "main": [
+        [
+          {
+            "node": "Combine Data Sources",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Sheet: Read CRM Metrics": {
+      "main": [
+        [
+          {
+            "node": "Combine Data Sources",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Aggregate KPIs": {
+      "main": [
+        [
+          {
+            "node": "AI: What Changed Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: What Changed Summary": {
+      "main": [
+        [
+          {
+            "node": "Build Final Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT-5 Mini": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI: What Changed Summary",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Final Report": {
+      "main": [
+        [
+          {
+            "node": "Slack: KPI Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack: KPI Report": {
+      "main": [
+        [
+          {
+            "node": "Gmail: Send KPI Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

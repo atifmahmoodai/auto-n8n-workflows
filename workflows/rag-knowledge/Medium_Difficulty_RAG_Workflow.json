@@ -1,0 +1,377 @@
+{
+  "name": "Medium Difficulty RAG Workflow",
+  "nodes": [
+    {
+      "id": "b40afb52-a856-4ef2-bc72-1db8950302c9",
+      "name": "Start Indexing",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        608,
+        720
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "3cc80534-d485-4dd0-9320-7cedb5ad1ad2",
+      "name": "Provide Documents",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        832,
+        720
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "doc1",
+              "name": "documentText",
+              "value": "<__PLACEHOLDER_VALUE__Paste your document text here (e.g., company policies, product docs, knowledge base articles)__>",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a3e8e8ef-c461-44e7-b0af-aa6b9bff275b",
+      "name": "Store Embeddings in Memory",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.3,
+      "position": [
+        1088,
+        512
+      ],
+      "parameters": {
+        "mode": "insert",
+        "memoryKey": {
+          "__rl": true,
+          "mode": "id",
+          "value": "rag_demo"
+        }
+      }
+    },
+    {
+      "id": "03633a3e-de33-4faf-b93a-8a9bbae48167",
+      "name": "OpenAI Embeddings",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        1056,
+        736
+      ],
+      "parameters": {
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "b8f46195-2692-4e50-b811-7cf9587adfbd",
+      "name": "Split Text into Chunks",
+      "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
+      "typeVersion": 1,
+      "position": [
+        1264,
+        944
+      ],
+      "parameters": {
+        "chunkOverlap": 200,
+        "options": {}
+      }
+    },
+    {
+      "id": "84d62599-7adf-4a82-a24c-d2fd82842568",
+      "name": "Ask Question",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        608,
+        1256
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "q1",
+              "name": "question",
+              "value": "<__PLACEHOLDER_VALUE__Enter your question here (e.g., \"What is n8n?\" or \"How many integrations does n8n support?\")__>",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "74fa28d9-7753-4835-8dbe-cdbf542b08dc",
+      "name": "RAG AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        832,
+        1152
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.question }}",
+        "options": {
+          "systemMessage": "You are a helpful assistant that answers questions based on the provided context. Use the Vector Store Retriever tool to find relevant information from the knowledge base. Always cite the information from the retrieved documents. If the answer is not in the retrieved context, say so clearly."
+        }
+      }
+    },
+    {
+      "id": "2763f2e9-ec96-4d8b-88d4-53edce855305",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        904,
+        1376
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {
+          "temperature": 0.7
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "09ed0baf-765b-47e7-a3d1-c1b7c784efe2",
+      "name": "Vector Store Retriever",
+      "type": "@n8n/n8n-nodes-langchain.retrieverVectorStore",
+      "typeVersion": 1,
+      "position": [
+        1184,
+        1584
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "c1e058c0-b28f-4c6c-be40-954935b9d140",
+      "name": "Retrieve from Vector Store",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.3,
+      "position": [
+        816,
+        1584
+      ],
+      "parameters": {
+        "memoryKey": {
+          "__rl": true,
+          "mode": "id",
+          "value": "rag_demo"
+        }
+      }
+    },
+    {
+      "id": "6c064839-57ed-4919-b682-02ff7ef776bb",
+      "name": "Query Embeddings",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        608,
+        1584
+      ],
+      "parameters": {
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "1fc78a80-e2ad-4bfb-9438-743549c8f3a0",
+      "name": "Load Document Data",
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        1184,
+        736
+      ],
+      "parameters": {
+        "jsonMode": "expressionData",
+        "jsonData": "={{ $json.documentText }}",
+        "textSplittingMode": "custom",
+        "options": {}
+      }
+    },
+    {
+      "id": "ede35a52-3747-4f7d-8760-6e8379fc50a2",
+      "name": "Sticky Note 46874d00",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        208,
+        112
+      ],
+      "parameters": {
+        "content": "## RAG Workflow Overview\n\nThis workflow demonstrates **Retrieval-Augmented Generation (RAG)** - a technique that enhances AI responses with external knowledge.\n\n**How it works:**\n1. Documents are split into chunks\n2. Chunks are converted to embeddings (vectors)\n3. Embeddings are stored in a vector database\n4. User queries retrieve relevant chunks\n5. AI generates answers using retrieved context",
+        "color": 4
+      }
+    },
+    {
+      "id": "592b62dd-f7d9-4ab2-9d1d-3caf8deb5a82",
+      "name": "Sticky Note d130cc9c",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        208,
+        400
+      ],
+      "parameters": {
+        "content": "## INDEXING PHASE\n\n**Purpose:** Load documents into the vector store\n\n**Steps:**\n- Provide your document text\n- Text is split into 1000-char chunks (200 overlap)\n- Each chunk becomes a vector embedding\n- Stored in memory with key \"rag_demo\"\n\n**Run this branch first to populate the knowledge base**",
+        "color": 2
+      }
+    },
+    {
+      "id": "c8e4d09f-1439-4be5-a5b6-50e560cc981a",
+      "name": "Sticky Note 9b3498e6",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        208,
+        1104
+      ],
+      "parameters": {
+        "content": "## QUERY PHASE\n\n**Purpose:** Ask questions about your documents\n\n**Steps:**\n- User asks a question\n- Question is converted to embedding\n- Top 4 most similar chunks are retrieved\n- AI Agent uses chunks as context\n- Generates accurate, grounded answer\n\n**Run this after indexing to query your knowledge**",
+        "color": 3
+      }
+    }
+  ],
+  "connections": {
+    "Start Indexing": {
+      "main": [
+        [
+          {
+            "node": "Provide Documents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Provide Documents": {
+      "main": [
+        [
+          {
+            "node": "Store Embeddings in Memory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Embeddings": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Store Embeddings in Memory",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask Question": {
+      "main": [
+        [
+          {
+            "node": "RAG AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "RAG AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retrieve from Vector Store": {
+      "ai_vectorStore": [
+        [
+          {
+            "node": "Vector Store Retriever",
+            "type": "ai_vectorStore",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Embeddings": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Retrieve from Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Document Data": {
+      "ai_document": [
+        [
+          {
+            "node": "Store Embeddings in Memory",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Text into Chunks": {
+      "ai_textSplitter": [
+        [
+          {
+            "node": "Load Document Data",
+            "type": "ai_textSplitter",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

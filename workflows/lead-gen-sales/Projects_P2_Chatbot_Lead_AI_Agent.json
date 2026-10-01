@@ -1,0 +1,499 @@
+{
+  "name": "Projects P2: Chatbot Lead AI Agent",
+  "nodes": [
+    {
+      "id": "e05e8f3c-4a3b-49c8-aff2-ef109e30a4c1",
+      "name": "Sticky Note da2e407a",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        528,
+        688
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "Chatbot Lead AI Architecture",
+            "position": [
+              -220,
+              60
+            ],
+            "parameters": {
+              "width": 560,
+              "height": 280,
+              "content": "AI CHATBOT LEAD SYSTEM\n\n1. Webhook POST /chat/lead (website/WhatsApp relay)\n2. AI qualifies lead + books intent\n3. Logs to CRM sheet + GHL/HubSpot HTTP placeholder\n4. Hot leads get instant Gmail/SMS follow-up\n5. Returns human-like chat reply JSON\n\nConnect your chat widget to this webhook."
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "a0dcd448-6b7a-48fd-8a95-c23f77f0c5e9",
+      "name": "Webhook: Chat Message",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "chat/lead",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "4131e211-118e-46c1-a26e-1143dc97cf1a"
+    },
+    {
+      "id": "10524ea9-e81c-4f96-9b06-72206d057765",
+      "name": "Normalize Chat Payload",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "msg",
+              "name": "message",
+              "value": "={{ $json.message || $json.body?.message || $json.text || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "name",
+              "name": "lead_name",
+              "value": "={{ $json.name || $json.body?.name || \"Visitor\" }}",
+              "type": "string"
+            },
+            {
+              "id": "email",
+              "name": "lead_email",
+              "value": "={{ $json.email || $json.body?.email || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "phone",
+              "name": "lead_phone",
+              "value": "={{ $json.phone || $json.body?.phone || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "channel",
+              "name": "channel",
+              "value": "={{ $json.channel || $json.body?.channel || \"website\" }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "c07b940e-27a2-4f96-9d12-57d391cc7c4f",
+      "name": "AI: Chat Lead Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        500,
+        300
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ \"You are a friendly, conversion-focused chat agent for a local service business. Qualify the lead, sound natural (not robotic), and move toward appointment booking when appropriate.\\n\\nLead: \" + $json.lead_name + \"\\nEmail: \" + $json.lead_email + \"\\nPhone: \" + $json.lead_phone + \"\\nChannel: \" + $json.channel + \"\\nMessage: \" + $json.message }}",
+        "hasOutputParser": true
+      }
+    },
+    {
+      "id": "6b9305ba-97df-443f-afbc-f33145d30d98",
+      "name": "GPT-4o Mini",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        528,
+        640
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "options": {
+          "temperature": 0.6
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "ec673e8c-d927-4e7b-b988-40708cc5bcb1",
+      "name": "Chat Response Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        560,
+        432
+      ],
+      "parameters": {
+        "schemaType": "fromJson",
+        "autoFix": true,
+        "jsonSchemaExample": {
+          "reply": "Thanks for reaching out! I can help you book a consultation. What day works best?",
+          "tier": "warm",
+          "score": 72,
+          "wants_appointment": true,
+          "appointment_preference": "this week",
+          "next_action": "offer_calendar_slots"
+        }
+      }
+    },
+    {
+      "id": "d729cb94-56cb-4bb0-980d-723cda213d1a",
+      "name": "Merge Chat Result",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        760,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ln",
+              "name": "lead_name",
+              "value": "={{ $(\"Normalize Chat Payload\").item.json.lead_name }}",
+              "type": "string"
+            },
+            {
+              "id": "le",
+              "name": "lead_email",
+              "value": "={{ $(\"Normalize Chat Payload\").item.json.lead_email }}",
+              "type": "string"
+            },
+            {
+              "id": "lp",
+              "name": "lead_phone",
+              "value": "={{ $(\"Normalize Chat Payload\").item.json.lead_phone }}",
+              "type": "string"
+            },
+            {
+              "id": "ch",
+              "name": "channel",
+              "value": "={{ $(\"Normalize Chat Payload\").item.json.channel }}",
+              "type": "string"
+            },
+            {
+              "id": "rp",
+              "name": "reply",
+              "value": "={{ $json.output?.reply || $json.reply || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "ti",
+              "name": "tier",
+              "value": "={{ $json.output?.tier || $json.tier || \"cold\" }}",
+              "type": "string"
+            },
+            {
+              "id": "sc",
+              "name": "score",
+              "value": "={{ $json.output?.score || $json.score || 0 }}",
+              "type": "number"
+            },
+            {
+              "id": "wa",
+              "name": "wants_appointment",
+              "value": "={{ $json.output?.wants_appointment || $json.wants_appointment || false }}",
+              "type": "boolean"
+            },
+            {
+              "id": "ts",
+              "name": "created_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "4002ea98-beaa-4b99-92d5-e7eb5a7518f3",
+      "name": "Log to Chat CRM Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1020,
+        300
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Chat_Leads"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "created_at": "={{ $json.created_at }}",
+            "lead_name": "={{ $json.lead_name }}",
+            "lead_email": "={{ $json.lead_email }}",
+            "lead_phone": "={{ $json.lead_phone }}",
+            "channel": "={{ $json.channel }}",
+            "tier": "={{ $json.tier }}",
+            "score": "={{ $json.score }}",
+            "wants_appointment": "={{ $json.wants_appointment }}",
+            "reply": "={{ $json.reply }}"
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "9f8fddfc-b86b-441d-b962-b2de93f00c20",
+      "name": "GHL: Upsert Contact (Optional)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1280,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://services.leadconnectorhq.com/contacts/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n        firstName: $json.lead_name,\n        email: $json.lead_email,\n        phone: $json.lead_phone,\n        tags: [\"chatbot\", $json.tier],\n        source: $json.channel\n      } }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "5031611f-db08-4e12-b9d4-63bcd168edd3",
+      "name": "Hot Lead?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1540,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.tier }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "hot"
+            }
+          ],
+          "combinator": "or"
+        }
+      }
+    },
+    {
+      "id": "826e30ab-4955-456c-a217-58ce5c582126",
+      "name": "Gmail: Hot Lead Follow-up",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1800,
+        220
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.lead_email }}",
+        "subject": "Thanks for chatting — next steps",
+        "emailType": "text",
+        "message": "={{ $json.reply + \"\\n\\nReply to this email or text us to confirm your appointment.\" }}",
+        "options": {}
+      },
+      "webhookId": "d1341a53-0782-449b-b13f-0bbc82f9daee"
+    },
+    {
+      "id": "9171a52c-0253-4835-a952-db1ef6fcd5db",
+      "name": "Respond Chat Reply",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1800,
+        400
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, reply: $json.reply, tier: $json.tier, score: $json.score, wants_appointment: $json.wants_appointment } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook: Chat Message": {
+      "main": [
+        [
+          {
+            "node": "Normalize Chat Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Chat Payload": {
+      "main": [
+        [
+          {
+            "node": "AI: Chat Lead Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Chat Lead Agent": {
+      "main": [
+        [
+          {
+            "node": "Merge Chat Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT-4o Mini": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI: Chat Lead Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Chat Response Schema",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat Response Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI: Chat Lead Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Chat Result": {
+      "main": [
+        [
+          {
+            "node": "Log to Chat CRM Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Chat CRM Sheet": {
+      "main": [
+        [
+          {
+            "node": "GHL: Upsert Contact (Optional)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GHL: Upsert Contact (Optional)": {
+      "main": [
+        [
+          {
+            "node": "Hot Lead?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hot Lead?": {
+      "main": [
+        [
+          {
+            "node": "Gmail: Hot Lead Follow-up",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Chat Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: Hot Lead Follow-up": {
+      "main": [
+        [
+          {
+            "node": "Respond Chat Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

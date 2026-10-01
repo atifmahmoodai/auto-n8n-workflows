@@ -1,0 +1,385 @@
+{
+  "name": "BizPilot - CashPilot Pro",
+  "nodes": [
+    {
+      "id": "4ed31fdd-cf55-453d-b9ac-409969ca4e78",
+      "name": "Daily Payment Scan 09:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 9,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "cd3ed238-108d-4616-95f3-07776d61d181",
+      "name": "Fetch Open Invoices",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "filterType": "none",
+        "operation": "getAll",
+        "orderBy": "created_at.desc",
+        "resource": "row",
+        "returnAll": true,
+        "tableId": "bizpilot_invoices"
+      }
+    },
+    {
+      "id": "467e955c-0a3f-4e93-b04a-ed9185e3bcc7",
+      "name": "Fetch Reminder History",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        520,
+        0
+      ],
+      "parameters": {
+        "filterType": "none",
+        "operation": "getAll",
+        "orderBy": "created_at.desc",
+        "resource": "row",
+        "returnAll": true,
+        "tableId": "bizpilot_payment_reminders"
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "0438e7e8-bb0b-4ead-9090-97674d1b697f",
+      "name": "Build Reminder Queue",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const invoices = $('Fetch Open Invoices').all().map(i => i.json);\nconst history = $('Fetch Reminder History').all().map(i => i.json);\nconst sent = new Set(history.map(r => r.reminder_key || `${r.invoice_no}:${r.reminder_stage}`));\nconst today = new Date();\nconst out = [];\nfor (const inv of invoices) {\n  const status = String(inv.payment_status || inv.status || '').toLowerCase();\n  if (['paid','cancelled','disputed'].includes(status)) continue;\n  const due = inv.due_date ? new Date(inv.due_date) : null;\n  if (!due || Number.isNaN(due.getTime())) continue;\n  const days = Math.floor((today - due) / 86400000);\n  let stage = null;\n  if (days < -1) continue;\n  if (days <= 0) stage = 'due_today';\n  else if (days <= 3) stage = 'overdue_3';\n  else if (days <= 7) stage = 'overdue_7';\n  else if (days <= 15) stage = 'overdue_15';\n  else stage = 'final_notice';\n  const key = `${inv.invoice_no || inv.id}:${stage}`;\n  if (sent.has(key)) continue;\n  out.push({ json: {\n    business_id: inv.business_id || 'default',\n    invoice_no: inv.invoice_no || inv.id,\n    customer_name: inv.customer_name || '',\n    customer_phone: String(inv.customer_phone || '').replace(/\\D/g, ''),\n    phone_number_id: inv.phone_number_id || 'YOUR_PHONE_NUMBER_ID',\n    owner_phone: String(inv.owner_phone || '923000000000').replace(/\\D/g, ''),\n    amount_due: Number(inv.total || inv.amount_due || 0) - Number(inv.paid_amount || 0),\n    due_date: inv.due_date,\n    days_overdue: Math.max(0, days),\n    reminder_stage: stage,\n    reminder_key: key,\n    needs_owner_approval: ['overdue_15','final_notice'].includes(stage) ? 'yes' : 'no',\n    payment_link: inv.payment_link || '',\n    created_at: new Date().toISOString()\n  }});\n}\nreturn out;"
+      }
+    },
+    {
+      "id": "a6917492-8b95-44fd-90d9-80a4fda53480",
+      "name": "AI Draft Reminder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1040,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'gpt-4o-mini', temperature: 0.1, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: 'You are CashPilot. Write professional payment reminders. Return JSON only with keys message, tone friendly|firm|escalation, needs_owner_approval boolean, reason. Never threaten legal action. Mention invoice number, amount due, due date, and payment link if present. For overdue_15 or final_notice set needs_owner_approval true.' }, { role: 'user', content: JSON.stringify($json) } ] }) }}"
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "4cab2820-dc8c-4344-8baa-bcd7597b9cf7",
+      "name": "Parse Reminder Decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const out = [];\nfor (const item of $input.all()) {\n  const base = $('Build Reminder Queue').item.json;\n  let ai = {};\n  try { ai = JSON.parse(item.json.choices?.[0]?.message?.content || '{}'); } catch (e) { ai = {}; }\n  const approval = base.needs_owner_approval === 'yes' || ai.needs_owner_approval === true;\n  // An owner-approval request is logged under its own key so the customer stage stays\n  // open. Logging it under the real stage key marked the stage as done, so the customer\n  // was never chased for it afterwards - the escalation died silently.\n  const loggedKey = approval ? base.reminder_key + ':approval_pending' : base.reminder_key;\n  out.push({ json: { ...base, reminder_key: loggedKey, reminder_message: ai.message || `Please pay invoice ${base.invoice_no} amount Rs ${base.amount_due}.`, tone: ai.tone || 'firm', needs_owner_approval: approval ? 'yes' : 'no', ai_reason: ai.reason || '', status: approval ? 'approval_required' : 'ready_to_send' } });\n}\nreturn out;"
+      }
+    },
+    {
+      "id": "f6277107-decf-48d1-976d-dd6d2af51969",
+      "name": "Requires Owner Approval?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1560,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.needs_owner_approval }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "yes"
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "26231fe9-e9c5-41bc-a6d1-4727d2374b10",
+      "name": "Send Owner Approval Request",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        1820,
+        -140
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "phoneNumberId": "={{ $json.phone_number_id }}",
+        "recipientPhoneNumber": "={{ $json.owner_phone }}",
+        "messageType": "text",
+        "textBody": "=Approval required before customer reminder. Invoice: {{ $json.invoice_no }}. Stage: {{ $json.reminder_stage }}. Message draft: {{ $json.reminder_message }}"
+      },
+      "webhookId": "e269b9ab-52e4-441a-bf5d-2d7d6985125b",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "0483c388-c6e8-481c-89d8-5b83de68452a",
+      "name": "Log Payment Reminder",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2080,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "create",
+        "tableId": "bizpilot_payment_reminders",
+        "dataToSend": "autoMapInputData"
+      }
+    },
+    {
+      "id": "35b5961d-ae9d-4d7f-b98e-794cce706768",
+      "name": "Send Customer Reminder",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        1820,
+        140
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "phoneNumberId": "={{ $json.phone_number_id }}",
+        "recipientPhoneNumber": "={{ $json.customer_phone }}",
+        "messageType": "text",
+        "textBody": "={{ $json.reminder_message }}"
+      },
+      "webhookId": "4f189301-2c7c-4fdf-81bd-526981c240f2",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "a8fdc166-d12d-41f4-860e-2cd192bc28ec",
+      "name": "Sticky Note 2dec1071",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -50,
+        -50
+      ],
+      "parameters": {
+        "content": "## CashPilot Pro\nDaily invoice aging scan, duplicate reminder-key filter, AI reminder drafting, approval gate for aggressive stages, WhatsApp send/approval, Supabase audit, and Sheet export. Replace YOUR_GOOGLE_SHEET_ID and publish after WhatsApp credential is connected.",
+        "color": 6,
+        "width": 1860,
+        "height": 200
+      }
+    },
+    {
+      "id": "1ae6ea09-0a45-4843-8698-777352189e56",
+      "name": "Export Reminder to Sheet (disabled)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2080,
+        200
+      ],
+      "parameters": {
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": [],
+          "schema": [],
+          "value": {}
+        },
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "operation": "append",
+        "options": {},
+        "resource": "sheet",
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        }
+      },
+      "disabled": true,
+      "notes": "Placeholder export. Disabled so it cannot break the run. Add your Google Sheet document + tab, then enable."
+    }
+  ],
+  "connections": {
+    "Daily Payment Scan 09:00": {
+      "main": [
+        [
+          {
+            "node": "Fetch Open Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Open Invoices": {
+      "main": [
+        [
+          {
+            "node": "Fetch Reminder History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Reminder History": {
+      "main": [
+        [
+          {
+            "node": "Build Reminder Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Reminder Queue": {
+      "main": [
+        [
+          {
+            "node": "AI Draft Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Draft Reminder": {
+      "main": [
+        [
+          {
+            "node": "Parse Reminder Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Reminder Decision": {
+      "main": [
+        [
+          {
+            "node": "Requires Owner Approval?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Requires Owner Approval?": {
+      "main": [
+        [
+          {
+            "node": "Send Owner Approval Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Customer Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Owner Approval Request": {
+      "main": [
+        [
+          {
+            "node": "Log Payment Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Customer Reminder": {
+      "main": [
+        [
+          {
+            "node": "Log Payment Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Payment Reminder": {
+      "main": [
+        [
+          {
+            "node": "Export Reminder to Sheet (disabled)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

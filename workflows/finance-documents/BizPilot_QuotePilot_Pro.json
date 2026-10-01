@@ -1,0 +1,376 @@
+{
+  "name": "BizPilot - QuotePilot Pro",
+  "nodes": [
+    {
+      "id": "ab99f81f-4e98-4ed4-be63-3b72ada0efe3",
+      "name": "Quote Request Intake",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "bizpilot-quotepilot-request",
+        "responseMode": "responseNode",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "X-BizPilot",
+                "value": "QuotePilot"
+              }
+            ]
+          }
+        }
+      },
+      "webhookId": "55de4ac1-2c85-4d92-b459-b94b944f7ce3"
+    },
+    {
+      "id": "7d77f4d5-6b09-4f0f-b336-92c8edfdd941",
+      "name": "Normalize Quote Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const out = [];\nfor (const item of $input.all()) {\n  const body = item.json.body || item.json || {};\n  const description = body.description || body.message || body.text || '';\n  // A request with no description used to produce zero items, so no Respond node ran and\n  // the caller hung. Mark it instead and acknowledge it below.\n  if (!description) { out.push({ json: { skip: true, reason: 'missing_description' } }); continue; }\n  out.push({ json: {\n    business_id: body.business_id || 'default',\n    owner_phone: String(body.owner_phone || '923000000000').replace(/\\D/g, ''),\n    customer_name: body.customer_name || body.name || '',\n    customer_phone: String(body.customer_phone || body.phone || '').replace(/\\D/g, ''),\n    phone_number_id: body.phone_number_id || 'YOUR_PHONE_NUMBER_ID',\n    service_type: body.service_type || 'unknown',\n    description,\n    photos: Array.isArray(body.photos) ? body.photos : [],\n    pricing_rules: body.pricing_rules || {},\n    idempotency_key: body.idempotency_key || ('quote-' + Date.now()),\n    received_at: new Date().toISOString()\n  }});\n}\nreturn out;"
+      }
+    },
+    {
+      "id": "f206e90b-587b-4044-a1ae-dd1f2f45828a",
+      "name": "AI Analyze Quote Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        520,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'gpt-4o-mini', temperature: 0.1, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: 'You are QuotePilot for service businesses. Return JSON only with keys: service_type, problem_summary, missing_questions array, risk_level low|medium|high, site_visit_required boolean, recommended_quote_mode fixed|range|inspection_first, suggested_items array of {name,type labor|material|service|other,quantity,unit,confidence}, customer_reply. Never finalize exact prices unless pricing_rules are provided. Ask maximum two missing questions. If electrical/gas/structural/dangerous uncertainty exists, site_visit_required true.' }, { role: 'user', content: JSON.stringify({ service_type: $json.service_type, description: $json.description, photos: $json.photos, pricing_rules: $json.pricing_rules }) } ] }) }}"
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "e3e669cb-34d6-4d74-9483-38178a11f8f6",
+      "name": "Build Quote Draft",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const source = $('Normalize Quote Request').item.json;\nlet ai = {};\ntry { ai = JSON.parse($input.first().json.choices?.[0]?.message?.content || '{}'); } catch (e) { ai = {}; }\nconst quoteNo = 'Q-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + Math.floor(1000 + Math.random()*9000);\nconst questions = Array.isArray(ai.missing_questions) ? ai.missing_questions.slice(0,2) : [];\nconst items = Array.isArray(ai.suggested_items) ? ai.suggested_items : [];\nconst needsInfo = questions.length > 0 || ai.site_visit_required === true || ai.recommended_quote_mode === 'inspection_first';\nconst customerReply = ai.customer_reply || (needsInfo ? 'Please share a little more detail so we can prepare a proper quote.' : 'Thanks. We are preparing your quote and will share it shortly.');\nconst ownerMessage = `Quote approval needed: ${quoteNo}\\nCustomer: ${source.customer_name || source.customer_phone}\\nService: ${ai.service_type || source.service_type}\\nRisk: ${ai.risk_level || 'medium'}\\nSummary: ${ai.problem_summary || source.description}\\nMode: ${ai.recommended_quote_mode || 'range'}\\nSuggested items: ${JSON.stringify(items)}`;\nreturn [{ json: {\n  business_id: source.business_id,\n  quote_no: quoteNo,\n  idempotency_key: source.idempotency_key,\n  customer_name: source.customer_name,\n  customer_phone: source.customer_phone,\n  phone_number_id: source.phone_number_id,\n  owner_phone: source.owner_phone,\n  service_type: ai.service_type || source.service_type,\n  problem_summary: ai.problem_summary || source.description,\n  risk_level: ai.risk_level || 'medium',\n  quote_mode: ai.recommended_quote_mode || 'range',\n  site_visit_required: ai.site_visit_required === true ? 'yes' : 'no',\n  missing_questions: JSON.stringify(questions),\n  suggested_items: JSON.stringify(items),\n  customer_reply: customerReply,\n  owner_message: ownerMessage,\n  route: needsInfo ? 'needs_info' : 'owner_approval',\n  status: needsInfo ? 'needs_info' : 'draft_ready',\n  created_at: new Date().toISOString()\n}}];"
+      }
+    },
+    {
+      "id": "42eb168b-58d7-42ac-a531-4e63af8949bb",
+      "name": "Save Quote Draft",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1040,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "create",
+        "tableId": "bizpilot_quotes",
+        "dataToSend": "autoMapInputData"
+      }
+    },
+    {
+      "id": "fa57be37-1b06-453f-84a2-69ea2ff60f0c",
+      "name": "Reply to Customer",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        1560,
+        -140
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "phoneNumberId": "={{ $('Build Quote Draft').item.json.phone_number_id }}",
+        "recipientPhoneNumber": "={{ $('Build Quote Draft').item.json.customer_phone }}",
+        "messageType": "text",
+        "textBody": "={{ $('Build Quote Draft').item.json.customer_reply }}"
+      },
+      "webhookId": "fa4cafef-de77-4526-a0a0-11fbe7f7f046",
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "f9b44d4b-d5e0-4cf8-a0d6-00fb4b951ba9",
+      "name": "Send Owner Quote Approval",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        1560,
+        140
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "phoneNumberId": "={{ $('Build Quote Draft').item.json.phone_number_id }}",
+        "recipientPhoneNumber": "={{ $('Build Quote Draft').item.json.owner_phone }}",
+        "messageType": "text",
+        "textBody": "={{ $('Build Quote Draft').item.json.owner_message }}"
+      },
+      "webhookId": "c74d6c61-2881-49d4-8f0d-acde0b156d85",
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "27e61d6d-b582-4526-9a83-55bd3476972f",
+      "name": "Respond Quote Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2080,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, module: \"QuotePilot\", quote_no: $(\"Build Quote Draft\").item.json.quote_no, status: $(\"Build Quote Draft\").item.json.status, risk_level: $(\"Build Quote Draft\").item.json.risk_level } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "c2a2e40f-28ef-4d11-91a1-a18f9613e47a",
+      "name": "Sticky Note 11c7fb5d",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -50,
+        -50
+      ],
+      "parameters": {
+        "content": "## QuotePilot Pro\nCustomer quote intake, AI risk analysis, missing-question gate, site-visit protection, owner approval alert, Supabase quote record, and Sheet export. Replace YOUR_GOOGLE_SHEET_ID and connect WhatsApp before publishing.",
+        "color": 3,
+        "width": 1860,
+        "height": 340
+      }
+    },
+    {
+      "id": "526f5c51-d2c7-42ca-8096-264cfc00f1af",
+      "name": "Export Quote to Sheet (disabled)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1040,
+        240
+      ],
+      "parameters": {
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": [],
+          "schema": [],
+          "value": {}
+        },
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "operation": "append",
+        "options": {},
+        "resource": "sheet",
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        }
+      },
+      "disabled": true,
+      "notes": "Placeholder export. Disabled so it cannot break the run. Add your Google Sheet document + tab, then enable."
+    },
+    {
+      "id": "e7c88a12-6173-4a6d-ae33-bc049f57befe",
+      "name": "Has a description?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        390,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "has-desc",
+              "leftValue": "={{ $json.skip !== true }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": ""
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "c8ca2f91-70e7-4a1f-9344-4a7219be4de0",
+      "name": "Ack Incomplete Request",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        520,
+        220
+      ],
+      "parameters": {
+        "options": {
+          "responseCode": 400
+        },
+        "respondWith": "json",
+        "responseBody": "={{ { ok: false, module: 'QuotePilot', error: 'A description of the job is required.' } }}"
+      }
+    }
+  ],
+  "connections": {
+    "Quote Request Intake": {
+      "main": [
+        [
+          {
+            "node": "Normalize Quote Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Analyze Quote Request": {
+      "main": [
+        [
+          {
+            "node": "Build Quote Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Quote Draft": {
+      "main": [
+        [
+          {
+            "node": "Save Quote Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Quote Draft": {
+      "main": [
+        [
+          {
+            "node": "Export Quote to Sheet (disabled)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Reply to Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Owner Quote Approval": {
+      "main": [
+        [
+          {
+            "node": "Respond Quote Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Quote Request": {
+      "main": [
+        [
+          {
+            "node": "Has a description?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has a description?": {
+      "main": [
+        [
+          {
+            "node": "AI Analyze Quote Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ack Incomplete Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reply to Customer": {
+      "main": [
+        [
+          {
+            "node": "Send Owner Quote Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

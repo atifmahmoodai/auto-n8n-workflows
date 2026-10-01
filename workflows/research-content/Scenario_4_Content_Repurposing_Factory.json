@@ -1,0 +1,340 @@
+{
+  "name": "Scenario 4: Content Repurposing Factory",
+  "nodes": [
+    {
+      "id": "2ddeb11f-1630-44eb-983a-b04c3845240e",
+      "name": "Sticky Note 5d209aca",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        100,
+        300
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "Setup",
+            "position": [
+              -220,
+              40
+            ],
+            "parameters": {
+              "width": 540,
+              "height": 220,
+              "content": "SCENARIO 4 — Content Factory\nPOST /content-brief { title, brief, format (script|social|email|shot_list) }\nGrok expands → ElevenLabs voice (optional) → Drive + Supabase → Approval Hub.\nSet Drive folder for audio assets."
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "b9517ec9-a2e8-4de6-8763-503b0457145c",
+      "name": "Content Brief Intake",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "content-brief",
+        "responseMode": "responseNode"
+      },
+      "webhookId": "4b1369af-7263-42f5-a76b-b4d5047ef53c"
+    },
+    {
+      "id": "b7da17b5-8de1-4980-8c7f-d6af052db57f",
+      "name": "Parse Brief",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const j = $input.first()?.json || {};\nconst body = j.body && typeof j.body === 'object' ? j.body : j;\nconst title = String(body.title || 'Untitled').trim();\nconst brief = String(body.brief || body.idea || '').trim();\nconst format = String(body.format || 'script').toLowerCase();\nif (!brief) return [];\nreturn [{ json: {\n  asset_id: 'asset_' + Date.now(),\n  title,\n  brief,\n  format,\n  voice_enabled: body.voice_enabled !== false,\n  created_at: new Date().toISOString(),\n}}];"
+      }
+    },
+    {
+      "id": "9d9c1043-4e7d-438c-8e2f-dcba077cb8b3",
+      "name": "Grok Expand Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.x.ai/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "xAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'grok-2-1212', messages: [ { role: 'system', content: 'You are a creative director. Expand briefs into production-ready content. Return JSON with: primary_script, social_posts (array), email_draft, shot_list (array), seo_outline.' }, { role: 'user', content: 'Title: ' + $json.title + '\\nFormat: ' + $json.format + '\\nBrief: ' + $json.brief } ], response_format: { type: 'json_object' } }) }}"
+      }
+    },
+    {
+      "id": "f94ecd11-8230-40cb-bc81-2e6e92ea7031",
+      "name": "Merge Content Assets",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const base = $('Parse Brief').item.json;\nlet content = {};\ntry { content = JSON.parse($json.choices?.[0]?.message?.content || '{}'); } catch(e) {}\nconst narration = content.primary_script || content.email_draft || base.brief;\nreturn { json: { ...base, content_json: JSON.stringify(content), narration_text: String(narration).slice(0, 5000), primary_script: content.primary_script || '' } };"
+      }
+    },
+    {
+      "id": "31d6ea50-3fa8-440b-960f-e2b365fd0bcc",
+      "name": "ElevenLabs Voice",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        960,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: $json.narration_text.slice(0, 3000), model_id: 'eleven_multilingual_v2' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "ea524376-62b5-4d34-ade9-c40b3236106d",
+      "name": "Save Audio to Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1200,
+        300
+      ],
+      "parameters": {
+        "resource": "file",
+        "operation": "upload",
+        "name": "={{ $(\"Merge Content Assets\").item.json.asset_id + \".mp3\" }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_CONTENT_AUDIO_FOLDER_ID"
+        },
+        "inputDataFieldName": "data"
+      }
+    },
+    {
+      "id": "56669f14-2604-4f29-8fb5-b2a1b2d6ea7a",
+      "name": "Save content_assets",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1440,
+        300
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "create",
+        "tableId": "content_assets",
+        "dataToSend": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "asset_id",
+              "fieldValue": "={{ $(\"Merge Content Assets\").item.json.asset_id }}"
+            },
+            {
+              "fieldId": "title",
+              "fieldValue": "={{ $(\"Merge Content Assets\").item.json.title }}"
+            },
+            {
+              "fieldId": "format",
+              "fieldValue": "={{ $(\"Merge Content Assets\").item.json.format }}"
+            },
+            {
+              "fieldId": "content_json",
+              "fieldValue": "={{ $(\"Merge Content Assets\").item.json.content_json }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "pending_approval"
+            },
+            {
+              "fieldId": "created_at",
+              "fieldValue": "={{ $(\"Merge Content Assets\").item.json.created_at }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "7bc393a7-f117-471c-87ba-bc8c3a4b2068",
+      "name": "Call Approval Hub",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1680,
+        300
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "yw12tH91pCmolAME"
+        },
+        "mode": "once",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "source_workflow": "Scenario 4: Content Factory",
+            "event_type": "content_batch",
+            "title": "={{ \"Content ready: \" + $(\"Merge Content Assets\").item.json.title }}",
+            "priority": "normal",
+            "suggested_action": "Review script and voiceover before publishing",
+            "payload": "={{ $(\"Merge Content Assets\").item.json }}"
+          }
+        }
+      }
+    },
+    {
+      "id": "a0ef6907-ac8c-4ad3-bc4e-54017eac5f65",
+      "name": "Respond Pending",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1920,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, asset_id: $(\"Merge Content Assets\").item.json.asset_id, status: 'pending_approval', message: 'Content batch generated. Check Pushover to approve.' } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Content Brief Intake": {
+      "main": [
+        [
+          {
+            "node": "Parse Brief",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Brief": {
+      "main": [
+        [
+          {
+            "node": "Grok Expand Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Grok Expand Content": {
+      "main": [
+        [
+          {
+            "node": "Merge Content Assets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Content Assets": {
+      "main": [
+        [
+          {
+            "node": "ElevenLabs Voice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ElevenLabs Voice": {
+      "main": [
+        [
+          {
+            "node": "Save Audio to Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Audio to Drive": {
+      "main": [
+        [
+          {
+            "node": "Save content_assets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save content_assets": {
+      "main": [
+        [
+          {
+            "node": "Call Approval Hub",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Approval Hub": {
+      "main": [
+        [
+          {
+            "node": "Respond Pending",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

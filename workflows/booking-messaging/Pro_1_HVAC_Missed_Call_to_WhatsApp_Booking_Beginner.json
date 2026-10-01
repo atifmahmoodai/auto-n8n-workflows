@@ -1,0 +1,590 @@
+{
+  "name": "Pro 1 | HVAC Missed Call to WhatsApp Booking | Beginner",
+  "nodes": [
+    {
+      "id": "9d9b5546-3c11-4b1b-bb18-bef1ba3bf056",
+      "name": "Twilio Call Ended",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "hvac-missed-call",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "ab27dbc8-7ef3-4b8b-bd81-ae963d7730cb"
+    },
+    {
+      "id": "ffea4288-55f2-421b-8f7c-8e96a7d5b7af",
+      "name": "Config (Calls)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "2f75f1b7-1ea2-4847-9a67-3ea4b0a2166a",
+              "name": "businessName",
+              "value": "Northern Heat & Cooling",
+              "type": "string"
+            },
+            {
+              "id": "68f6205d-f0a4-42dd-937f-ce800a761e96",
+              "name": "twilioFrom",
+              "value": "+447400000001",
+              "type": "string"
+            },
+            {
+              "id": "5e79cab4-8c0a-4f28-8e93-b05005b6291a",
+              "name": "whatsappNumber",
+              "value": "+447400000002",
+              "type": "string"
+            },
+            {
+              "id": "dd51c4aa-d18e-4d7d-bd10-872958468e29",
+              "name": "whatsappPrefill",
+              "value": "Hi, I just called you",
+              "type": "string"
+            },
+            {
+              "id": "dd8ea4c1-3c8c-4e2b-a5b1-0a404fc5e666",
+              "name": "smsCooldownMinutes",
+              "value": 30,
+              "type": "number"
+            },
+            {
+              "id": "4d628446-b12f-4d4a-85ef-017176fe702b",
+              "name": "webhookKey",
+              "value": "CHANGE_ME_to_a_long_random_string",
+              "type": "string"
+            },
+            {
+              "id": "e4c6fcd6-9402-4ef4-b40b-ff4ce205e542",
+              "name": "smsOnlyToPrefixes",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "d3e4afc5-463b-486a-9beb-670333353547",
+              "name": "missed",
+              "value": "={{ ['no-answer','busy','failed','canceled'].includes(($json.body || {}).DialCallStatus || ($json.body || {}).CallStatus) }}",
+              "type": "boolean"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "fb0c2633-8cf7-42b1-9b47-4c268ca30812",
+      "name": "Reply TwiML",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.missed ? '<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response><Say voice=\"alice\" language=\"en-GB\">Sorry we missed your call. If you are calling from a mobile, we are sending you a text message now so you can book straight away.</Say><Hangup/></Response>' : '<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response/>' }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/xml"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "c0d70e5b-63c4-4a90-bd99-24a7cf1d407a",
+      "name": "Missed Call?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "9aff70b7-c910-429c-88eb-a427e7a0d0d2",
+              "leftValue": "={{ $json.missed }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "118f5ea5-53f3-45aa-9766-2fe85aa58319",
+      "name": "Check Caller & Build SMS",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        280
+      ],
+      "parameters": {
+        "jsCode": "// ===== Check Caller & Build SMS =====\n// Runs only for missed calls (the IF node before this filters answered calls).\n// Returns [] to stop quietly when we should NOT text the caller.\n\nconst j = $input.first().json;\nconst b = j.body || {};\nconst onlyDigits = (s) => String(s || '').replace(/\\D/g, '');\n\n// 0) Shared secret in the URL (?key=...). Without it anyone who finds this URL\n//    could make you pay to text any number they like.\nconst expectedKey = String(j.webhookKey || '');\nif (!expectedKey || /^CHANGE_ME/i.test(expectedKey) || expectedKey.length < 12) {\n  throw new Error('Config (Calls): set webhookKey to a long random string (12+ chars) and add ?key=... to the Twilio action URL.');\n}\nif (String((j.query || {}).key || '') !== expectedKey) {\n  return [];\n}\n\nconst from = String(b.From || b.Caller || '').trim();\n\n// 1) Withheld / anonymous / malformed numbers cannot be texted.\n// Twilio shows hidden caller IDs as keypad-spelled words: ANONYMOUS, RESTRICTED, BLOCKED, UNKNOWN, UNAVAILABLE.\nconst HIDDEN = ['+266696687', '+7378742883', '+2562533', '+8656696', '+86282452253'];\nif (!/^\\+[1-9]\\d{7,14}$/.test(from) || HIDDEN.includes(from)) {\n  return [];\n}\n\n// 2) Optional: only text numbers with these prefixes (e.g. \"+447\" = UK mobiles).\nconst prefixes = String(j.smsOnlyToPrefixes || '')\n  .split(',').map((s) => s.trim()).filter(Boolean);\nif (prefixes.length && !prefixes.some((p) => from.startsWith(p))) {\n  return [];\n}\n\n// 3) Never text our own numbers (stops loops if staff call the line).\nconst own = [j.twilioFrom, j.whatsappNumber].map(onlyDigits).filter(Boolean);\nif (own.includes(onlyDigits(from))) {\n  return [];\n}\n\n// 4) Cooldown: a caller who rings 3 times in a row gets ONE text, not three.\nconst store = $getWorkflowStaticData('global');\nstore.sms = store.sms || {};\nstore.calls = store.calls || {};\nconst now = Date.now();\nconst key = onlyDigits(from);\nconst cooldownMs = (Number(j.smsCooldownMinutes) || 30) * 60 * 1000;\n\n// housekeeping: forget records older than 7 days\nconst weekMs = 7 * 24 * 60 * 60 * 1000;\nfor (const bucket of [store.sms, store.calls]) {\n  for (const k of Object.keys(bucket)) {\n    if (now - bucket[k] > weekMs) delete bucket[k];\n  }\n}\n\nstore.lastCallRun = now; // top-level write guarantees n8n saves the static data\nstore.calls[key] = now; // lets the WhatsApp flow tag this lead as \"missed call\"\n\nif (store.sms[key] && now - store.sms[key] < cooldownMs) {\n  return [];\n}\nstore.sms[key] = now;\n\n// 5) Build the SMS with a click-to-WhatsApp link.\nconst waDigits = onlyDigits(j.whatsappNumber);\nif (!waDigits) {\n  throw new Error('Config (Calls): whatsappNumber is empty. Put your WhatsApp Business number there.');\n}\nconst prefill = j.whatsappPrefill || 'Hi, I just called you';\nconst link = 'https://wa.me/' + waDigits + '?text=' + encodeURIComponent(prefill);\nconst smsText =\n  (j.businessName || 'We') + ': sorry we missed your call! ' +\n  'Book a callback or an engineer visit on WhatsApp in under a minute: ' + link;\n\nreturn [{\n  json: {\n    to: from,\n    twilioFrom: j.twilioFrom,\n    smsText,\n    link,\n    callSid: b.CallSid || '',\n    dialStatus: b.DialCallStatus || '',\n  },\n}];\n"
+      }
+    },
+    {
+      "id": "252dbd60-cb82-4620-b661-f8dea9716f0d",
+      "name": "Wait 10s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1100,
+        280
+      ],
+      "parameters": {
+        "amount": 10,
+        "unit": "seconds"
+      },
+      "webhookId": "46fb3c72-5c64-43da-bf36-8e6abca48159"
+    },
+    {
+      "id": "3161d47b-ff0c-4c1f-b2ea-0858122cb301",
+      "name": "Send SMS with WhatsApp Link",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        1320,
+        280
+      ],
+      "parameters": {
+        "resource": "sms",
+        "operation": "send",
+        "from": "={{ $json.twilioFrom }}",
+        "to": "={{ $json.to }}",
+        "toWhatsapp": false,
+        "message": "={{ $json.smsText }}",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "29dd620c-a920-4afd-b165-295ef6b7dcae",
+      "name": "WhatsApp Message In",
+      "type": "n8n-nodes-base.whatsAppTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        860
+      ],
+      "parameters": {
+        "updates": [
+          "messages"
+        ],
+        "options": {}
+      },
+      "webhookId": "a4a53114-1a32-4483-8ebf-97c11e1d7118"
+    },
+    {
+      "id": "87a95e85-4809-4020-b2ca-63ead1ac7ff4",
+      "name": "Config (WhatsApp)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        860
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "22765c28-1300-4361-ad6c-a3a8f8d61087",
+              "name": "businessName",
+              "value": "Northern Heat & Cooling",
+              "type": "string"
+            },
+            {
+              "id": "abaa9d87-5541-4817-911a-d3000505e968",
+              "name": "ownerMobile",
+              "value": "+447700900999",
+              "type": "string"
+            },
+            {
+              "id": "29f52e5d-24a8-4962-bef8-454b9c4837b9",
+              "name": "twilioFrom",
+              "value": "+447400000001",
+              "type": "string"
+            },
+            {
+              "id": "3d487e2f-6913-44ed-bf88-135aaa434144",
+              "name": "calendarId",
+              "value": "YOUR_CALENDAR@gmail.com",
+              "type": "string"
+            },
+            {
+              "id": "e02d6ad8-e326-4796-909a-38dc2728ae71",
+              "name": "timezone",
+              "value": "Europe/London",
+              "type": "string"
+            },
+            {
+              "id": "a1a52330-34dd-438e-b055-f54e8b9a4712",
+              "name": "workDays",
+              "value": "1,2,3,4,5",
+              "type": "string"
+            },
+            {
+              "id": "6aed280d-197b-4c9b-a470-cd81b05f3319",
+              "name": "graphVersion",
+              "value": "v25.0",
+              "type": "string"
+            },
+            {
+              "id": "47745ec1-8b79-4413-b572-0bb2783d4391",
+              "name": "phoneNumberId",
+              "value": "YOUR_PHONE_NUMBER_ID",
+              "type": "string"
+            },
+            {
+              "id": "2dffc52c-1771-4832-b5ab-5aa362f867f4",
+              "name": "sessionHours",
+              "value": 6,
+              "type": "number"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "72f9cbaf-9105-4768-b5b1-7514861c0059",
+      "name": "Conversation Engine",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        860
+      ],
+      "parameters": {
+        "jsCode": "// ===== Conversation Engine =====\n// Deterministic state machine - no AI. Code decides every step.\n// One WhatsApp message in  ->  one WhatsApp reply out (+ a booking when finished).\n// Conversation state lives in workflow static data, keyed by phone number.\n// NOTE: static data only persists when the workflow is ACTIVE (not in manual test runs).\n\nconst item = $input.first().json;\nconst onlyDigits = (s) => String(s || '').replace(/\\D/g, '');\nconst isPlaceholder = (s) => !s || /^(YOUR_|REPLACE|PASTE)/i.test(String(s));\n\nconst cfg = {\n  businessName: item.businessName || 'Our team',\n  timezone: item.timezone || 'Europe/London',\n  workDays: String(item.workDays || '1,2,3,4,5').split(',')\n    .map((s) => parseInt(s.trim(), 10)).filter((n) => n >= 1 && n <= 7),\n  graphVersion: item.graphVersion || 'v25.0',\n  phoneNumberId: isPlaceholder(item.phoneNumberId) ? '' : String(item.phoneNumberId),\n  ownerMobile: item.ownerMobile || '',\n  twilioFrom: item.twilioFrom || '',\n  calendarId: item.calendarId || '',\n  sessionHours: Number(item.sessionHours) || 6,\n};\nif (!cfg.workDays.length) cfg.workDays = [1, 2, 3, 4, 5];\n\nconst OPEN_HOUR = 8;           // callbacks handled from 08:00...\nconst CLOSE_HOUR = 17;         // ...until 17:30\nconst WINDOWS = [\n  { id: 'am',  title: 'Morning 8-12',   start: 8,  end: 12 },\n  { id: 'pm',  title: 'Afternoon 12-4', start: 12, end: 16 },\n  { id: 'eve', title: 'Evening 4-6',    start: 16, end: 18 },\n];\nconst ISSUES = [\n  { id: 'no_heating',   title: 'No heating' },\n  { id: 'no_hot_water', title: 'No hot water' },\n  { id: 'boiler_fault', title: 'Boiler fault / error' },\n  { id: 'leak',         title: 'Leak or dripping' },\n  { id: 'aircon',       title: 'Air con not working' },\n  { id: 'service',      title: 'Service / maintenance' },\n  { id: 'gas',          title: 'I can smell gas', description: 'Emergency - read this first' },\n  { id: 'other',        title: 'Something else' },\n];\nconst CHOICES = [\n  { id: 'cb',    title: 'Request a callback' },\n  { id: 'visit', title: 'Book a visit' },\n];\n\n// ---------- read the inbound payload (WhatsApp Trigger OR a raw Meta webhook) ----------\nfunction getValue(j) {\n  if (Array.isArray(j.messages) || Array.isArray(j.statuses)) return j;\n  const viaBody = j.body && j.body.entry && j.body.entry[0] && j.body.entry[0].changes\n    && j.body.entry[0].changes[0] && j.body.entry[0].changes[0].value;\n  if (viaBody) return viaBody;\n  const viaEntry = j.entry && j.entry[0] && j.entry[0].changes\n    && j.entry[0].changes[0] && j.entry[0].changes[0].value;\n  if (viaEntry) return viaEntry;\n  if (j.value) return j.value;\n  return {};\n}\nconst value = getValue(item);\nconst messages = Array.isArray(value.messages) ? value.messages : [];\nif (!messages.length) return []; // delivery/read receipts etc. - nothing to answer\n\nconst phoneNumberId = cfg.phoneNumberId || (value.metadata && value.metadata.phone_number_id) || '';\nif (!phoneNumberId) {\n  throw new Error('No phone_number_id found. Set phoneNumberId in \"Config (WhatsApp)\".');\n}\nconst profileName = (value.contacts && value.contacts[0] && value.contacts[0].profile\n  && value.contacts[0].profile.name) || '';\n\n// ---------- state ----------\nconst store = $getWorkflowStaticData('global');\nstore.sessions = store.sessions || {};\nstore.seen = store.seen || [];\nstore.calls = store.calls || {};\nconst nowMs = Date.now();\nconst now = DateTime.now().setZone(cfg.timezone);\n\n// housekeeping: drop sessions idle for 7+ days\nfor (const k of Object.keys(store.sessions)) {\n  if (nowMs - (store.sessions[k].updated || 0) > 7 * 24 * 60 * 60 * 1000) delete store.sessions[k];\n}\n\n// ---------- WhatsApp payload builders ----------\nconst base = (to) => ({ messaging_product: 'whatsapp', recipient_type: 'individual', to });\nconst text = (to, body) => ({ ...base(to), type: 'text', text: { preview_url: false, body } });\nconst buttons = (to, body, opts) => ({\n  ...base(to), type: 'interactive',\n  interactive: {\n    type: 'button',\n    body: { text: body },\n    action: { buttons: opts.map((o) => ({ type: 'reply', reply: { id: o.id, title: o.title } })) },\n  },\n});\nconst list = (to, body, buttonText, sectionTitle, rows) => ({\n  ...base(to), type: 'interactive',\n  interactive: {\n    type: 'list',\n    body: { text: body },\n    action: {\n      button: buttonText,\n      sections: [{\n        title: sectionTitle,\n        rows: rows.map((r) => (r.description\n          ? { id: r.id, title: r.title, description: r.description }\n          : { id: r.id, title: r.title })),\n      }],\n    },\n  },\n});\nconst numbered = (opts) => opts.map((o, i) => (i + 1) + '. ' + o.title).join('\\n');\n\n// ---------- helpers ----------\nfunction readInput(msg) {\n  if (msg.type === 'text') {\n    return { kind: 'text', id: '', text: String((msg.text && msg.text.body) || '').trim() };\n  }\n  if (msg.type === 'interactive' && msg.interactive) {\n    const r = msg.interactive.list_reply || msg.interactive.button_reply;\n    if (r) return { kind: 'choice', id: String(r.id || ''), text: String(r.title || '') };\n  }\n  if (msg.type === 'button' && msg.button) {\n    return { kind: 'text', id: '', text: String(msg.button.text || '').trim() };\n  }\n  return { kind: 'other', id: '', text: '' }; // image, voice note, sticker, location...\n}\n\n// match a tap (id), a typed number (\"2\") or typed words (\"no hot water\")\nfunction pick(input, opts) {\n  if (input.kind === 'choice') return opts.find((o) => o.id === input.id) || null;\n  if (input.kind !== 'text') return null;\n  const t = input.text.toLowerCase().trim();\n  if (!t) return null;\n  if (/^\\d{1,2}$/.test(t)) return opts[parseInt(t, 10) - 1] || null;\n  return opts.find((o) => o.title.toLowerCase() === t)\n    || opts.find((o) => t.length >= 4 && o.title.toLowerCase().includes(t))\n    || null;\n}\n\nfunction tidyPostcode(raw) {\n  const m = String(raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '')\n    .match(/^([A-Z]{1,2}\\d[A-Z\\d]?)(\\d[A-Z]{2})$/);\n  return m ? m[1] + ' ' + m[2] : null;\n}\n\nfunction nextWorkingDays(from, count) {\n  const out = [];\n  let d = from.startOf('day');\n  for (let guard = 0; out.length < count && guard < 21; guard++) {\n    d = d.plus({ days: 1 });\n    if (cfg.workDays.includes(d.weekday)) {\n      out.push({ id: d.toFormat('yyyy-LL-dd'), title: d.toFormat('ccc d LLL') });\n    }\n  }\n  return out;\n}\n\nfunction callbackSlot(n) {\n  const open = n.set({ hour: OPEN_HOUR, minute: 0, second: 0, millisecond: 0 });\n  const close = n.set({ hour: CLOSE_HOUR, minute: 30, second: 0, millisecond: 0 });\n  const workingToday = cfg.workDays.includes(n.weekday);\n  let start; let label;\n  if (workingToday && n >= open && n <= close) {\n    const plus = n.plus({ minutes: 15 });\n    start = plus.set({ second: 0, millisecond: 0 }).plus({ minutes: (5 - (plus.minute % 5)) % 5 });\n    label = 'within the next 30 minutes';\n  } else if (workingToday && n < open) {\n    start = n.set({ hour: OPEN_HOUR, minute: 30, second: 0, millisecond: 0 });\n    label = 'first thing this morning (from 8:30)';\n  } else {\n    const day = nextWorkingDays(n, 1)[0];\n    start = DateTime.fromFormat(day.id, 'yyyy-LL-dd', { zone: cfg.timezone })\n      .set({ hour: OPEN_HOUR, minute: 30 });\n    label = 'first thing on ' + day.title + ' (from 8:30)';\n  }\n  return { start, end: start.plus({ minutes: 20 }), label };\n}\n\nconst iso = (dt) => dt.toISO({ suppressMilliseconds: true });\nconst clip = (s, n) => (String(s).length > n ? String(s).slice(0, n - 1) + '...' : String(s));\nconst newRef = () => 'HV-' + Math.random().toString(36).slice(2, 7).toUpperCase().padEnd(5, '0');\n\nfunction finish(s, phoneKey) {\n  const d = s.data;\n  const phone = '+' + phoneKey;\n  let start; let end; let slotLabel; let kind;\n  if (d.choice === 'visit') {\n    const w = WINDOWS.find((x) => x.id === d.window);\n    const day = DateTime.fromFormat(d.day, 'yyyy-LL-dd', { zone: cfg.timezone });\n    start = day.set({ hour: w.start });\n    end = day.set({ hour: w.end });\n    slotLabel = d.dayLabel + ', ' + w.title;\n    kind = 'VISIT';\n  } else {\n    const cb = callbackSlot(now);\n    start = cb.start; end = cb.end; slotLabel = cb.label;\n    kind = 'CALLBACK';\n  }\n  const lastCall = store.calls[phoneKey];\n  const source = lastCall && nowMs - lastCall < 24 * 60 * 60 * 1000 ? 'Missed call' : 'Direct WhatsApp';\n  const lines = [\n    'Ref: ' + s.ref,\n    'Type: ' + kind,\n    'Name: ' + d.name,\n    'Phone / WhatsApp: ' + phone,\n    'Address: ' + d.address + ', ' + d.postcode,\n    'Issue: ' + d.issueTitle,\n    'Details: ' + d.details,\n    'When: ' + slotLabel,\n    'Source: ' + source,\n  ];\n  return {\n    ref: s.ref,\n    type: kind.toLowerCase(),\n    name: d.name,\n    phone,\n    postcode: d.postcode,\n    address: d.address,\n    issue: d.issueTitle,\n    details: d.details,\n    slotLabel,\n    source,\n    startISO: iso(start),\n    endISO: iso(end),\n    summary: (kind === 'VISIT' ? 'VISIT REQUEST: ' : 'CALLBACK: ') + d.name + ' - ' + d.issueTitle + ' (' + d.postcode + ')',\n    description: lines.join('\\\\n') + '\\\\n\\\\nStatus: NOT YET CONFIRMED with customer.',\n    location: d.address + ', ' + d.postcode,\n    ownerSms: clip('NEW ' + kind + ' ' + s.ref + '\\\\n' + d.name + ' ' + phone + '\\\\n' + d.address + ', ' + d.postcode\n      + '\\\\n' + d.issueTitle + ': ' + clip(d.details, 160) + '\\\\nWhen: ' + slotLabel + '\\\\nSource: ' + source, 600),\n  };\n}\n\n// ---------- the state machine ----------\nfunction handle(msg) {\n  const to = String(msg.from || '');\n  const key = onlyDigits(to);\n  if (!key) return null;\n  const input = readInput(msg);\n  const lower = input.text.toLowerCase();\n\n  let s = store.sessions[key];\n  const expired = s && nowMs - (s.updated || 0) > cfg.sessionHours * 60 * 60 * 1000;\n  const restart = input.kind === 'text' && /^(menu|restart|start|start over|new|reset)$/.test(lower);\n  let reply; let booking = null;\n\n  const askIssue = (intro) => list(to,\n    intro + '\\n\\nWhat do you need help with? Tap *Choose issue* below, or reply with a number:\\n' + numbered(ISSUES),\n    'Choose issue', 'How can we help?', ISSUES);\n\n  if (!s || expired || restart) {\n    const lastCall = store.calls[key];\n    const fromCall = lastCall && nowMs - lastCall < 24 * 60 * 60 * 1000;\n    s = { step: 'issue', data: {}, retries: 0, ref: newRef(), updated: nowMs };\n    store.sessions[key] = s;\n    const hello = 'Hi' + (profileName ? ' ' + clip(profileName.split(' ')[0], 30) : '') + ', thanks for contacting ' + cfg.businessName + '.';\n    reply = askIssue(hello + (fromCall ? ' Sorry we missed your call - let\\'s get you sorted right now.' : ' Let\\'s get you sorted.'));\n    return { to, reply, booking, step: s.step };\n  }\n\n  switch (s.step) {\n    case 'issue': {\n      let opt = pick(input, ISSUES);\n      if (input.kind === 'text' && /\\bgas\\b/.test(lower)) opt = ISSUES.find((o) => o.id === 'gas'); // safety first\n      if (!opt) { reply = askIssue('Sorry, I didn\\'t catch that.'); break; }\n      if (opt.id === 'gas') {\n        delete store.sessions[key];\n        reply = text(to, 'IMPORTANT - if you can smell gas:\\n'\n          + '1. Do not use light switches, flames or anything electrical.\\n'\n          + '2. Open doors and windows and leave the property.\\n'\n          + '3. Call the National Gas Emergency Service FREE on 0800 111 999 (24 hours).\\n\\n'\n          + 'Once you are safe and the supply has been checked, reply MENU and we will book an engineer for you.');\n        return { to, reply, booking, step: 'gas' };\n      }\n      s.data.issue = opt.id; s.data.issueTitle = opt.title;\n      s.step = 'name'; s.retries = 0;\n      reply = text(to, 'Got it - ' + opt.title.toLowerCase() + '.\\n\\nWhat is your full name?');\n      break;\n    }\n    case 'name': {\n      if (input.kind !== 'text' || input.text.length < 2 || input.text.length > 80) {\n        reply = text(to, 'Please type your full name so our engineer knows who to ask for.'); break;\n      }\n      s.data.name = input.text;\n      s.step = 'postcode'; s.retries = 0;\n      reply = text(to, 'Thanks ' + clip(input.text.split(' ')[0], 30) + '. What is your postcode?');\n      break;\n    }\n    case 'postcode': {\n      const pc = input.kind === 'text' ? tidyPostcode(input.text) : null;\n      if (!pc) {\n        s.retries = (s.retries || 0) + 1;\n        if (input.kind !== 'text' || s.retries < 2 || input.text.length < 3) {\n          reply = text(to, 'That doesn\\'t look like a UK postcode. Please send it like this: M1 4BT'); break;\n        }\n        s.data.postcode = clip(input.text.toUpperCase(), 12); // accept after 2 tries, a human will check it\n      } else {\n        s.data.postcode = pc;\n      }\n      s.step = 'address'; s.retries = 0;\n      reply = text(to, 'And the first line of your address? (house number and street)');\n      break;\n    }\n    case 'address': {\n      if (input.kind !== 'text' || input.text.length < 4) {\n        reply = text(to, 'Please type your house number and street name.'); break;\n      }\n      s.data.address = clip(input.text, 120);\n      s.step = 'details';\n      reply = text(to, 'Nearly done. In a sentence, what is happening? (for example: \"boiler shows error F28 and radiators are cold\")');\n      break;\n    }\n    case 'details': {\n      if (input.kind !== 'text' || input.text.length < 3) {\n        reply = text(to, 'Please type a short description of the problem - it helps the engineer bring the right parts.'); break;\n      }\n      s.data.details = clip(input.text, 500);\n      s.step = 'choice';\n      reply = buttons(to, 'Thanks. How would you like us to help?\\n\\n1. Request a callback\\n2. Book an engineer visit', CHOICES);\n      break;\n    }\n    case 'choice': {\n      let opt = pick(input, CHOICES);\n      if (!opt && input.kind === 'text') {\n        if (/call/.test(lower)) opt = CHOICES[0];\n        else if (/visit|book|engineer/.test(lower)) opt = CHOICES[1];\n      }\n      if (!opt) { reply = buttons(to, 'Please tap one of the buttons, or reply 1 for a callback or 2 for a visit.', CHOICES); break; }\n      s.data.choice = opt.id;\n      if (opt.id === 'cb') {\n        booking = finish(s, key);\n        s.step = 'done';\n        reply = text(to, 'All done, ' + clip(s.data.name.split(' ')[0], 30) + '. Your callback request is with the team and we will call you '\n          + booking.slotLabel + '.\\n\\nYour reference: ' + s.ref);\n      } else {\n        s.dayOptions = nextWorkingDays(now, 3);\n        s.step = 'day';\n        reply = list(to, 'Which day suits you? Tap *Choose day*, or reply with a number:\\n' + numbered(s.dayOptions),\n          'Choose day', 'Next available days', s.dayOptions);\n      }\n      break;\n    }\n    case 'day': {\n      const opts = Array.isArray(s.dayOptions) && s.dayOptions.length ? s.dayOptions : nextWorkingDays(now, 3);\n      const opt = pick(input, opts);\n      if (!opt) {\n        s.dayOptions = opts;\n        reply = list(to, 'Please pick one of these days (tap the button or reply with a number):\\n' + numbered(opts),\n          'Choose day', 'Next available days', opts);\n        break;\n      }\n      s.data.day = opt.id; s.data.dayLabel = opt.title;\n      s.step = 'window';\n      reply = buttons(to, 'And what time on ' + opt.title + '?\\n\\n' + numbered(WINDOWS), WINDOWS);\n      break;\n    }\n    case 'window': {\n      let opt = pick(input, WINDOWS);\n      if (!opt && input.kind === 'text') {\n        if (/morning|\\bam\\b/.test(lower)) opt = WINDOWS[0];\n        else if (/afternoon|\\bpm\\b/.test(lower)) opt = WINDOWS[1];\n        else if (/evening/.test(lower)) opt = WINDOWS[2];\n      }\n      if (!opt) { reply = buttons(to, 'Please tap a time window, or reply 1, 2 or 3.\\n\\n' + numbered(WINDOWS), WINDOWS); break; }\n      s.data.window = opt.id;\n      booking = finish(s, key);\n      s.step = 'done';\n      reply = text(to, 'All done, ' + clip(s.data.name.split(' ')[0], 30) + '. We have your visit request for ' + booking.slotLabel\n        + ' at ' + s.data.address + ', ' + s.data.postcode + '.\\n\\nWe will message you shortly to confirm your engineer.\\n\\nYour reference: ' + s.ref);\n      break;\n    }\n    case 'done':\n    default: {\n      s.step = 'done';\n      reply = text(to, 'You are all set - your reference is ' + s.ref + ' and the team has your details.\\n\\nNeed something else? Reply MENU to start a new request.');\n      break;\n    }\n  }\n  s.updated = nowMs;\n  return { to, reply, booking, step: s.step };\n}\n\n// ---------- run ----------\nconst out = [];\nfor (const msg of messages) {\n  if (!msg || !msg.from) continue;\n  if (msg.id) {\n    if (store.seen.includes(msg.id)) continue; // Meta retried the same webhook\n    store.seen.push(msg.id);\n  }\n  const r = handle(msg);\n  if (!r) continue;\n  out.push({\n    json: {\n      to: r.to,\n      step: r.step,\n      graphVersion: cfg.graphVersion,\n      phoneNumberId,\n      waPayload: r.reply,\n      bookingComplete: !!r.booking,\n      booking: r.booking,\n      ownerMobile: cfg.ownerMobile,\n      twilioFrom: cfg.twilioFrom,\n      calendarId: cfg.calendarId,\n    },\n  });\n}\nif (store.seen.length > 300) store.seen = store.seen.slice(-300);\nstore.lastRun = nowMs; // top-level write guarantees n8n saves the static data\nreturn out;\n"
+      }
+    },
+    {
+      "id": "b1798391-ced4-4680-ab6e-8565ae5a930c",
+      "name": "Booking Complete?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        680,
+        720
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ec93ce4c-5c10-46d3-8aa8-c8d17363ab2d",
+              "leftValue": "={{ $json.bookingComplete }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "75300930-7d03-4b31-b2d2-a4a859a1fb5d",
+      "name": "Text the Owner",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        920,
+        620
+      ],
+      "parameters": {
+        "resource": "sms",
+        "operation": "send",
+        "from": "={{ $json.twilioFrom }}",
+        "to": "={{ $json.ownerMobile }}",
+        "toWhatsapp": false,
+        "message": "={{ $json.booking.ownerSms }}",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "c11d283b-a696-490b-a47a-5e8fa099f8b3",
+      "name": "Add to Calendar",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        920,
+        800
+      ],
+      "parameters": {
+        "resource": "event",
+        "operation": "create",
+        "calendar": {
+          "__rl": true,
+          "value": "={{ $json.calendarId }}",
+          "mode": "id"
+        },
+        "start": "={{ $json.booking.startISO }}",
+        "end": "={{ $json.booking.endISO }}",
+        "additionalFields": {
+          "summary": "={{ $json.booking.summary }}",
+          "description": "={{ $json.booking.description }}",
+          "location": "={{ $json.booking.location }}"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "55d568d2-c1ba-410a-ac3e-ead91851a3a5",
+      "name": "Send WhatsApp Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        680,
+        1020
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/{{ $json.graphVersion }}/{{ $json.phoneNumberId }}/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "whatsAppApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.waPayload) }}",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1500
+    },
+    {
+      "id": "2cf5a1bc-ad4e-43b4-a251-ba67401707ac",
+      "name": "Sticky Note dee41378",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -140
+      ],
+      "parameters": {
+        "content": "## FLOW A - Missed call -> SMS (10 seconds later)\n**Twilio setup (2 min):** create a TwiML Bin with the XML below, then set it as \"A call comes in\" on your Twilio number.\n```\n<Response>\n  <Dial timeout=\"18\" method=\"POST\"\n    action=\"https://YOUR-N8N/webhook/hvac-missed-call?key=YOUR_WEBHOOK_KEY\"\n  >+44OWNER_MOBILE</Dial>\n</Response>\n```\n- YOUR_WEBHOOK_KEY must equal **webhookKey** in Config (Calls). Wrong or missing key = no SMS (stops strangers abusing the URL).\n- Use the **Production** webhook URL and keep the workflow **Active**.\n- timeout 18s = hang up before the owner's voicemail answers (voicemail counts as \"answered\").\n- Same caller ringing again within 30 min gets only one text.\n- Hidden / withheld numbers are skipped automatically.\n- If callers who hang up after 2 rings get no text, move the URL onto the number instead: `<Number statusCallback=\"...\" statusCallbackEvent=\"completed\">`. The webhook accepts both.",
+        "color": 4,
+        "width": 900,
+        "height": 410
+      }
+    },
+    {
+      "id": "a8f98de8-3aee-43c4-9a94-b45bbed2f6c2",
+      "name": "Sticky Note a851afdb",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        480
+      ],
+      "parameters": {
+        "content": "## FLOW B - WhatsApp conversation -> booking\nNo AI. The **Conversation Engine** is a fixed state machine: issue -> name -> postcode -> address -> details -> callback or visit -> day -> time.\n- Customer starts the chat (from the SMS link), so every reply is inside WhatsApp's free 24h window. **No templates needed.**\n- Booking done -> owner is texted FIRST, calendar event second, customer reply last. A failure in one does not block the others.\n- Customers can tap buttons OR type numbers. \"MENU\" restarts. \"gas\" triggers the 0800 111 999 safety message.\n- Memory lives in workflow static data: it **only persists while the workflow is Active**. In manual test runs every message looks like the first one.",
+        "color": 5,
+        "width": 900,
+        "height": 300
+      }
+    },
+    {
+      "id": "0d3ecdac-968d-4b84-b37c-bda162c78e97",
+      "name": "Sticky Note 26e1c11f",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        480
+      ],
+      "parameters": {
+        "content": "## Before you go live\n1. Credentials: Twilio (x2 nodes), WhatsApp OAuth (trigger), WhatsApp API (HTTP node), Google Calendar.\n2. Fill both **Config** nodes. phoneNumberId can stay as is - it is read from the inbound message.\n3. WhatsApp API credential: use a **permanent System User token**. The temporary token dies after 24h.\n4. Activate, then call the Twilio number and let it ring out.",
+        "color": 3,
+        "width": 520,
+        "height": 300
+      }
+    }
+  ],
+  "connections": {
+    "Twilio Call Ended": {
+      "main": [
+        [
+          {
+            "node": "Config (Calls)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config (Calls)": {
+      "main": [
+        [
+          {
+            "node": "Reply TwiML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reply TwiML": {
+      "main": [
+        [
+          {
+            "node": "Missed Call?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Missed Call?": {
+      "main": [
+        [
+          {
+            "node": "Check Caller & Build SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Caller & Build SMS": {
+      "main": [
+        [
+          {
+            "node": "Wait 10s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 10s": {
+      "main": [
+        [
+          {
+            "node": "Send SMS with WhatsApp Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp Message In": {
+      "main": [
+        [
+          {
+            "node": "Config (WhatsApp)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config (WhatsApp)": {
+      "main": [
+        [
+          {
+            "node": "Conversation Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Conversation Engine": {
+      "main": [
+        [
+          {
+            "node": "Booking Complete?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send WhatsApp Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Booking Complete?": {
+      "main": [
+        [
+          {
+            "node": "Text the Owner",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Add to Calendar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

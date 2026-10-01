@@ -1,0 +1,724 @@
+{
+  "name": "Restaurant Invoice Ingest: PDF -> Price Audit",
+  "nodes": [
+    {
+      "id": "ae79ccd2-71e8-4ae2-b9dd-f08834e36030",
+      "name": "Sticky Note 54a111bf",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2096,
+        688
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "Invoice Audit Architecture",
+            "position": [
+              -240,
+              40
+            ],
+            "parameters": {
+              "width": 560,
+              "height": 300,
+              "content": "RESTAURANT INVOICE PRICE AUDIT\n\n1. Gmail PDF attachment OR POST webhook restaurant/invoice\n2. Extract invoice line items (PDF text / JSON body)\n3. Read Price_Book sheet\n4. CODE compares matched SKUs (no AI)\n5. AI only for unmatched line items\n6. Flag variances >2% -> append Invoice_Audit status=pending_review\n\nHuman QA gate before disputing distributor charges."
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "9744fc9b-bef9-4e0a-9301-2851f8a865e3",
+      "name": "Gmail: Distributor Invoice",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "maxResults": 5,
+        "filters": {
+          "q": "has:attachment (invoice OR statement OR delivery) -label:Restaurant/Processed",
+          "readStatus": "unread"
+        },
+        "options": {
+          "downloadAttachments": true,
+          "dataPropertyAttachmentsPrefixName": "attachment_"
+        }
+      }
+    },
+    {
+      "id": "3782ae52-d1ce-468b-b442-b447b8384e05",
+      "name": "Has Attachments?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        240,
+        200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ Object.keys($binary || {}).length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ad3ea7a0-9ed8-4d2d-b527-490b96ae3a55",
+      "name": "Split Attachments",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        200
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const output = [];\nfor (const item of $input.all()) {\n  const binary = item.binary || {};\n  const keys = Object.keys(binary).filter((k) => k.startsWith('attachment_'));\n  for (const key of keys) {\n    const file = binary[key];\n    const fileName = (file.fileName || '').toLowerCase();\n    const mime = (file.mimeType || '').toLowerCase();\n    if (!mime.includes('pdf') && !fileName.endsWith('.pdf')) continue;\n    output.push({\n      json: {\n        intake_source: 'gmail',\n        gmail_message_id: item.json.id,\n        email_subject: item.json.subject || '',\n        email_from: item.json.from || '',\n        vendor_name: '',\n        invoice_number: '',\n        invoice_date: '',\n      },\n      binary: { data: file },\n    });\n  }\n}\nif (!output.length) throw new Error('No PDF attachments found');\nreturn output;"
+      }
+    },
+    {
+      "id": "5a642ace-899b-43d7-a3ab-25cc476b1d60",
+      "name": "Extract PDF Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        200
+      ],
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "data",
+        "options": {
+          "joinPages": true
+        }
+      }
+    },
+    {
+      "id": "6bc4afac-7bf4-4e9b-a170-dc291f6fca0c",
+      "name": "Parse Invoice Lines (PDF)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        200
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const src = $input.item.json;\nconst text = (src.text || '').replace(/\\r/g, '');\nconst lines = [];\nconst rowRe = /^([A-Z0-9][A-Z0-9\\-_]{2,})\\s+(.+?)\\s+(\\d+(?:\\.\\d+)?)\\s+\\$?(\\d+(?:\\.\\d{2})?)\\s+\\$?(\\d+(?:\\.\\d{2})?)/gim;\nlet m;\nwhile ((m = rowRe.exec(text)) !== null) {\n  lines.push({\n    sku: m[1].trim().toUpperCase(),\n    description: m[2].trim(),\n    qty: Number(m[3]),\n    unit_price: Number(m[4]),\n    line_total: Number(m[5]),\n  });\n}\n\nconst invMatch = text.match(/invoice\\s*#?\\s*([A-Z0-9\\-]+)/i);\nconst dateMatch = text.match(/(\\d{4}-\\d{2}-\\d{2}|\\d{1,2}\\/\\d{1,2}\\/\\d{2,4})/);\nconst vendor = (src.email_from || '').split('<').pop().replace('>', '').split('@')[1] || 'distributor';\n\nreturn {\n  json: {\n    intake_source: 'gmail',\n    gmail_message_id: src.gmail_message_id || '',\n    email_subject: src.email_subject || '',\n    email_from: src.email_from || '',\n    vendor_name: vendor,\n    invoice_number: invMatch ? invMatch[1] : '',\n    invoice_date: dateMatch ? dateMatch[1] : '',\n    invoice_lines: lines,\n    raw_text_preview: text.slice(0, 500),\n  },\n};"
+      }
+    },
+    {
+      "id": "e4909a00-810c-4235-802e-9081fb481a0c",
+      "name": "Sheet: Read Price_Book",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1200,
+        360
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Price_Book"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "c3327674-5333-4408-9e74-a6a1d3f92506",
+      "name": "Compare Matched SKUs (Code)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        360
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const inv = $input.item.json;\nconst priceRows = $('Sheet: Read Price_Book').all().map((i) => i.json);\nconst book = new Map();\n\nfor (const row of priceRows) {\n  const sku = (row.sku || row.SKU || '').toString().trim().toUpperCase();\n  if (!sku) continue;\n  book.set(sku, {\n    sku,\n    description: row.description || row.item_description || '',\n    contract_price: Number(row.contract_price || row.unit_price || row.price || 0),\n  });\n}\n\nconst auditId = 'INV-' + $now.toFormat('yyyyLLdd-HHmmss') + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();\nconst compared = [];\nconst unmatched = [];\n\nfor (const line of inv.invoice_lines || []) {\n  const sku = (line.sku || '').toString().trim().toUpperCase();\n  const invoicedPrice = Number(line.unit_price || 0);\n  const bookRow = book.get(sku);\n\n  if (!bookRow || !sku) {\n    unmatched.push({ ...line, sku: sku || 'UNKNOWN', match_status: 'unmatched' });\n    continue;\n  }\n\n  const contractPrice = bookRow.contract_price;\n  const variancePct = contractPrice > 0\n    ? Math.round(((invoicedPrice - contractPrice) / contractPrice) * 10000) / 100\n    : 0;\n  const overcharge = invoicedPrice > contractPrice\n    ? Math.round((invoicedPrice - contractPrice) * (Number(line.qty) || 1) * 100) / 100\n    : 0;\n\n  compared.push({\n    sku,\n    description: line.description || bookRow.description,\n    qty: Number(line.qty) || 1,\n    invoiced_unit_price: invoicedPrice,\n    contract_unit_price: contractPrice,\n    variance_pct: variancePct,\n    overcharge_amount: overcharge,\n    match_status: 'matched',\n    flagged: Math.abs(variancePct) > 2,\n  });\n}\n\nreturn {\n  json: {\n    ...inv,\n    audit_id: auditId,\n    compared_lines: compared,\n    unmatched_lines: unmatched,\n    has_unmatched: unmatched.length > 0,\n    matched_count: compared.length,\n    unmatched_count: unmatched.length,\n  },\n};"
+      }
+    },
+    {
+      "id": "49f60602-9415-4be1-b660-ffcde524942a",
+      "name": "Has Unmatched Items?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1680,
+        360
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.has_unmatched }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "28bbba68-cff4-4bed-8da9-ac198115c127",
+      "name": "Prepare Unmatched for AI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        260
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const inv = $input.item.json;\nconst lines = inv.unmatched_lines || [];\nreturn lines.map((line) => ({\n  json: {\n    ...inv,\n    current_line: line,\n    ai_prompt: 'Unmatched distributor invoice line. Suggest best Price_Book SKU match or mark as new_item.\\nVendor: ' + (inv.vendor_name || '') + '\\nLine: ' + JSON.stringify(line),\n  },\n}));"
+      }
+    },
+    {
+      "id": "6c516939-4d28-4d8c-b37e-8d2d8b252bf0",
+      "name": "AI: Resolve Unmatched Lines",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        2160,
+        260
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.ai_prompt }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You help restaurant operators map distributor invoice lines to contract price book SKUs. Return only JSON. Use match_status=ai_suggested when confident, new_item when no match exists. Never invent contract prices.",
+          "maxIterations": 2,
+          "passthroughBinaryImages": false
+        }
+      }
+    },
+    {
+      "id": "a50797e8-39c5-43af-adc3-ba3ee09f8afb",
+      "name": "GPT-5 Mini",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        2096,
+        640
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "options": {
+          "temperature": 0.1
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "b3e9a7a1-d541-4f86-b4b7-7ebb56a0f846",
+      "name": "Unmatched Line Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        2128,
+        432
+      ],
+      "parameters": {
+        "schemaType": "fromJson",
+        "autoFix": true,
+        "jsonSchemaExample": {
+          "suggested_sku": "PROD-12345",
+          "description": "Chicken breast 40lb case",
+          "confidence_score": 0.72,
+          "match_status": "ai_suggested",
+          "notes": "Possible typo on invoice SKU"
+        }
+      }
+    },
+    {
+      "id": "5e48f7ba-4a29-4506-b111-0ec74e037685",
+      "name": "Merge AI Unmatched Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        260
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const base = $input.first().json;\nconst aiRows = $input.all().map((i) => {\n  const out = i.json.output || i.json;\n  const line = i.json.current_line || {};\n  return {\n    sku: (out.suggested_sku || line.sku || 'UNKNOWN').toUpperCase(),\n    description: out.description || line.description || '',\n    qty: Number(line.qty) || 1,\n    invoiced_unit_price: Number(line.unit_price) || 0,\n    contract_unit_price: 0,\n    variance_pct: 0,\n    overcharge_amount: 0,\n    match_status: out.match_status || 'ai_suggested',\n    flagged: false,\n    ai_notes: out.notes || '',\n    confidence_score: Number(out.confidence_score) || 0,\n  };\n});\n\nreturn [{\n  json: {\n    ...base,\n    ai_resolved_lines: aiRows,\n  },\n}];"
+      }
+    },
+    {
+      "id": "3f73c5bd-61c7-47b5-bc73-35009ecdba94",
+      "name": "Build Invoice_Audit Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        480
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const inv = $input.item.json;\nconst matched = inv.compared_lines || [];\nconst aiResolved = inv.ai_resolved_lines || [];\nconst allLines = [...matched, ...aiResolved];\n\nconst flagged = allLines.filter((l) => l.flagged);\nconst totalOvercharge = flagged.reduce((sum, l) => sum + (Number(l.overcharge_amount) || 0), 0);\n\nreturn {\n  json: {\n    audit_id: inv.audit_id,\n    received_at: $now.toISO(),\n    intake_source: inv.intake_source,\n    gmail_message_id: inv.gmail_message_id || '',\n    vendor_name: inv.vendor_name || '',\n    invoice_number: inv.invoice_number || '',\n    invoice_date: inv.invoice_date || '',\n    line_items_json: JSON.stringify(allLines),\n    line_count: allLines.length,\n    flagged_line_count: flagged.length,\n    total_overcharge: Math.round(totalOvercharge * 100) / 100,\n    matched_count: inv.matched_count || matched.length,\n    unmatched_count: inv.unmatched_count || 0,\n    has_variance_over_2pct: flagged.length > 0,\n    status: 'pending_review',\n    reviewed_at: '',\n    dispute_sent_at: '',\n  },\n};"
+      }
+    },
+    {
+      "id": "21600f61-d4be-4e7c-850d-91ee3b0a5476",
+      "name": "Append Invoice_Audit",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2160,
+        480
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Invoice_Audit"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "schema": [
+            {
+              "id": "audit_id",
+              "displayName": "audit_id",
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "received_at",
+              "displayName": "received_at",
+              "type": "string"
+            },
+            {
+              "id": "intake_source",
+              "displayName": "intake_source",
+              "type": "string"
+            },
+            {
+              "id": "gmail_message_id",
+              "displayName": "gmail_message_id",
+              "type": "string"
+            },
+            {
+              "id": "vendor_name",
+              "displayName": "vendor_name",
+              "type": "string"
+            },
+            {
+              "id": "invoice_number",
+              "displayName": "invoice_number",
+              "type": "string"
+            },
+            {
+              "id": "invoice_date",
+              "displayName": "invoice_date",
+              "type": "string"
+            },
+            {
+              "id": "line_items_json",
+              "displayName": "line_items_json",
+              "type": "string"
+            },
+            {
+              "id": "line_count",
+              "displayName": "line_count",
+              "type": "number"
+            },
+            {
+              "id": "flagged_line_count",
+              "displayName": "flagged_line_count",
+              "type": "number"
+            },
+            {
+              "id": "total_overcharge",
+              "displayName": "total_overcharge",
+              "type": "number"
+            },
+            {
+              "id": "matched_count",
+              "displayName": "matched_count",
+              "type": "number"
+            },
+            {
+              "id": "unmatched_count",
+              "displayName": "unmatched_count",
+              "type": "number"
+            },
+            {
+              "id": "has_variance_over_2pct",
+              "displayName": "has_variance_over_2pct",
+              "type": "boolean"
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "type": "string"
+            },
+            {
+              "id": "reviewed_at",
+              "displayName": "reviewed_at",
+              "type": "string"
+            },
+            {
+              "id": "dispute_sent_at",
+              "displayName": "dispute_sent_at",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "34a30cdb-9e2d-41dc-ae22-7d6f5ff06e9c",
+      "name": "Sticky Note 2b7eaaf1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2096,
+        688
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "No PDF Path",
+            "position": [
+              480,
+              40
+            ],
+            "parameters": {
+              "width": 260,
+              "height": 100,
+              "content": "Gmail without PDF attachments is ignored."
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "202ac13e-4f47-41df-b66f-74f07d23d8b5",
+      "name": "Webhook: Restaurant Invoice",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        520
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "restaurant/invoice",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "86d455ca-ee14-4142-b1d0-d6a55a60294f"
+    },
+    {
+      "id": "c16c7142-b2b0-4b75-86f2-33438c09826f",
+      "name": "Normalize Webhook Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        520
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const body = $input.item.json.body || $input.item.json;\nconst lines = Array.isArray(body.invoice_lines) ? body.invoice_lines : (Array.isArray(body.lines) ? body.lines : []);\nconst normalized = lines.map((l) => ({\n  sku: (l.sku || l.item_code || '').toString().trim().toUpperCase(),\n  description: (l.description || l.item_name || '').trim(),\n  qty: Number(l.qty ?? l.quantity ?? 1),\n  unit_price: Number(l.unit_price ?? l.price ?? 0),\n  line_total: Number(l.line_total ?? l.total ?? (Number(l.qty ?? 1) * Number(l.unit_price ?? 0))),\n}));\n\nif (!normalized.length) throw new Error('invoice_lines array is required for webhook intake');\n\nreturn {\n  json: {\n    intake_source: 'webhook',\n    gmail_message_id: '',\n    email_subject: '',\n    email_from: '',\n    vendor_name: (body.vendor_name || body.vendor || '').trim(),\n    invoice_number: (body.invoice_number || body.invoice_id || '').trim(),\n    invoice_date: (body.invoice_date || '').trim(),\n    invoice_lines: normalized,\n    raw_text_preview: '',\n  },\n};"
+      }
+    },
+    {
+      "id": "df2c046a-55c8-4f66-a86d-0391ee37f4ef",
+      "name": "Respond 200 OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2400,
+        600
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, audit_id: $json.audit_id, status: \"pending_review\", flagged_line_count: $json.flagged_line_count, total_overcharge: $json.total_overcharge } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Gmail: Distributor Invoice": {
+      "main": [
+        [
+          {
+            "node": "Has Attachments?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Attachments?": {
+      "main": [
+        [
+          {
+            "node": "Split Attachments",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sticky Note 2b7eaaf1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Attachments": {
+      "main": [
+        [
+          {
+            "node": "Extract PDF Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract PDF Text": {
+      "main": [
+        [
+          {
+            "node": "Parse Invoice Lines (PDF)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Invoice Lines (PDF)": {
+      "main": [
+        [
+          {
+            "node": "Sheet: Read Price_Book",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheet: Read Price_Book": {
+      "main": [
+        [
+          {
+            "node": "Compare Matched SKUs (Code)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compare Matched SKUs (Code)": {
+      "main": [
+        [
+          {
+            "node": "Has Unmatched Items?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Unmatched Items?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Unmatched for AI",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Respond 200 OK",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Invoice_Audit Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Unmatched for AI": {
+      "main": [
+        [
+          {
+            "node": "AI: Resolve Unmatched Lines",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Resolve Unmatched Lines": {
+      "main": [
+        [
+          {
+            "node": "Merge AI Unmatched Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT-5 Mini": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI: Resolve Unmatched Lines",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Unmatched Line Schema",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Unmatched Line Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI: Resolve Unmatched Lines",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge AI Unmatched Results": {
+      "main": [
+        [
+          {
+            "node": "Build Invoice_Audit Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Invoice_Audit Rows": {
+      "main": [
+        [
+          {
+            "node": "Append Invoice_Audit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook: Restaurant Invoice": {
+      "main": [
+        [
+          {
+            "node": "Normalize Webhook Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Webhook Payload": {
+      "main": [
+        [
+          {
+            "node": "Sheet: Read Price_Book",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

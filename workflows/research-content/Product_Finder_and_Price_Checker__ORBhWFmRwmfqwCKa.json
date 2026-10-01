@@ -1,0 +1,618 @@
+{
+  "name": "Product Finder and Price Checker",
+  "nodes": [
+    {
+      "id": "6f3c4301-583b-4c44-8807-564c0c61c5c3",
+      "name": "Product Search Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.5,
+      "position": [
+        240,
+        496
+      ],
+      "parameters": {
+        "formTitle": "Product Finder & Price Checker",
+        "formDescription": "Enter your product search criteria to find the best deals",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Product Name",
+              "fieldName": "productName",
+              "placeholder": "e.g. iPhone 15 Pro",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Product Category",
+              "fieldName": "productCategory",
+              "placeholder": "e.g. Electronics, Clothing"
+            },
+            {
+              "fieldLabel": "Price Range",
+              "fieldName": "priceRange",
+              "placeholder": "e.g. $100-$500"
+            },
+            {
+              "fieldLabel": "Country",
+              "fieldName": "country",
+              "placeholder": "e.g. United States",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "City",
+              "fieldName": "city",
+              "placeholder": "e.g. New York (optional)"
+            },
+            {
+              "fieldLabel": "Email",
+              "fieldType": "email",
+              "fieldName": "email",
+              "placeholder": "your@email.com",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Check Availability",
+              "fieldType": "checkbox",
+              "fieldName": "checkAvailability",
+              "fieldOptions": {
+                "values": [
+                  {}
+                ]
+              }
+            }
+          ]
+        },
+        "options": {
+          "respondWithOptions": {
+            "values": {
+              "formSubmittedText": "Thank you! We are searching for your product. You will receive results via email and Pushover notification."
+            }
+          }
+        }
+      },
+      "webhookId": "fd51b13d-285d-494a-95cf-fe32f19e3853"
+    },
+    {
+      "id": "a510ede3-9766-4194-a4ac-79d11cb164f6",
+      "name": "Send Pushover Notification",
+      "type": "n8n-nodes-base.pushover",
+      "typeVersion": 1,
+      "position": [
+        1376,
+        304
+      ],
+      "parameters": {
+        "userKey": "uzfmrnrdxm1mygsf8o65iu5qj8vgs3",
+        "message": "=🛍️ Product Search Results\\n\\nQuery: {{ $json.searchQuery }}\\nCategory: {{ $json.category }}\\nPrice Range: {{ $json.priceRange }}\\nLocation: {{ $json.location }}\\n\\n{{ $json.searchSummary }}\\n\\n{{ $json.products.map((p, i) => `${i + 1}. ${p.name}\\n   💰 ${p.price} ${p.currency}\\n   🏪 ${p.store}\\n   ${p.availability.toLowerCase().includes(\"stock\") || p.availability.toLowerCase().includes(\"available\") ? \"✅\" : \"⚠️\"} ${p.availability}\\n   🔗 ${p.url}`).join(\"\\n\\n\") }}",
+        "priority": 0,
+        "additionalFields": {
+          "url": "={{ $json.firstProductUrl }}",
+          "url_title": "View Product"
+        }
+      }
+    },
+    {
+      "id": "a70d0ee3-886b-496c-8a28-45a852377510",
+      "name": "Send Email Notification",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1376,
+        496
+      ],
+      "parameters": {
+        "sendTo": "=atifmah428@gmail.com",
+        "subject": "=🛍️ Product Search Results: {{ $json.searchQuery }} ({{ $json.productCount }} products found)",
+        "message": "=<h2>🛍️ Product Search Results</h2><p>Here are the results for your product search:</p><ul><li><strong>Search Query:</strong> {{ $json.searchQuery }}</li><li><strong>Category:</strong> {{ $json.category }}</li><li><strong>Price Range:</strong> {{ $json.priceRange }}</li><li><strong>Location:</strong> {{ $json.location }}</li></ul><h3>{{ $json.searchSummary }}</h3>{{ $json.products.map((p, i) => `<div style=\"margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 8px;\"><h4>${i + 1}. ${p.name}</h4><p><strong>Price:</strong> ${p.price} ${p.currency}<br><strong>Store:</strong> ${p.store}<br><strong>Availability:</strong> ${p.availability.toLowerCase().includes(\"stock\") || p.availability.toLowerCase().includes(\"available\") ? \"✅\" : \"⚠️\"} ${p.availability}<br><a href=\"${p.url}\" style=\"color: #0066cc; text-decoration: none;\">View Product →</a></p></div>`).join(\"\") }}<p style=\"margin-top: 30px; color: #666;\">Happy shopping! 🎉</p>",
+        "options": {}
+      },
+      "webhookId": "c2eb3d3c-b6b0-4379-b96e-e74947e263d0"
+    },
+    {
+      "id": "84564ef8-14e1-49f4-9d6e-aad30c9860eb",
+      "name": "Search Product Online",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        520,
+        496
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Find products matching these criteria:\nProduct: {{ $json.productName }}\nCategory: {{ $json.productCategory }}\nPrice Range: {{ $json.priceRange }}\nLocation: {{ $json.city ? $json.city + \", \" + $json.country : $json.country }}\n{{ $json.checkAvailability ? \"Check availability status\" : \"\" }}\n\nSearch online and return 1-3 real products with actual prices, store names, purchase links, and availability status. Be specific and include exact URLs.",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a product search assistant. Use the Google Search tool to find real products online. Return results with product names, prices, URLs, stores, and availability status.",
+          "maxIterations": 20
+        }
+      }
+    },
+    {
+      "id": "e9f86bb2-4a32-454d-be02-45b671644d54",
+      "name": "OpenAI Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        464,
+        720
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "f3204644-d98e-488c-89c3-a9cf116c7158",
+      "name": "Google Search",
+      "type": "@n8n/n8n-nodes-langchain.toolSerpApi",
+      "typeVersion": 1,
+      "position": [
+        592,
+        720
+      ],
+      "parameters": {
+        "options": {}
+      }
+    },
+    {
+      "id": "9993b31e-d641-4a3f-b0d7-573c44a03979",
+      "name": "Structured Output",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        720,
+        720
+      ],
+      "parameters": {
+        "jsonSchemaExample": "{ \"products\": [{ \"name\": \"Product Name\", \"price\": \"$99.99\", \"currency\": \"USD\", \"store\": \"Store Name\", \"url\": \"https://example.com/product\", \"availability\": \"In Stock\" }], \"searchSummary\": \"Found 3 products matching criteria\" }"
+      }
+    },
+    {
+      "id": "85891c7d-947e-44f6-9069-9f3129a5a7c0",
+      "name": "Validate Results",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        928,
+        496
+      ],
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.output.products }}",
+              "operator": {
+                "type": "array",
+                "operation": "notEmpty"
+              },
+              "rightValue": ""
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "3e360808-2e1f-483c-8f01-de44540a9a9f",
+      "name": "Format Product Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1152,
+        400
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "searchQuery",
+              "value": "={{ $(\"Product Search Form\").item.json.productName }}",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "category",
+              "value": "={{ $(\"Product Search Form\").item.json.productCategory }}",
+              "type": "string"
+            },
+            {
+              "id": "3",
+              "name": "priceRange",
+              "value": "={{ $(\"Product Search Form\").item.json.priceRange }}",
+              "type": "string"
+            },
+            {
+              "id": "4",
+              "name": "location",
+              "value": "={{ $(\"Product Search Form\").item.json.city ? $(\"Product Search Form\").item.json.city + \", \" + $(\"Product Search Form\").item.json.country : $(\"Product Search Form\").item.json.country }}",
+              "type": "string"
+            },
+            {
+              "id": "5",
+              "name": "email",
+              "value": "={{ $(\"Product Search Form\").item.json.email }}",
+              "type": "string"
+            },
+            {
+              "id": "6",
+              "name": "products",
+              "value": "={{ $json.output.products }}",
+              "type": "array"
+            },
+            {
+              "id": "7",
+              "name": "searchSummary",
+              "value": "={{ $json.output.searchSummary }}",
+              "type": "string"
+            },
+            {
+              "id": "8",
+              "name": "productCount",
+              "value": "={{ $json.output.products.length }}",
+              "type": "number"
+            },
+            {
+              "id": "9",
+              "name": "firstProductUrl",
+              "value": "={{ $json.output.products[0]?.url || \"No URL available\" }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "6f901a16-12a0-476f-9446-a4610acbb0dd",
+      "name": "No Results Found",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1152,
+        688
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "searchQuery",
+              "value": "={{ $(\"Product Search Form\").item.json.productName }}",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "email",
+              "value": "={{ $(\"Product Search Form\").item.json.email }}",
+              "type": "string"
+            },
+            {
+              "id": "3",
+              "name": "errorMessage",
+              "value": "No products found matching your criteria. Please try different search terms.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "481c1201-3bd1-41f9-9371-f751463dbf92",
+      "name": "Send Error Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1376,
+        688
+      ],
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "=⚠️ Product Search - No Results Found",
+        "message": "=<h2>⚠️ No Products Found</h2><p>We could not find any products matching your search criteria:</p><ul><li><strong>Search Query:</strong> {{ $json.searchQuery }}</li></ul><p>{{ $json.errorMessage }}</p><p>Please try:</p><ul><li>Using different keywords</li><li>Broadening your price range</li><li>Checking the spelling</li><li>Trying a different category</li></ul><p>Thank you for using our Product Finder service.</p>",
+        "options": {}
+      },
+      "webhookId": "b71c88e7-7750-4c16-8f85-73e3ffd53029"
+    },
+    {
+      "id": "e291c6d1-04d3-427c-88c6-47f78dff346c",
+      "name": "Sticky Note eb19b45d",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        108,
+        376
+      ],
+      "parameters": {
+        "content": "## 📚 WORKFLOW OVERVIEW\n\n**Purpose:** This workflow creates a Product Finder & Price Checker that searches online stores and sends results to users.\n\n**Flow Summary:**\n1. User fills form → 2. AI searches online → 3. Validate results → 4. Send notifications\n\n**Key Concepts:**\n• Form Trigger: Collects user input\n• AI Agent: Intelligent search with tools\n• Conditional Logic: Different paths for success/failure\n• Parallel Execution: Send email + push notification simultaneously",
+        "height": 280,
+        "width": 360,
+        "color": 6
+      }
+    },
+    {
+      "id": "44a64a6f-9ffe-434a-996c-6d06f85e5605",
+      "name": "Sticky Note 1098867f",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        128,
+        356
+      ],
+      "parameters": {
+        "content": "## 📝 STEP 1: FORM TRIGGER\n\n**What it does:** Creates a web form that users fill out to search for products.\n\n**Input Fields:**\n• Product Name (required)\n• Category, Price Range, Country (required)\n• City (optional), Email (required)\n• Check Availability checkbox\n\n**Output:** Form data as JSON\nExample: `{ productName: \"iPhone 15\", country: \"USA\", email: \"user@email.com\" }`\n\n**Teaching Point:** Form Triggers are perfect for collecting structured user input without coding.",
+        "height": 300,
+        "width": 320,
+        "color": 2
+      }
+    },
+    {
+      "id": "fbd4a003-63d7-4691-8109-9b83114c6ffa",
+      "name": "Sticky Note 5eb2bb36",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        398,
+        544
+      ],
+      "parameters": {
+        "content": "## 🤖 AI AGENT COMPONENTS\n\n**1. OpenAI Model (Language Model)**\nThe \"brain\" - understands instructions and decides what to do.\nModel: gpt-4o-mini (fast & cost-effective)\n\n**2. Google Search Tool (SerpAPI)**\nGives the AI ability to search Google for real products.\nWithout this, AI would only use training data (outdated).\n\n**3. Structured Output Parser**\nForces AI to return data in a specific JSON format.\nEnsures consistent output: products array with name, price, URL, etc.\n\n**Teaching Point:** AI Agents = Model + Tools + Output Format",
+        "height": 320,
+        "width": 340,
+        "color": 5
+      }
+    },
+    {
+      "id": "5ea43b51-9ab9-4b64-a46b-af64bad95098",
+      "name": "Sticky Note 309a332a",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        480,
+        484
+      ],
+      "parameters": {
+        "content": "## 🔍 STEP 2: AI AGENT SEARCH\n\n**What it does:** Uses AI + Google Search to find real products online.\n\n**How it works:**\n1. Receives form data (product name, price range, location)\n2. AI creates search queries using Google Search tool\n3. Analyzes search results\n4. Returns 1-3 products in structured JSON format\n\n**Dynamic Prompt:** Uses `expr()` to insert form data:\n`\"Product: {{ $json.productName }}\"`\n\n**Output Example:**\n```json\n{\n  \"products\": [{ \"name\": \"...\", \"price\": \"$99\", \"url\": \"...\" }],\n  \"searchSummary\": \"Found 3 products...\"\n}\n```\n\n**Teaching Point:** AI Agents can use external tools to get real-time data.",
+        "height": 380,
+        "width": 360,
+        "color": 5
+      }
+    },
+    {
+      "id": "73d30809-7625-4865-b2c6-009495de62e0",
+      "name": "Sticky Note 95ce7580",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        806,
+        336
+      ],
+      "parameters": {
+        "content": "## ✅ STEP 3: VALIDATE RESULTS\n\n**What it does:** Checks if the AI found any products.\n\n**Condition:** `products array is not empty`\n\n**Two Paths:**\n• **TRUE (Green):** Products found → Format data → Send notifications\n• **FALSE (Red):** No products → Send error email\n\n**Why validate?** AI searches might return zero results if:\n- Product doesn't exist in that location\n- Price range too narrow\n- Spelling errors\n\n**Teaching Point:** Always validate AI outputs before proceeding. Use IF nodes for conditional branching.",
+        "height": 320,
+        "width": 340,
+        "color": 3
+      }
+    },
+    {
+      "id": "bf5c8bde-6758-4f26-97a7-603e9d7e6cf9",
+      "name": "Sticky Note 9a9cbf5e",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1020,
+        220
+      ],
+      "parameters": {
+        "content": "## 🔧 STEP 4A: FORMAT DATA (Success Path)\n\n**What it does:** Organizes data from multiple sources into clean fields.\n\n**Why needed?** Data comes from two nodes:\n• Form Trigger (user input)\n• AI Agent (search results)\n\n**Extracts:**\n• User data: searchQuery, email, location\n• AI data: products array, searchSummary\n• Computed: productCount, firstProductUrl\n\n**Accessing other nodes:**\n`$(\"Product Search Form\").item.json.email`\n`$json.output.products` (from previous node)\n\n**Teaching Point:** Set/Edit Fields node cleans and structures data for downstream nodes.",
+        "height": 340,
+        "width": 360,
+        "color": 4
+      }
+    },
+    {
+      "id": "4ac40fbb-1c1e-497a-b560-f9496b673e4f",
+      "name": "Sticky Note f62bab17",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1234,
+        296
+      ],
+      "parameters": {
+        "content": "## 📬 STEP 5: SEND NOTIFICATIONS (Parallel)\n\n**What happens:** Both notifications send simultaneously (not one after another).\n\n**Pushover Notification:**\n• Mobile push notification\n• Shows product summary with emojis\n• Includes clickable link to first product\n\n**Email Notification:**\n• HTML formatted email\n• Full product details with styling\n• Links to all products found\n\n**Dynamic Content:** Uses `expr()` to build messages:\n`\"Found {{ $json.productCount }} products\"`\n`$json.products.map(...)` loops through products\n\n**Teaching Point:** Parallel execution = faster workflows. Both nodes run at the same time.",
+        "height": 360,
+        "width": 380,
+        "color": 2
+      }
+    },
+    {
+      "id": "f630a518-9b0e-4a40-9a05-b33eb921952f",
+      "name": "Sticky Note 78fc2201",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1020,
+        528
+      ],
+      "parameters": {
+        "content": "## ⚠️ STEP 4B: ERROR HANDLING (Failure Path)\n\n**What happens:** When no products are found.\n\n**No Results Found Node:**\n• Extracts user email and search query\n• Creates helpful error message\n\n**Send Error Email:**\n• Informs user no products matched\n• Provides suggestions:\n  - Try different keywords\n  - Broaden price range\n  - Check spelling\n\n**Why important?** Good UX means handling failures gracefully. Users should always get feedback.\n\n**Teaching Point:** Always plan for failure scenarios. Error handling = professional workflows.",
+        "height": 320,
+        "width": 360
+      }
+    },
+    {
+      "id": "727a851a-aa05-4bd6-98ec-f065eef6efd3",
+      "name": "Sticky Note 26b02023",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        240,
+        912
+      ],
+      "parameters": {
+        "content": "## 💡 KEY CONCEPTS: EXPRESSIONS\n\n**What are expressions?** Dynamic values using `{{ }}` syntax.\n\n**Examples in this workflow:**\n\n1. **Access current item:**\n   `{{ $json.productName }}`\n\n2. **Access other nodes:**\n   `{{ $(\"Product Search Form\").item.json.email }}`\n\n3. **Conditional logic:**\n   `{{ $json.city ? $json.city + \", \" + $json.country : $json.country }}`\n\n4. **Array operations:**\n   `{{ $json.products.length }}`\n   `{{ $json.products[0]?.url }}`\n\n5. **Loop through arrays:**\n   `{{ $json.products.map((p, i) => ...) }}`\n\n**Teaching Point:** Expressions make workflows dynamic. Master them to build powerful automations.",
+        "height": 380,
+        "width": 380,
+        "color": 7
+      }
+    },
+    {
+      "id": "a11bb1f0-1ef0-477e-9dc8-15838878aafb",
+      "name": "Sticky Note 18c77b40",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        672,
+        912
+      ],
+      "parameters": {
+        "content": "## 🎯 PROFESSIONAL WORKFLOW PRACTICES\n\n**1. Clear Node Names**\n✅ \"Search Product Online\" (descriptive)\n❌ \"AI Agent\" (generic)\n\n**2. Error Handling**\n• Always validate AI outputs\n• Provide user feedback for failures\n• Use IF nodes for branching logic\n\n**3. Data Organization**\n• Use Set/Edit Fields to structure data\n• Reference nodes by name for clarity\n• Keep output samples for testing\n\n**4. User Experience**\n• Immediate form confirmation\n• Multiple notification channels\n• Helpful error messages\n\n**5. AI Agent Design**\n• Give tools for real-time data\n• Use structured output for consistency\n• Set clear system messages\n\n**Teaching Point:** Professional workflows are reliable, user-friendly, and maintainable.",
+        "height": 420,
+        "width": 380,
+        "color": 6
+      }
+    },
+    {
+      "id": "8c686590-cf88-4951-b3f7-759df2b54e18",
+      "name": "Sticky Note e45cced0",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1088,
+        912
+      ],
+      "parameters": {
+        "content": "## 🧪 TESTING YOUR WORKFLOW\n\n**Step-by-step testing:**\n\n1. **Test the form:**\n   Click \"Test workflow\" → Fill form → Submit\n   Check: Does form data appear correctly?\n\n2. **Test AI search:**\n   Check: Did AI return products array?\n   Check: Are URLs real and working?\n\n3. **Test validation:**\n   Try searches that should fail (gibberish product)\n   Check: Does error path trigger?\n\n4. **Test notifications:**\n   Check: Did you receive email?\n   Check: Did Pushover notification arrive?\n   Check: Are links clickable?\n\n**Common Issues:**\n• Missing credentials → Add API keys\n• Empty results → Check AI prompt\n• Expression errors → Verify {{ }} syntax\n\n**Teaching Point:** Test each node individually, then test the complete flow.",
+        "height": 420,
+        "width": 380,
+        "color": 3
+      }
+    }
+  ],
+  "connections": {
+    "Product Search Form": {
+      "main": [
+        [
+          {
+            "node": "Search Product Online",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Product Online": {
+      "main": [
+        [
+          {
+            "node": "Validate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Search Product Online",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Search": {
+      "ai_tool": [
+        [
+          {
+            "node": "Search Product Online",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Search Product Online",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Results": {
+      "main": [
+        [
+          {
+            "node": "Format Product Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Results Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Product Data": {
+      "main": [
+        [
+          {
+            "node": "Send Pushover Notification",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Email Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No Results Found": {
+      "main": [
+        [
+          {
+            "node": "Send Error Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

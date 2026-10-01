@@ -1,0 +1,632 @@
+{
+  "name": "AI Service Dispatch Command Center",
+  "nodes": [
+    {
+      "id": "3d11fbb5-10f5-4f82-bedb-4a56fd1ac253",
+      "name": "Manual Test Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        120,
+        220
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "2ce6f1e9-cf1c-49a4-9764-ebbf6b3865a8",
+      "name": "Google Sheets - Read Pending Complaints",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        420,
+        320
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "read",
+        "authentication": "oAuth2",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "",
+          "cachedResultName": "Select Service Complaints spreadsheet"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "",
+          "cachedResultName": "Service Complaints"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Status",
+              "lookupValue": "New"
+            },
+            {
+              "lookupColumn": "Notification Sent",
+              "lookupValue": "No"
+            }
+          ]
+        },
+        "combineFilters": "AND",
+        "options": {
+          "returnAll": true
+        }
+      }
+    },
+    {
+      "id": "9601b099-90aa-459a-b6b0-68fb11e697c6",
+      "name": "Every 15 Minutes Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        120,
+        420
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "dbf6850a-b2b6-44d2-9193-f34259d87255",
+      "name": "Normalize + Idempotency Guard",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        320
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const clean = (v) => String(v ?? '').trim();\n\nreturn $input.all()\n  .map((item) => {\n    const row = item.json;\n    const complaintId = clean(row['Complaint ID'] ?? row.complaintId);\n    const status = clean(row.Status ?? row.status);\n    const notificationSent = clean(row['Notification Sent'] ?? row.notificationSent);\n\n    return {\n      json: {\n        ...row,\n        complaintId,\n        dateSubmitted: clean(row['Date Submitted'] ?? row.dateSubmitted),\n        customerName: clean(row['Customer Name'] ?? row.customerName),\n        phone: clean(row.Phone ?? row.phone),\n        area: clean(row.Area ?? row.area),\n        appliance: clean(row.Appliance ?? row.appliance),\n        complaintText: clean(row['Complaint Text'] ?? row.complaintText),\n        driveFileUrl: clean(row['Drive File URL'] ?? row.driveFileUrl),\n        warrantyStatus: clean(row['Warranty Status'] ?? row.warrantyStatus),\n        status,\n        notificationSent\n      }\n    };\n  })\n  .filter((item) => {\n    const status = item.json.status.toLowerCase();\n    const notificationSent = item.json.notificationSent.toLowerCase();\n    return item.json.complaintId && status === 'new' && !['yes', 'sent', 'true', '1'].includes(notificationSent);\n  });"
+      }
+    },
+    {
+      "id": "7803879a-fcc5-4ece-8abe-d53195eced32",
+      "name": "Merge Complaint + Drive Evidence",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        320
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const complaint = $('Loop One Complaint at a Time').item.json;\nconst drive = $json ?? {};\n\nreturn {\n  json: {\n    ...complaint,\n    driveEvidenceFound: Boolean(drive.id),\n    driveFileId: drive.id ?? '',\n    driveFileName: drive.name ?? '',\n    driveMimeType: drive.mimeType ?? '',\n    driveEvidenceUrl: drive.webViewLink ?? complaint.driveFileUrl ?? ''\n  }\n};"
+      }
+    },
+    {
+      "id": "78bdaee1-4f7e-4294-885c-18cfdca1b6dd",
+      "name": "Date & Time - Karachi Context",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1840,
+        320
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "now-karachi-iso",
+              "name": "processedAtKarachi",
+              "value": "={{ $now.setZone(\"Asia/Karachi\").toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "now-karachi-display",
+              "name": "processedAtDisplay",
+              "value": "={{ $now.setZone(\"Asia/Karachi\").toFormat(\"yyyy-LL-dd HH:mm\") }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "1a3ec769-975c-419f-b05f-d2b5a1cd5726",
+      "name": "OpenAI - AI Dispatch Triage",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        2140,
+        320
+      ],
+      "parameters": {
+        "promptType": "define",
+        "hasOutputParser": true,
+        "text": "=Analyze this service complaint and return the structured JSON decision only.\n\nComplaint ID: {{ $json.complaintId }}\nDate Submitted: {{ $json.dateSubmitted }}\nProcessed At: {{ $json.processedAtDisplay }}\nCustomer: {{ $json.customerName }}\nPhone: {{ $json.phone }}\nArea: {{ $json.area }}\nAppliance: {{ $json.appliance }}\nComplaint Text: {{ $json.complaintText }}\nWarranty Status: {{ $json.warrantyStatus }}\nDrive Evidence Found: {{ $json.driveEvidenceFound }}\nDrive Evidence Name: {{ $json.driveFileName }}\nDrive Evidence URL: {{ $json.driveEvidenceUrl }}",
+        "options": {
+          "maxIterations": 3,
+          "systemMessage": "You are an AI operations dispatcher for a home appliance repair company. Classify urgency strictly. Burning smell, sparks, smoke, or electrical risk is Critical. Refrigerator not cooling is High unless customer mentions food, medicine, children, or business loss, then Critical. Leakage is Medium unless severe or electrical risk, then High/Critical. Noise issues are Medium. Cosmetic issues are Low. Warranty customers get priority when urgency is High or Critical. Return concise operational language only."
+        }
+      }
+    },
+    {
+      "id": "6aab9907-dc1d-4102-a6c7-6275bb9b3419",
+      "name": "OpenAI - Dispatch Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        2120,
+        560
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gpt-5-mini",
+          "cachedResultName": "gpt-5-mini"
+        },
+        "responsesApiEnabled": true,
+        "options": {
+          "reasoningEffort": "low",
+          "temperature": 0.2,
+          "timeout": 60000,
+          "maxRetries": 2
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "e3602fae-0342-47b6-a5cb-79aba70264ae",
+      "name": "Structured Dispatch JSON Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        2320,
+        560
+      ],
+      "parameters": {
+        "schemaType": "fromJson",
+        "jsonSchemaExample": "{ \"priority\": \"Critical\", \"summary\": \"Customer reported electrical sparking and burning smell.\", \"issue_type\": \"electrical\", \"suggested_technician\": \"electrical senior technician\", \"sla_hours\": 2, \"customer_message\": \"Please switch off the appliance immediately. Our technician will contact you shortly.\", \"manager_action\": \"Assign senior technician immediately and call customer before dispatch.\", \"risk_reason\": \"Sparking and burning smell indicate possible electrical hazard.\" }",
+        "autoFix": true
+      }
+    },
+    {
+      "id": "078496fc-2f74-450e-ae51-0f0d53ae2a99",
+      "name": "Build Operational Decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2440,
+        320
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const complaint = $('Date & Time - Karachi Context').item.json;\nconst ai = $json.output ?? $json;\nconst slaHours = Number(ai.sla_hours ?? 12);\nconst processedAt = complaint.processedAtKarachi ? new Date(complaint.processedAtKarachi) : new Date();\nconst deadline = new Date(processedAt.getTime() + slaHours * 60 * 60 * 1000);\nconst priority = String(ai.priority ?? 'Medium');\nconst emoji = priority.toLowerCase() === 'critical' ? '🚨' : priority.toLowerCase() === 'high' ? '⚠️' : '🔧';\nconst deadlineText = deadline.toLocaleString('en-CA', { timeZone: 'Asia/Karachi', hour12: false }).replace(',', '');\n\nreturn {\n  json: {\n    ...complaint,\n    aiPriority: priority,\n    aiSummary: ai.summary ?? '',\n    issueType: ai.issue_type ?? 'unknown',\n    suggestedTechnician: ai.suggested_technician ?? 'general technician',\n    slaHours,\n    slaDeadline: deadlineText,\n    customerMessage: ai.customer_message ?? '',\n    managerAction: ai.manager_action ?? '',\n    riskReason: ai.risk_reason ?? '',\n    sheetStatus: 'AI Reviewed',\n    notificationSent: 'Yes',\n    managerDecision: 'Pending',\n    pushTitle: `${emoji} ${priority.toUpperCase()} SERVICE COMPLAINT - ${complaint.complaintId}`,\n    pushBody: `${emoji} ${priority.toUpperCase()} SERVICE COMPLAINT\\n\\nCustomer: ${complaint.customerName}\\nPhone: ${complaint.phone}\\nArea: ${complaint.area}\\nAppliance: ${complaint.appliance}\\nIssue: ${ai.summary ?? complaint.complaintText}\\nTechnician: ${ai.suggested_technician ?? 'general technician'}\\nSLA Deadline: ${deadlineText}\\nAction: ${ai.manager_action ?? 'Review and dispatch technician.'}`\n  }\n};"
+      }
+    },
+    {
+      "id": "158d278d-30ea-4ebc-afe2-054582fd8b37",
+      "name": "Push Notification - Manager Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2720,
+        320
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://ntfy.sh/atif-service-dispatch-alerts-20260626",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ title: $json.pushTitle, message: $json.pushBody, priority: $json.aiPriority === \"Critical\" ? 5 : ($json.aiPriority === \"High\" ? 4 : 3), tags: [\"rotating_light\", \"technologist\", \"repair\"] }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 10000
+        }
+      }
+    },
+    {
+      "id": "f6453820-85d3-47d1-b536-b3dd31cb9e74",
+      "name": "Google Sheets - Update Complaint Decision",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3000,
+        320
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "update",
+        "authentication": "oAuth2",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "",
+          "cachedResultName": "Select Service Complaints spreadsheet"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "",
+          "cachedResultName": "Service Complaints"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": [
+            "Complaint ID"
+          ],
+          "value": {
+            "Complaint ID": "={{ $(\"Build Operational Decision\").item.json.complaintId }}",
+            "Status": "={{ $(\"Build Operational Decision\").item.json.sheetStatus }}",
+            "AI Priority": "={{ $(\"Build Operational Decision\").item.json.aiPriority }}",
+            "AI Summary": "={{ $(\"Build Operational Decision\").item.json.aiSummary }}",
+            "Issue Type": "={{ $(\"Build Operational Decision\").item.json.issueType }}",
+            "Suggested Technician": "={{ $(\"Build Operational Decision\").item.json.suggestedTechnician }}",
+            "SLA Deadline": "={{ $(\"Build Operational Decision\").item.json.slaDeadline }}",
+            "Notification Sent": "={{ $(\"Build Operational Decision\").item.json.notificationSent }}",
+            "Customer Message": "={{ $(\"Build Operational Decision\").item.json.customerMessage }}",
+            "Manager Action": "={{ $(\"Build Operational Decision\").item.json.managerAction }}",
+            "Risk Reason": "={{ $(\"Build Operational Decision\").item.json.riskReason }}",
+            "Manager Decision": "={{ $(\"Build Operational Decision\").item.json.managerDecision }}",
+            "Processed At": "={{ $(\"Build Operational Decision\").item.json.processedAtDisplay }}",
+            "Drive Evidence Found": "={{ $(\"Build Operational Decision\").item.json.driveEvidenceFound }}",
+            "Drive Evidence URL": "={{ $(\"Build Operational Decision\").item.json.driveEvidenceUrl }}"
+          },
+          "schema": [
+            {
+              "id": "Complaint ID",
+              "displayName": "Complaint ID",
+              "required": true,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "AI Priority",
+              "displayName": "AI Priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "AI Summary",
+              "displayName": "AI Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "Issue Type",
+              "displayName": "Issue Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "Suggested Technician",
+              "displayName": "Suggested Technician",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "SLA Deadline",
+              "displayName": "SLA Deadline",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "Notification Sent",
+              "displayName": "Notification Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "Customer Message",
+              "displayName": "Customer Message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "Manager Action",
+              "displayName": "Manager Action",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "Risk Reason",
+              "displayName": "Risk Reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "Manager Decision",
+              "displayName": "Manager Decision",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "Processed At",
+              "displayName": "Processed At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "Drive Evidence Found",
+              "displayName": "Drive Evidence Found",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "Drive Evidence URL",
+              "displayName": "Drive Evidence URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            }
+          ]
+        },
+        "options": {
+          "cellFormat": "USER_ENTERED",
+          "handlingExtraData": "ignoreIt",
+          "locationDefine": {
+            "values": {
+              "headerRow": 1,
+              "firstDataRow": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "e0248fea-9fdb-4802-9ad0-be434649d21c",
+      "name": "Loop One Complaint at a Time",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1000,
+        320
+      ],
+      "parameters": {
+        "batchSize": 1
+      }
+    },
+    {
+      "id": "4d736aeb-79ae-4eab-bf38-35a94386551e",
+      "name": "Sticky Note 87117bd1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        370,
+        270
+      ],
+      "parameters": {
+        "content": "## AI Service Dispatch Command Center\n\nRequired Sheet columns: Complaint ID, Date Submitted, Customer Name, Phone, Area, Appliance, Complaint Text, Drive File URL, Warranty Status, Status, AI Priority, AI Summary, Issue Type, Suggested Technician, SLA Deadline, Notification Sent, Customer Message, Manager Action, Risk Reason, Manager Decision, Processed At, Drive Evidence Found, Drive Evidence URL.\n\nBefore activation: select the Google spreadsheet/sheet in both Google Sheets nodes, connect Google Drive OAuth2, and replace the push endpoint placeholder with your private mobile push webhook or ntfy topic.",
+        "color": 4,
+        "width": 2880,
+        "height": 200
+      }
+    }
+  ],
+  "connections": {
+    "Manual Test Trigger": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Read Pending Complaints",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets - Read Pending Complaints": {
+      "main": [
+        [
+          {
+            "node": "Normalize + Idempotency Guard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every 15 Minutes Trigger": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Read Pending Complaints",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize + Idempotency Guard": {
+      "main": [
+        [
+          {
+            "node": "Loop One Complaint at a Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Complaint + Drive Evidence": {
+      "main": [
+        [
+          {
+            "node": "Date & Time - Karachi Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Date & Time - Karachi Context": {
+      "main": [
+        [
+          {
+            "node": "OpenAI - AI Dispatch Triage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI - AI Dispatch Triage": {
+      "main": [
+        [
+          {
+            "node": "Build Operational Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI - Dispatch Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "OpenAI - AI Dispatch Triage",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Structured Dispatch JSON Parser",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Dispatch JSON Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "OpenAI - AI Dispatch Triage",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Operational Decision": {
+      "main": [
+        [
+          {
+            "node": "Push Notification - Manager Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Push Notification - Manager Alert": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Update Complaint Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets - Update Complaint Decision": {
+      "main": [
+        [
+          {
+            "node": "Loop One Complaint at a Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop One Complaint at a Time": {
+      "main": [
+        null,
+        [
+          {
+            "node": "Merge Complaint + Drive Evidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

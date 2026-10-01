@@ -1,0 +1,728 @@
+{
+  "name": "Projects: Document Processing Pipeline",
+  "nodes": [
+    {
+      "id": "d037aff4-40bd-4a30-a123-c2d68f967601",
+      "name": "Sticky Note 380d69d5",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        752,
+        992
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "Document Pipeline Architecture",
+            "position": [
+              -220,
+              60
+            ],
+            "parameters": {
+              "width": 560,
+              "height": 280,
+              "content": "MEDICAL DOCUMENT PROCESSING PIPELINE\n\n1. Webhook POST multipart (patient metadata + PDFs)\n2. Route signature sheet vs invoice\n3. OpenAI extracts structured fields (Spanish prompts)\n4. Rename file, append Google Sheets row\n5. Return JSON + flag errors\n\nReplace SharePoint node with Google Drive if needed."
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "a364ab8a-4c21-475f-b8d3-660c493ca96a",
+      "name": "Webhook: Document Upload",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "medical/documents",
+        "responseMode": "responseNode",
+        "options": {
+          "binaryData": true
+        }
+      },
+      "webhookId": "3a452dc8-f4a9-46c6-9630-3583dea38014"
+    },
+    {
+      "id": "a6fd526a-1648-4c19-91bb-2838ff5b6057",
+      "name": "Normalize Patient Metadata",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "pid",
+              "name": "patient_id",
+              "value": "={{ $json.patient_id || $json.body?.patient_id || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "pname",
+              "name": "patient_name",
+              "value": "={{ $json.patient_name || $json.body?.patient_name || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "center",
+              "name": "medical_center",
+              "value": "={{ $json.medical_center || $json.body?.medical_center || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "dtype",
+              "name": "document_type",
+              "value": "={{ $json.document_type || $json.body?.document_type || \"signature_sheet\" }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "8aecca65-5000-491f-b1b9-a753cca93868",
+      "name": "Route Document Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        500,
+        300
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "outputKey": "invoice",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.document_type }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "invoice"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "signature",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.document_type }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "signature_sheet"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Unknown"
+        }
+      }
+    },
+    {
+      "id": "579b620a-1f2d-4836-98e0-5a9f94eb2352",
+      "name": "AI: Extract Invoice",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        780,
+        420
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "Extrae de la factura: invoice_number, invoice_date, total, concept, referenced_patients, confidence (0-1), renamed_file segun convencion INV_YYYYMMDD_NUM.pdf. Responde en JSON estructurado.",
+        "hasOutputParser": true
+      }
+    },
+    {
+      "id": "d764af9a-6198-423f-acf5-051b487cb325",
+      "name": "GPT-4o Mini",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        752,
+        432
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "options": {
+          "temperature": 0.1
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "92ca3a3b-e86f-4222-87f3-d9c06933b136",
+      "name": "Invoice Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        784,
+        224
+      ],
+      "parameters": {
+        "schemaType": "fromJson",
+        "autoFix": true,
+        "jsonSchemaExample": {
+          "invoice_number": "INV-2026-001",
+          "invoice_date": "2026-01-15",
+          "total": 1500,
+          "concept": "Therapy sessions",
+          "referenced_patients": [
+            "Patient A"
+          ],
+          "confidence": 0.9,
+          "renamed_file": "INV_20260115_001.pdf"
+        }
+      }
+    },
+    {
+      "id": "1c3be44f-0d58-4314-a7ca-904bc61f9b3d",
+      "name": "Format Invoice Row",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1040,
+        420
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "tab",
+              "name": "sheet_tab",
+              "value": "Invoices",
+              "type": "string"
+            },
+            {
+              "id": "dt",
+              "name": "document_type",
+              "value": "invoice",
+              "type": "string"
+            },
+            {
+              "id": "pid",
+              "name": "patient_id",
+              "value": "={{ $(\"Normalize Patient Metadata\").item.json.patient_id }}",
+              "type": "string"
+            },
+            {
+              "id": "inv",
+              "name": "invoice_number",
+              "value": "={{ $json.output?.invoice_number || $json.invoice_number }}",
+              "type": "string"
+            },
+            {
+              "id": "idate",
+              "name": "invoice_date",
+              "value": "={{ $json.output?.invoice_date || $json.invoice_date }}",
+              "type": "string"
+            },
+            {
+              "id": "tot",
+              "name": "total",
+              "value": "={{ $json.output?.total || $json.total }}",
+              "type": "number"
+            },
+            {
+              "id": "con",
+              "name": "concept",
+              "value": "={{ $json.output?.concept || $json.concept }}",
+              "type": "string"
+            },
+            {
+              "id": "conf",
+              "name": "confidence",
+              "value": "={{ $json.output?.confidence || $json.confidence || 0 }}",
+              "type": "number"
+            },
+            {
+              "id": "rf",
+              "name": "renamed_file",
+              "value": "={{ $json.output?.renamed_file || $json.renamed_file }}",
+              "type": "string"
+            },
+            {
+              "id": "ts",
+              "name": "processed_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "1b8b290c-3e91-44ce-a07a-57ab4e635583",
+      "name": "Append to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1300,
+        300
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Seguimiento"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {}
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "7f9234e3-9d61-4d27-843d-96fcbf796b90",
+      "name": "Low Confidence?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1560,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.confidence }}",
+              "operator": {
+                "type": "number",
+                "operation": "smaller"
+              },
+              "rightValue": 0.8
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "33346beb-82d1-48a4-b078-658458dc0310",
+      "name": "Flag Review Required",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1820,
+        220
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "err",
+              "name": "status",
+              "value": "review_required",
+              "type": "string"
+            },
+            {
+              "id": "msg",
+              "name": "error_message",
+              "value": "Low confidence extraction - manual review needed",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "0ab995a7-4c38-45e8-b845-dfc6e4ed61c1",
+      "name": "Respond Review Required",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2080,
+        220
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, status: \"review_required\", error_message: $json.error_message, confidence: $json.confidence } }}",
+        "options": {
+          "responseCode": 422
+        }
+      }
+    },
+    {
+      "id": "908d778e-f9a1-42a0-af57-e106da69868c",
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1820,
+        400
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, status: $json.status || \"processed\", document_type: $json.document_type, renamed_file: $json.renamed_file, confidence: $json.confidence } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "a47b7809-56e0-4ce1-80d5-c47a1e13ed15",
+      "name": "AI: Extract Signature Sheet",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        780,
+        180
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "Extrae de la hoja de firmas: session_count, period_start, period_end, confidence (0-1), renamed_file segun convencion SIG_PATIENT_YYYYMM.pdf. Responde en JSON estructurado.",
+        "hasOutputParser": true
+      }
+    },
+    {
+      "id": "4d2fb56f-f9bd-4ff7-ad65-fff0d50e1956",
+      "name": "Signature Sheet Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        752,
+        944
+      ],
+      "parameters": {
+        "schemaType": "fromJson",
+        "autoFix": true,
+        "jsonSchemaExample": {
+          "session_count": 12,
+          "period_start": "2026-01-01",
+          "period_end": "2026-01-31",
+          "confidence": 0.92,
+          "renamed_file": "SIG_PATIENT_202601.pdf"
+        }
+      }
+    },
+    {
+      "id": "8335d65c-9a02-4ee7-97b3-26e27adacce9",
+      "name": "Format Signature Row",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1040,
+        180
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "tab",
+              "name": "sheet_tab",
+              "value": "Seguimiento",
+              "type": "string"
+            },
+            {
+              "id": "dt",
+              "name": "document_type",
+              "value": "signature_sheet",
+              "type": "string"
+            },
+            {
+              "id": "pid",
+              "name": "patient_id",
+              "value": "={{ $(\"Normalize Patient Metadata\").item.json.patient_id }}",
+              "type": "string"
+            },
+            {
+              "id": "pname",
+              "name": "patient_name",
+              "value": "={{ $(\"Normalize Patient Metadata\").item.json.patient_name }}",
+              "type": "string"
+            },
+            {
+              "id": "sc",
+              "name": "session_count",
+              "value": "={{ $json.output?.session_count || $json.session_count }}",
+              "type": "number"
+            },
+            {
+              "id": "ps",
+              "name": "period_start",
+              "value": "={{ $json.output?.period_start || $json.period_start }}",
+              "type": "string"
+            },
+            {
+              "id": "pe",
+              "name": "period_end",
+              "value": "={{ $json.output?.period_end || $json.period_end }}",
+              "type": "string"
+            },
+            {
+              "id": "conf",
+              "name": "confidence",
+              "value": "={{ $json.output?.confidence || $json.confidence || 0 }}",
+              "type": "number"
+            },
+            {
+              "id": "rf",
+              "name": "renamed_file",
+              "value": "={{ $json.output?.renamed_file || $json.renamed_file }}",
+              "type": "string"
+            },
+            {
+              "id": "ts",
+              "name": "processed_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook: Document Upload": {
+      "main": [
+        [
+          {
+            "node": "Normalize Patient Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Patient Metadata": {
+      "main": [
+        [
+          {
+            "node": "Route Document Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Document Type": {
+      "main": [
+        [
+          {
+            "node": "AI: Extract Invoice",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI: Extract Signature Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Extract Invoice": {
+      "main": [
+        [
+          {
+            "node": "Format Invoice Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT-4o Mini": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI: Extract Invoice",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Invoice Schema",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "AI: Extract Signature Sheet",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Signature Sheet Schema",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Invoice Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI: Extract Invoice",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Invoice Row": {
+      "main": [
+        [
+          {
+            "node": "Append to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append to Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "Low Confidence?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Low Confidence?": {
+      "main": [
+        [
+          {
+            "node": "Flag Review Required",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flag Review Required": {
+      "main": [
+        [
+          {
+            "node": "Respond Review Required",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Extract Signature Sheet": {
+      "main": [
+        [
+          {
+            "node": "Format Signature Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Signature Sheet Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI: Extract Signature Sheet",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Signature Row": {
+      "main": [
+        [
+          {
+            "node": "Append to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

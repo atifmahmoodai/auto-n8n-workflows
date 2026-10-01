@@ -1,0 +1,505 @@
+{
+  "name": "Projects P2: Voice AI Appointment Agent",
+  "nodes": [
+    {
+      "id": "a14f52b8-358c-4fb4-9b0f-436dbf3c919c",
+      "name": "Sticky Note b442ccf2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        528,
+        688
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "Voice AI Appointment Architecture",
+            "position": [
+              -220,
+              60
+            ],
+            "parameters": {
+              "width": 560,
+              "height": 280,
+              "content": "VOICE AI APPOINTMENT AGENT (Retell/Vapi)\n\n1. Webhook POST /voice/call-ended from Retell or Vapi\n2. AI parses transcript for booking intent + lead data\n3. Creates calendar booking placeholder + CRM row\n4. Sends confirmation SMS/email via Gmail\n5. Returns structured call summary JSON"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "400e7c22-7a56-4c35-8d60-d8edb7f6d8e9",
+      "name": "Webhook: Voice Call Ended",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "voice/call-ended",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "49da85bd-fbb7-4136-9662-9e4ccd6a4856"
+    },
+    {
+      "id": "d5a902be-4b1d-4a4a-949c-248cb8a697dd",
+      "name": "Normalize Voice Payload",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cid",
+              "name": "call_id",
+              "value": "={{ $json.call_id || $json.body?.call_id || $json.id || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "from",
+              "name": "caller_phone",
+              "value": "={{ $json.from_number || $json.body?.from_number || $json.customer?.number || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "trans",
+              "name": "transcript",
+              "value": "={{ $json.transcript || $json.body?.transcript || $json.call?.transcript || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "dur",
+              "name": "duration_sec",
+              "value": "={{ Number($json.duration || $json.body?.duration || 0) }}",
+              "type": "number"
+            },
+            {
+              "id": "prov",
+              "name": "provider",
+              "value": "={{ $json.provider || $json.body?.provider || \"vapi\" }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "50cddaa1-a276-454b-91ac-b8813c8d07cd",
+      "name": "AI: Parse Voice Transcript",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        500,
+        300
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ \"Parse this voice AI call transcript. Extract lead details, whether appointment was booked, preferred datetime, service, tier (hot/warm/cold), summary, and a natural follow-up confirmation message.\\n\\nTranscript:\\n\" + $json.transcript }}",
+        "hasOutputParser": true
+      }
+    },
+    {
+      "id": "29b94e27-03fa-4797-b897-5fdffed155b9",
+      "name": "GPT-4o Mini",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        528,
+        640
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "40546c24-2462-46eb-bc3e-c9419ce9d882",
+      "name": "Voice Call Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        560,
+        432
+      ],
+      "parameters": {
+        "schemaType": "fromJson",
+        "autoFix": true,
+        "jsonSchemaExample": {
+          "lead_name": "John Smith",
+          "lead_email": "john@example.com",
+          "appointment_booked": true,
+          "appointment_datetime": "2026-07-10T14:00:00",
+          "service_requested": "consultation",
+          "tier": "hot",
+          "summary": "Caller wants appointment this week.",
+          "follow_up_message": "Hi John, your appointment is confirmed for July 10 at 2pm."
+        }
+      }
+    },
+    {
+      "id": "9063f8f8-b45d-4e19-80bf-7b7d6c68e001",
+      "name": "Merge Voice Result",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        760,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cid",
+              "name": "call_id",
+              "value": "={{ $(\"Normalize Voice Payload\").item.json.call_id }}",
+              "type": "string"
+            },
+            {
+              "id": "ph",
+              "name": "caller_phone",
+              "value": "={{ $(\"Normalize Voice Payload\").item.json.caller_phone }}",
+              "type": "string"
+            },
+            {
+              "id": "ln",
+              "name": "lead_name",
+              "value": "={{ $json.output?.lead_name || $json.lead_name || \"Unknown\" }}",
+              "type": "string"
+            },
+            {
+              "id": "le",
+              "name": "lead_email",
+              "value": "={{ $json.output?.lead_email || $json.lead_email || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "ab",
+              "name": "appointment_booked",
+              "value": "={{ $json.output?.appointment_booked || $json.appointment_booked || false }}",
+              "type": "boolean"
+            },
+            {
+              "id": "ad",
+              "name": "appointment_datetime",
+              "value": "={{ $json.output?.appointment_datetime || $json.appointment_datetime || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "ti",
+              "name": "tier",
+              "value": "={{ $json.output?.tier || $json.tier || \"warm\" }}",
+              "type": "string"
+            },
+            {
+              "id": "sm",
+              "name": "summary",
+              "value": "={{ $json.output?.summary || $json.summary || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "fm",
+              "name": "follow_up_message",
+              "value": "={{ $json.output?.follow_up_message || $json.follow_up_message || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "ts",
+              "name": "processed_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "db5afbe7-c8c7-4aea-95d7-a3e985f43b46",
+      "name": "Log Voice Call to Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1020,
+        300
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Voice_Calls"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "processed_at": "={{ $json.processed_at }}",
+            "call_id": "={{ $json.call_id }}",
+            "caller_phone": "={{ $json.caller_phone }}",
+            "lead_name": "={{ $json.lead_name }}",
+            "appointment_booked": "={{ $json.appointment_booked }}",
+            "appointment_datetime": "={{ $json.appointment_datetime }}",
+            "tier": "={{ $json.tier }}",
+            "summary": "={{ $json.summary }}"
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "653b5262-3b86-4f6f-8789-1e15ad7e18bc",
+      "name": "Appointment Booked?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1540,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.appointment_booked }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "fd01e6bd-d55d-4c5e-834a-5f01cd4561a5",
+      "name": "Calendar: Create Booking",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1280,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://REPLACE_CALENDAR_API_HOST/bookings",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n        name: $json.lead_name,\n        email: $json.lead_email,\n        phone: $json.caller_phone,\n        datetime: $json.appointment_datetime,\n        source: \"voice_ai\"\n      } }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "2a34123b-4cb0-4d91-adc8-fc7b1fb78422",
+      "name": "Gmail: Send Confirmation",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1800,
+        220
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.lead_email }}",
+        "subject": "Your appointment is confirmed",
+        "emailType": "text",
+        "message": "={{ $json.follow_up_message }}",
+        "options": {}
+      },
+      "webhookId": "5a14858a-b6ba-428c-a3c9-855fabad2915"
+    },
+    {
+      "id": "e02bc2f3-9ee0-4b61-8312-2f965c931ff3",
+      "name": "Respond Call Summary",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1800,
+        400
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, call_id: $json.call_id, appointment_booked: $json.appointment_booked, tier: $json.tier, summary: $json.summary } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook: Voice Call Ended": {
+      "main": [
+        [
+          {
+            "node": "Normalize Voice Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Voice Payload": {
+      "main": [
+        [
+          {
+            "node": "AI: Parse Voice Transcript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Parse Voice Transcript": {
+      "main": [
+        [
+          {
+            "node": "Merge Voice Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT-4o Mini": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI: Parse Voice Transcript",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Voice Call Schema",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Voice Call Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI: Parse Voice Transcript",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Voice Result": {
+      "main": [
+        [
+          {
+            "node": "Log Voice Call to Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Voice Call to Sheet": {
+      "main": [
+        [
+          {
+            "node": "Appointment Booked?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Appointment Booked?": {
+      "main": [
+        [
+          {
+            "node": "Calendar: Create Booking",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Call Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calendar: Create Booking": {
+      "main": [
+        [
+          {
+            "node": "Gmail: Send Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: Send Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Respond Call Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

@@ -1,0 +1,333 @@
+{
+  "name": "grok-BizPilot - BriefPilot Pro",
+  "nodes": [
+    {
+      "id": "e0768c30-796a-4742-beb5-b46db2619bb2",
+      "name": "Daily Owner Brief 19:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 19,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "8467239a-dd4b-49f1-9363-8ce26c76e97b",
+      "name": "Fetch Recent Leads",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "getAll",
+        "tableId": "bizpilot_leads",
+        "returnAll": false,
+        "limit": 200,
+        "filterType": "none",
+        "orderBy": "created_at.desc"
+      }
+    },
+    {
+      "id": "c992dfaf-89ed-4e31-b5cc-5d41645e9427",
+      "name": "Fetch Recent Invoices",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        448,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "getAll",
+        "tableId": "bizpilot_invoices",
+        "returnAll": false,
+        "limit": 300,
+        "filterType": "none",
+        "orderBy": "created_at.desc"
+      }
+    },
+    {
+      "id": "93a094b5-8c70-4392-9f1f-cff6af789a05",
+      "name": "Fetch Payment Reminders",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        672,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "getAll",
+        "tableId": "bizpilot_payment_reminders",
+        "returnAll": false,
+        "limit": 200,
+        "filterType": "none",
+        "orderBy": "created_at.desc"
+      }
+    },
+    {
+      "id": "23928428-d59f-47ac-bdcd-2ecded278619",
+      "name": "Fetch Recent Quotes",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        896,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "getAll",
+        "tableId": "bizpilot_quotes",
+        "returnAll": false,
+        "limit": 200,
+        "filterType": "none",
+        "orderBy": "created_at.desc"
+      }
+    },
+    {
+      "id": "ab426bb7-78d8-416a-bd3b-652dc7f6b561",
+      "name": "Aggregate Business Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const today = new Date().toISOString().slice(0,10);\nconst isReal = x => x && Object.keys(x).length > 0;\nconst leads = $('Fetch Recent Leads').all().map(i => i.json).filter(isReal);\nconst invoices = $('Fetch Recent Invoices').all().map(i => i.json).filter(isReal);\nconst reminders = $('Fetch Payment Reminders').all().map(i => i.json).filter(isReal);\nconst quotes = $('Fetch Recent Quotes').all().map(i => i.json).filter(isReal);\nconst todayOnly = row => String(row.created_at || '').slice(0,10) === today;\nconst todayLeads = leads.filter(todayOnly);\nconst todayInvoices = invoices.filter(todayOnly);\nconst todayQuotes = quotes.filter(todayOnly);\nconst todayReminders = reminders.filter(todayOnly);\nconst sales = todayInvoices.reduce((s, x) => s + Number(x.total || 0), 0);\nconst paidSales = todayInvoices.filter(x => String(x.payment_status || x.status || '').toLowerCase().includes('paid')).reduce((s, x) => s + Number(x.total || 0), 0);\nconst unpaid = invoices.filter(x => !String(x.payment_status || x.status || '').toLowerCase().includes('paid')).reduce((s, x) => s + Number(x.total || x.amount_due || 0), 0);\nconst hotLeads = todayLeads.filter(x => Number(x.lead_score || 0) >= 75 || String(x.temperature || '').toLowerCase() === 'hot');\nconst handoffs = todayLeads.filter(x => x.human_required === true || String(x.status || '').includes('handoff'));\nconst pendingQuotes = quotes.filter(x => !['accepted','rejected','expired','cancelled'].includes(String(x.status || '').toLowerCase()));\nconst approvalReminders = todayReminders.filter(x => String(x.status || '').includes('approval'));\nconst ownerPhone = [...todayLeads, ...todayInvoices, ...todayQuotes, ...todayReminders, ...leads, ...invoices, ...quotes, ...reminders].find(x => x.owner_phone)?.owner_phone || '923000000000';\nconst phoneNumberId = [...todayLeads, ...todayInvoices, ...todayQuotes, ...todayReminders, ...leads, ...invoices, ...quotes, ...reminders].find(x => x.phone_number_id)?.phone_number_id || 'YOUR_PHONE_NUMBER_ID';\nconst businessId = [...todayLeads, ...todayInvoices, ...todayQuotes, ...todayReminders, ...leads, ...invoices, ...quotes, ...reminders].find(x => x.business_id)?.business_id || 'default';\nreturn [{ json: {\n  business_id: businessId,\n  brief_date: today,\n  period: 'evening',\n  owner_phone: String(ownerPhone).replace(/D/g, ''),\n  phone_number_id: phoneNumberId,\n  metrics: {\n    leads_today: todayLeads.length,\n    hot_leads_today: hotLeads.length,\n    handoffs_today: handoffs.length,\n    invoices_today: todayInvoices.length,\n    sales_today: sales,\n    paid_sales_today: paidSales,\n    estimated_unpaid_total: unpaid,\n    quotes_today: todayQuotes.length,\n    pending_quotes: pendingQuotes.length,\n    approval_reminders_today: approvalReminders.length\n  },\n  source_samples: {\n    hot_leads: hotLeads.slice(0,5),\n    handoffs: handoffs.slice(0,5),\n    pending_quotes: pendingQuotes.slice(0,5),\n    approval_reminders: approvalReminders.slice(0,5)\n  },\n  created_at: new Date().toISOString()\n}}];"
+      }
+    },
+    {
+      "id": "2e321a73-2c39-4f05-8526-5c2c5f74068b",
+      "name": "AI Write Owner Brief",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1344,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'gpt-4o-mini', temperature: 0.1, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: 'You are BriefPilot, a ruthless but useful daily business briefing assistant. Return JSON only with keys: headline, sales_summary, cash_summary, lead_summary, quote_summary, risk_level low|medium|high, top_actions array of max 3 objects {title, why, priority low|medium|high|urgent}, owner_message. Use only provided numbers. Never invent data. Be short and direct.' }, { role: 'user', content: JSON.stringify($json) } ] }) }}"
+      }
+    },
+    {
+      "id": "78b1956e-d36f-484b-b41f-94a9ca149506",
+      "name": "Build Owner Brief Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const source = $('Aggregate Business Metrics').item.json;\nlet ai = {};\ntry { ai = JSON.parse($input.first().json.choices?.[0]?.message?.content || '{} '); } catch (e) { ai = {}; }\nconst actions = Array.isArray(ai.top_actions) ? ai.top_actions.slice(0,3) : [];\nconst m = source.metrics || {};\nconst actionText = actions.length ? actions.map((a, i) => `${i+1}. ${a.title} — ${a.why}`).join('\n') : 'No urgent action detected.';\nconst message = `Daily Brief — ${source.brief_date}\n\nSales today: Rs ${m.sales_today || 0}\nPaid sales: Rs ${m.paid_sales_today || 0}\nEstimated unpaid: Rs ${m.estimated_unpaid_total || 0}\nHot leads: ${m.hot_leads_today || 0}\nPending quotes: ${m.pending_quotes || 0}\nPayment approvals: ${m.approval_reminders_today || 0}\n\nRisk: ${ai.risk_level || 'low'}\n\nTop actions:\n${actionText}`;\nreturn [{ json: {\n  business_id: source.business_id,\n  brief_date: source.brief_date,\n  period: source.period,\n  owner_phone: source.owner_phone,\n  phone_number_id: source.phone_number_id,\n  headline: ai.headline || 'Daily business brief',\n  risk_level: ai.risk_level || 'low',\n  metrics_json: JSON.stringify(source.metrics),\n  recommendations_json: JSON.stringify(actions),\n  message,\n  created_at: new Date().toISOString()\n}}];"
+      }
+    },
+    {
+      "id": "3adf05a0-d4f1-4b5e-a92f-8035c8354e4e",
+      "name": "Save Business Brief",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1792,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "create",
+        "tableId": "bizpilot_briefs",
+        "dataToSend": "autoMapInputData"
+      }
+    },
+    {
+      "id": "3578717d-6d1d-4ff4-bc8c-f47801c93fcb",
+      "name": "Export Brief to Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2016,
+        0
+      ],
+      "parameters": {
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": [],
+          "schema": [],
+          "value": {}
+        },
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_GOOGLE_SHEET_ID"
+        },
+        "operation": "append",
+        "options": {},
+        "resource": "sheet",
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Sheet1"
+        }
+      }
+    },
+    {
+      "id": "6f2aafc6-6535-4808-adc7-d32d0ddad815",
+      "name": "Sticky Note 1968693f",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1008,
+        64
+      ],
+      "parameters": {
+        "content": {
+          "content": "## grok-BizPilot - BriefPilot Pro\nDaily owner command brief built from leads, invoices, reminders, and quotes. Produces max 3 actions, saves to Supabase, sends WhatsApp, and exports to Sheets. Update YOUR_GOOGLE_SHEET_ID in the export node and connect credentials before publishing. Fixed: export enabled with Google Sheets credential.",
+          "color": 2,
+          "width": 2640,
+          "height": 560,
+          "position": [
+            -50,
+            -230
+          ]
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Daily Owner Brief 19:00": {
+      "main": [
+        [
+          {
+            "node": "Fetch Recent Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Recent Leads": {
+      "main": [
+        [
+          {
+            "node": "Fetch Recent Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Recent Invoices": {
+      "main": [
+        [
+          {
+            "node": "Fetch Payment Reminders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Payment Reminders": {
+      "main": [
+        [
+          {
+            "node": "Fetch Recent Quotes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Recent Quotes": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Business Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Business Metrics": {
+      "main": [
+        [
+          {
+            "node": "AI Write Owner Brief",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Write Owner Brief": {
+      "main": [
+        [
+          {
+            "node": "Build Owner Brief Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Owner Brief Message": {
+      "main": [
+        [
+          {
+            "node": "Save Business Brief",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Business Brief": {
+      "main": [
+        [
+          {
+            "node": "Export Brief to Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

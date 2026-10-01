@@ -1,0 +1,311 @@
+{
+  "name": "COI Renewal Digest: Monday -> Gmail Chase + Slack",
+  "nodes": [
+    {
+      "id": "80402aec-9e18-47a9-a5b7-b1bb6cb1c5bc",
+      "name": "Sticky Note 34f5cbc7",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        100,
+        300
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "Renewal Digest Architecture",
+            "position": [
+              -200,
+              80
+            ],
+            "parameters": {
+              "width": 480,
+              "height": 200,
+              "content": "COI RENEWAL DIGEST\n\n1. Runs every Monday at 8 AM\n2. Reads COI_Register sheet\n3. Finds policies expiring within 30 days\n4. Sends chase emails to subcontractors\n5. Posts Slack digest to GC compliance team"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "897b1802-792d-46b2-a914-f40898a6abc8",
+      "name": "Monday 8 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "18cbe3c7-abae-480e-b60f-0eed406d9b24",
+      "name": "Sheet: Read COI Register",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "COI_Register"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "c0a6db9b-ad68-4ce1-a916-f4c457750e6f",
+      "name": "Find Expiring COIs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const rows = $input.all().map((i) => i.json);\nconst gc = 'REPLACE_WITH_GC_COMPANY_NAME';\nconst expiring = [];\nconst digestLines = ['*COI Renewal Digest* (' + $now.toFormat('yyyy-MM-dd') + ')', ''];\n\nfor (const row of rows) {\n  const expiry = row.expiry_date || '';\n  const dt = DateTime.fromISO(expiry);\n  if (!dt.isValid) continue;\n  const daysLeft = Math.floor(dt.diff($now, 'days').days);\n  if (daysLeft < 0 || daysLeft > 30) continue;\n  const email = (row.subcontractor_email || '').trim();\n  const name = row.subcontractor_name || row.insured_name || 'Subcontractor';\n  const chaseSubject = 'COI Renewal Required - ' + name + ' (expires ' + expiry + ')';\n  const chaseBody = 'Hello ' + name + ',\\n\\nYour Certificate of Insurance on file with ' + gc + ' expires on ' + expiry + ' (' + daysLeft + ' days remaining).\\n\\nPlease upload your renewed COI as soon as possible to remain compliant on active projects.\\n\\nPolicy: ' + (row.policy_number || 'n/a') + '\\nCarrier: ' + (row.carrier || 'n/a') + '\\n\\nThank you,\\n' + gc + ' Compliance Team';\n  expiring.push({\n    ...row,\n    days_to_expiry: daysLeft,\n    chase_email_subject: chaseSubject,\n    chase_email_body: chaseBody,\n    subcontractor_email: email,\n  });\n  digestLines.push('- ' + name + ' | ' + expiry + ' (' + daysLeft + 'd) | ' + (row.trade || 'n/a'));\n}\n\nif (!expiring.length) {\n  digestLines.push('No COIs expiring within 30 days.');\n}\n\nconst digestText = digestLines.join('\\n');\nreturn expiring.length\n  ? expiring.map((row) => ({ json: { ...row, digest_text: digestText, expiring_count: expiring.length } }))\n  : [{ json: { digest_text: digestText, expiring_count: 0, subcontractor_email: '' } }];"
+      }
+    },
+    {
+      "id": "bdd51670-494c-4885-916f-160267929496",
+      "name": "Has Expiring COIs?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.expiring_count || 0 }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "eaf8b91a-ddc3-468a-9bd0-74fbee5f0357",
+      "name": "Has Subcontractor Email?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        960,
+        200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.subcontractor_email }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "98b4cccd-b847-475b-99c0-93a92756a4e0",
+      "name": "Gmail: Renewal Chase",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1200,
+        200
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.subcontractor_email }}",
+        "subject": "={{ $json.chase_email_subject }}",
+        "emailType": "text",
+        "message": "={{ $json.chase_email_body }}",
+        "options": {}
+      },
+      "webhookId": "53f6fb26-fe26-4d35-85e7-cb4cff91caa8"
+    },
+    {
+      "id": "2f19fd92-2637-4088-89fe-ea4221159078",
+      "name": "Prepare Slack Digest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        400
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const first = $('Find Expiring COIs').first().json;\nreturn [{ json: { digest_text: first.digest_text || '*COI Renewal Digest*\\nNo COIs expiring within 30 days.' } }];"
+      }
+    },
+    {
+      "id": "f7880fe0-cf95-492a-a8d8-06056ce934d5",
+      "name": "Slack: Renewal Digest",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.5,
+      "position": [
+        1440,
+        300
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SLACK_CHANNEL_ID"
+        },
+        "messageType": "text",
+        "text": "={{ $json.digest_text }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": true,
+          "mrkdwn": true
+        }
+      },
+      "webhookId": "5f4cb227-fa2a-4ed9-9d9e-2e93cb0b6787"
+    }
+  ],
+  "connections": {
+    "Monday 8 AM": {
+      "main": [
+        [
+          {
+            "node": "Sheet: Read COI Register",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheet: Read COI Register": {
+      "main": [
+        [
+          {
+            "node": "Find Expiring COIs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Expiring COIs": {
+      "main": [
+        [
+          {
+            "node": "Has Expiring COIs?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Expiring COIs?": {
+      "main": [
+        [
+          {
+            "node": "Has Subcontractor Email?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Slack Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Subcontractor Email?": {
+      "main": [
+        [
+          {
+            "node": "Gmail: Renewal Chase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: Renewal Chase": {
+      "main": [
+        [
+          {
+            "node": "Prepare Slack Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Slack Digest": {
+      "main": [
+        [
+          {
+            "node": "Slack: Renewal Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

@@ -1,0 +1,339 @@
+{
+  "name": "Gmail Email Classification and Sponsorship Auto-Response",
+  "nodes": [
+    {
+      "id": "8e4a5d83-f14a-4b45-b1ae-34a5d2b43e1d",
+      "name": "When Email Arrives",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -1360,
+        80
+      ],
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyX",
+              "value": 5,
+              "unit": "minutes"
+            }
+          ]
+        },
+        "filters": {}
+      }
+    },
+    {
+      "id": "6bf7e9d0-a764-45fc-8cb6-5de7632f8ba2",
+      "name": "Workflow Configuration",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1120,
+        80
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": []
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "112fbbe9-469d-43a6-bd3c-7505cde63e8a",
+      "name": "Classify Email",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -896,
+        80
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Email Subject: {{ $json.Subject }}\n\nEmail Body:\n{{ $json.snippet }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "=You are an email classification assistant. Your task is to analyze incoming emails and determine whether they are sponsorship requests.\n\nA sponsorship request typically:\n- Asks for paid promotion or advertising\n- Offers to pay for content featuring their product/service\n- Requests collaboration in exchange for payment\n- Mentions brand partnerships or sponsored content\n- Has the word sponsor or sponsorship in it\n\nAnalyze the email subject and body, then return your classification."
+        }
+      }
+    },
+    {
+      "id": "98b53620-9eeb-41e7-b026-04f8df530962",
+      "name": "Classification Output Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        -736,
+        304
+      ],
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n\t\"type\": \"object\",\n\t\"properties\": {\n\t\t\"isSponsorship\": {\n\t\t\t\"type\": \"boolean\",\n\t\t\t\"description\": \"True if the email is a sponsorship request, false otherwise\"\n\t\t}\n\t}\n}"
+      }
+    },
+    {
+      "id": "1f7e41a4-73dd-4bf8-a9e8-c3880c86194b",
+      "name": "Is Sponsorship Request?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -544,
+        80
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $json.output.isSponsorship }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "18c934a3-66f7-47a4-bfd5-d996dba0337f",
+      "name": "Add Important Label",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -224,
+        -64
+      ],
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $('When Email Arrives').item.json.id }}",
+        "labelIds": [
+          "IMPORTANT"
+        ]
+      },
+      "webhookId": "0cb2fcc5-2499-4116-8fab-414b11657182"
+    },
+    {
+      "id": "54e4edab-1708-4e9b-b938-d47316d4ff51",
+      "name": "Generate Sponsorship Reply",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -320,
+        224
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Email Subject: {{ $json.subject }}\n\nSender: {{ $json.from }}",
+        "options": {
+          "systemMessage": "You are a professional email assistant. Your task is to craft a polite and professional reply to sponsorship requests.\n\nThe reply should:\n1. Thank the sender for reaching out\n2. Politely explain that you do not accept sponsorships at this time\n3. Be brief, courteous, and professional\n4. Maintain a friendly tone\n\nGenerate only the email body text, without subject line or signature."
+        }
+      }
+    },
+    {
+      "id": "fdb53c6b-3c29-4039-a1d8-23f4ab0d3630",
+      "name": "Save Reply as Draft",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        32,
+        224
+      ],
+      "parameters": {
+        "resource": "draft",
+        "subject": "=Re: {{ $('When Email Arrives').item.json.Subject }}",
+        "message": "={{ $json.output }}",
+        "options": {
+          "replyTo": "={{ $('When Email Arrives').item.json.From }}",
+          "threadId": "={{ $('When Email Arrives').item.json.threadId }}",
+          "sendTo": "={{ $('When Email Arrives').item.json.From }}"
+        }
+      },
+      "webhookId": "73fcd8c3-5afa-4d79-bc15-b270f9129e60"
+    },
+    {
+      "id": "529c16c8-9589-47c4-919e-4c3622ffa452",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -896,
+        304
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4.1-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "a277a709-4776-48fc-ae27-8b20fc177783",
+      "name": "OpenAI Chat Model1",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -256,
+        448
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4.1-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "29ee21f8-c9cc-4c47-bda7-318c179b5346",
+      "name": "Sticky Note - Setup",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1376,
+        320
+      ],
+      "parameters": {
+        "content": "## Setup Required\n1. Configure Gmail OAuth2 credentials\n2. Configure OpenAI API credentials\n3. Test with sample emails\n4. Adjust classification keywords if needed",
+        "height": 200,
+        "width": 300
+      }
+    }
+  ],
+  "connections": {
+    "When Email Arrives": {
+      "main": [
+        [
+          {
+            "node": "Workflow Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Configuration": {
+      "main": [
+        [
+          {
+            "node": "Classify Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classification Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Classify Email",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Email": {
+      "main": [
+        [
+          {
+            "node": "Is Sponsorship Request?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Sponsorship Request?": {
+      "main": [
+        [
+          {
+            "node": "Generate Sponsorship Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Add Important Label",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Sponsorship Reply": {
+      "main": [
+        [
+          {
+            "node": "Save Reply as Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Classify Email",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Generate Sponsorship Reply",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

@@ -1,0 +1,464 @@
+{
+  "name": "Invoice Processor - AI Extraction + Drive Archive + Sheets Log + Slack (Real AP Automation)",
+  "nodes": [
+    {
+      "id": "manual-001",
+      "name": "Manual Trigger (for testing)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        80
+      ],
+      "parameters": {},
+      "notes": "Use this to test the workflow without sending a real email.\n\n1. Click 'Execute Workflow'.\n2. The 'Sample Data' node provides realistic test input.\n3. After import, wire or run only the parts you want."
+    },
+    {
+      "id": "set-sample-002",
+      "name": "Sample Data (Test Invoice)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [
+        460,
+        80
+      ],
+      "parameters": {
+        "fields": {
+          "values": [
+            {
+              "name": "subject",
+              "stringValue": "Invoice #INV-48291 from Acme Supplies - Due July 15"
+            },
+            {
+              "name": "from",
+              "stringValue": "billing@acmesupplies.com"
+            },
+            {
+              "name": "text",
+              "stringValue": "Please find attached our invoice for the recent order. Total due: $1,245.67. Thank you for your business."
+            },
+            {
+              "name": "date",
+              "stringValue": "2026-06-20"
+            },
+            {
+              "name": "hasAttachments",
+              "booleanValue": true
+            },
+            {
+              "name": "messageId",
+              "stringValue": "test-message-12345"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "notes": "Edit this node to test different scenarios (change total in subject or add 'unknown vendor' text).\n\nFor real PDF testing, send an actual email to the monitored inbox."
+    },
+    {
+      "id": "gmail-trigger-003",
+      "name": "Gmail Trigger - New Invoices",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "simple": false,
+        "options": {}
+      },
+      "notes": "=== SETUP INSTRUCTIONS ===\n1. Create a Gmail OAuth2 credential in n8n (use the account that receives vendor invoices).\n2. Recommended: Create a Gmail label called 'invoices'.\n3. Create a filter in Gmail: from common vendors OR subject contains 'invoice' OR 'bill' → apply label 'invoices' and skip inbox (optional).\n4. In this node, you can add filters in 'options' or keep broad and rely on the 'Has Attachment?' filter.\n\nThis fires for every new message. The next If node filters for attachments."
+    },
+    {
+      "id": "if-attachment-004",
+      "name": "Has Attachment or 'invoice'?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ $json.hasAttachments ?? Object.keys($json.binary || {}).length > 0 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "cond-2",
+              "leftValue": "={{ $json.subject.toLowerCase() }}",
+              "rightValue": "invoice",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "notes": "Filters out noise. Only process emails that look like they have invoices.\n\nYou can tighten this further (e.g. specific sender domains) by editing the conditions."
+    },
+    {
+      "id": "drive-upload-005",
+      "name": "Archive PDF to Google Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        720,
+        220
+      ],
+      "parameters": {
+        "resource": "file",
+        "operation": "upload",
+        "fileName": "={{ $json.subject.replace(/[^a-zA-Z0-9-_ ]/g, '').slice(0,60) || 'invoice' }}.pdf",
+        "binaryData": true,
+        "options": {
+          "folderId": {
+            "__rl": true,
+            "value": "",
+            "mode": "list"
+          }
+        }
+      },
+      "notes": "=== SETUP ===\nAdd your Google Drive OAuth2 credential.\n\nRecommended: Create a top-level folder called 'Invoices-Archive' in Drive and paste its ID here in the 'Folder' field (or leave dynamic).\n\nThe file will be named after the email subject. This gives you a permanent, searchable archive separate from email."
+    },
+    {
+      "id": "openai-extract-006",
+      "name": "Extract Invoice Data (AI)",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        380
+      ],
+      "parameters": {
+        "resource": "chat",
+        "model": "gpt-4o-mini",
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are an expert accounts payable data extraction specialist. Your only job is to read the email and any mentioned or attached invoice and return precise structured data.\n\nReturn ONLY a single valid JSON object (no markdown, no explanations) with exactly these keys:\n{\n  \"vendorName\": string or null,\n  \"invoiceNumber\": string or null,\n  \"issueDate\": \"YYYY-MM-DD\" or null,\n  \"dueDate\": \"YYYY-MM-DD\" or null,\n  \"totalAmount\": number or null,\n  \"currency\": \"USD\" | \"EUR\" | \"GBP\" etc or null,\n  \"lineItemsSummary\": string (brief, e.g. \"3 items - software license + support\" or null),\n  \"confidence\": number 0-100 (how sure you are),\n  \"notes\": string (any issues, unusual findings, or 'extracted from email body only' if no PDF text was usable)\n}\n\nBe conservative with confidence if data is ambiguous. Prefer null over guessing."
+            },
+            {
+              "role": "user",
+              "content": "EMAIL SUBJECT: {{ $json.subject }}\nFROM: {{ $json.from }}\nDATE: {{ $json.date }}\nBODY / TEXT:\n{{ $json.text }}\n\nExtract the invoice details now. Return only the JSON object."
+            }
+          ]
+        },
+        "options": {
+          "responseFormat": "json_object"
+        }
+      },
+      "notes": "=== CREDENTIAL SETUP ===\nAdd an 'OpenAI API' credential (or use Anthropic / Google Gemini via compatible OpenAI endpoint if preferred).\n\nModel: gpt-4o-mini is cheap and good for this. Switch to gpt-4o for better vision/OCR on complex scanned PDFs.\n\nThe system prompt is tuned for reliable JSON. You can improve it over time by adding few-shot examples of your common vendors in the system message.\n\nOutput is expected as JSON thanks to responseFormat."
+    },
+    {
+      "id": "code-parse-007",
+      "name": "Parse & Structure AI Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const aiMessage = $json.choices?.[0]?.message?.content || $json.message?.content || JSON.stringify($json);\n\nlet extracted;\ntry {\n  // Clean common wrappers\n  const cleaned = aiMessage.replace(/```json\\s*|```\\s*/g, '').trim();\n  extracted = JSON.parse(cleaned);\n} catch (e) {\n  extracted = {\n    vendorName: null,\n    invoiceNumber: null,\n    issueDate: null,\n    dueDate: null,\n    totalAmount: null,\n    currency: null,\n    lineItemsSummary: null,\n    confidence: 0,\n    notes: 'AI response parse failed. Raw: ' + aiMessage.substring(0, 300)\n  };\n}\n\n// Merge with original email context for downstream nodes\nreturn {\n  ...extracted,\n  emailSubject: $json.subject || $input.first().json.subject,\n  emailFrom: $json.from || $input.first().json.from,\n  emailDate: $json.date || $input.first().json.date,\n  messageId: $json.messageId || $input.first().json.messageId,\n  driveFileUrl: $json.driveFileUrl || null  // will be populated if Drive node runs before\n};"
+      },
+      "notes": "Robust parser for the AI JSON response.\nHandles markdown code fences and falls back gracefully.\n\nPasses through original email context so later nodes have everything."
+    },
+    {
+      "id": "sheets-append-008",
+      "name": "Append to InvoiceLog (Google Sheets)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.3,
+      "position": [
+        1200,
+        220
+      ],
+      "parameters": {
+        "operation": "append",
+        "sheet": {
+          "__rl": true,
+          "value": "InvoiceLog",
+          "mode": "name"
+        },
+        "options": {
+          "valueInputMode": "USER_ENTERED"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ new Date().toISOString() }}",
+            "Vendor": "={{ $json.vendorName }}",
+            "InvoiceNumber": "={{ $json.invoiceNumber }}",
+            "IssueDate": "={{ $json.issueDate }}",
+            "DueDate": "={{ $json.dueDate }}",
+            "Total": "={{ $json.totalAmount }}",
+            "Currency": "={{ $json.currency }}",
+            "Status": "New",
+            "SourceEmail": "={{ $json.emailFrom }} | {{ $json.emailSubject }}",
+            "PDFLink": "={{ $json.driveFileUrl || 'See Gmail: ' + ($json.messageId || '') }}",
+            "AIConfidence": "={{ $json.confidence }}",
+            "Notes": "={{ $json.notes || '' }}"
+          },
+          "matchingColumns": []
+        }
+      },
+      "notes": "=== GOOGLE SHEETS SETUP ===\n1. Create a Google Sheet called 'Finance Automations' (or any name).\n2. Inside it, create a tab named exactly 'InvoiceLog'.\n3. Put these headers in row 1 (exact match recommended):\n   Timestamp | Vendor | InvoiceNumber | IssueDate | DueDate | Total | Currency | Status | SourceEmail | PDFLink | AIConfidence | Notes\n\n4. Add your Google Sheets OAuth2 credential here.\n\nThe workflow will append one row per processed invoice. Great for searching, filtering, and month-end reconciliation."
+    },
+    {
+      "id": "slack-notify-009",
+      "name": "Notify #finance-invoices (Slack)",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        1200,
+        380
+      ],
+      "parameters": {
+        "channel": "#finance-invoices",
+        "text": "📄 New Invoice Received",
+        "attachments": [
+          {
+            "color": "={{ $json.totalAmount && $json.totalAmount > 1000 ? '#ff9900' : '#36a64f' }}",
+            "fields": [
+              {
+                "title": "Vendor",
+                "value": "={{ $json.vendorName || 'Unknown' }}",
+                "short": true
+              },
+              {
+                "title": "Invoice #",
+                "value": "={{ $json.invoiceNumber || 'N/A' }}",
+                "short": true
+              },
+              {
+                "title": "Total",
+                "value": "={{ $json.currency || '' }} {{ $json.totalAmount || '??' }}",
+                "short": true
+              },
+              {
+                "title": "Due",
+                "value": "={{ $json.dueDate || $json.issueDate || 'N/A' }}",
+                "short": true
+              },
+              {
+                "title": "Confidence",
+                "value": "={{ $json.confidence || 0 }}%",
+                "short": true
+              },
+              {
+                "title": "Notes",
+                "value": "={{ $json.notes || '' }}",
+                "short": false
+              }
+            ],
+            "footer": "n8n Invoice Processor • {{ $json.emailFrom }}",
+            "ts": "={{ Math.floor(Date.now() / 1000) }}"
+          }
+        ],
+        "otherOptions": {}
+      },
+      "notes": "=== SLACK SETUP ===\nAdd a Slack OAuth2 credential (or use a webhook URL in a different Slack node).\n\nCreate a private channel called #finance-invoices (or change the name here) and invite the bot.\n\nThis posts a nice rich message with the key facts. Orange color if total > $1000 as a simple visual flag.",
+      "webhookId": "4e917701-f144-49d8-bc04-99670e3cf719"
+    },
+    {
+      "id": "if-review-010",
+      "name": "Needs Human Review?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "high-value",
+              "leftValue": "={{ $json.totalAmount || 0 }}",
+              "rightValue": 500,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            },
+            {
+              "id": "low-confidence",
+              "leftValue": "={{ $json.confidence || 100 }}",
+              "rightValue": 70,
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            },
+            {
+              "id": "unknown-vendor",
+              "leftValue": "={{ ($json.vendorName || '').toLowerCase() }}",
+              "rightValue": "unknown|null",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "notes": "Real business guardrail.\n\nFlags for review if:\n- Total > $500 (adjust threshold)\n- AI confidence < 70%\n- Vendor name looks unknown\n\nExtend this later with a 'Vendors' master sheet lookup (Google Sheets 'Lookup' node) for known vendors + payment terms."
+    },
+    {
+      "id": "slack-alert-011",
+      "name": "High-Value / Review Alert (Slack)",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        1680,
+        300
+      ],
+      "parameters": {
+        "channel": "#finance-invoices",
+        "text": "⚠️ REVIEW NEEDED - High value / low confidence / unknown vendor invoice",
+        "attachments": [
+          {
+            "color": "#ff0000",
+            "fields": [
+              {
+                "title": "Action Required",
+                "value": "Please review the invoice details in the Google Sheet and the PDF in Drive. Reply in this thread with approval or questions.",
+                "short": false
+              }
+            ]
+          }
+        ],
+        "otherOptions": {}
+      },
+      "notes": "Extra visible alert (red) for the cases that need human eyes.\n\nYou can change the channel or add @mentions (e.g. <@U123ABC> for a specific finance person).",
+      "webhookId": "b9d3799f-0654-4119-955b-542f7e6e8e71"
+    }
+  ],
+  "connections": {
+    "Manual Trigger (for testing)": {
+      "main": [
+        [
+          {
+            "node": "Sample Data (Test Invoice)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sample Data (Test Invoice)": {
+      "main": [
+        [
+          {
+            "node": "Extract Invoice Data (AI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail Trigger - New Invoices": {
+      "main": [
+        [
+          {
+            "node": "Has Attachment or 'invoice'?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Attachment or 'invoice'?": {
+      "main": [
+        [
+          {
+            "node": "Archive PDF to Google Drive",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Extract Invoice Data (AI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Invoice Data (AI)": {
+      "main": [
+        [
+          {
+            "node": "Parse & Structure AI Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse & Structure AI Output": {
+      "main": [
+        [
+          {
+            "node": "Append to InvoiceLog (Google Sheets)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Notify #finance-invoices (Slack)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Needs Human Review?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Human Review?": {
+      "main": [
+        [
+          {
+            "node": "High-Value / Review Alert (Slack)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

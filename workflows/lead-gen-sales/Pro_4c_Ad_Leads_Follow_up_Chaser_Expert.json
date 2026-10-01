@@ -1,0 +1,190 @@
+{
+  "name": "Pro 4c | Ad Leads: Follow-up Chaser | Expert",
+  "nodes": [
+    {
+      "id": "38e58fcf-e907-4dd1-be07-1c7ef8b5e2b5",
+      "name": "Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "cf75f4dd-9e10-4218-bebb-dfa991d7c42c",
+      "name": "Find Silent Leads",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT due_followups(25) AS d",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2500
+    },
+    {
+      "id": "6503d167-4dd6-4338-af32-2814dbed7e67",
+      "name": "Split Chases",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// ===== Split Chases =====\n// due_followups returns one row holding every lead that has gone quiet.\n// Turn it into one item per lead, each with its own template message ready to send.\nconst due = ($input.first().json.d) || [];\nconst S = (v) => (v == null ? '' : String(v));\n\nreturn due.map((row) => {\n  const lead = row.lead || {};\n  const c = row.campaign || {};\n  const first = S(lead.name).split(' ')[0] || 'there';\n  return { json: {\n    lead_id: lead.id,\n    attempt: row.attempt,\n    phone_number_id: c.phone_number_id,\n    graph_version: c.graph_version || 'v25.0',\n    token: c.wa_token,\n    payload: {\n      messaging_product: 'whatsapp', recipient_type: 'individual', to: S(lead.wa_id), type: 'template',\n      template: { name: S(c.followup_template), language: { code: S(c.template_lang) || 'en' },\n        components: [{ type: 'body', parameters: [\n          { type: 'text', text: first.slice(0, 60) },\n          { type: 'text', text: S(c.name).slice(0, 60) }] }] },\n    },\n  } };\n});\n"
+      }
+    },
+    {
+      "id": "f0899cfb-5659-4f2d-b540-bbe6d91ec9a9",
+      "name": "Send Follow-up Template",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/{{ $json.graph_version }}/{{ $json.phone_number_id }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2500
+    },
+    {
+      "id": "5358c33f-9b8d-4868-934c-77b8c41aec2f",
+      "name": "Mark Followup",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        880,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT mark_followup($1::int,$2::boolean,$3) AS lead",
+        "options": {
+          "queryReplacement": "={{ [ $('Split Chases').item.json.lead_id, !$json.error, $json.error ? JSON.stringify($json.error).slice(0,200) : (\"chase \" + $('Split Chases').item.json.attempt) ] }}"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2500,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "99c2cedc-dedf-48f8-a184-245a4e2735e2",
+      "name": "Sticky Note aad19523",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -60,
+        200
+      ],
+      "parameters": {
+        "content": "## 3. The leads that go quiet\nThis is the part the client is actually buying. Every 15 minutes it finds leads that\nwere messaged, never replied, and are past the campaign's `followup_hours`. Each gets\nthe follow-up template, up to `max_followups`, then is marked **unresponsive** and left\nalone.\n\nA template can be sent at any time, which is exactly why the chase uses one.\nSet `followup_template` to NULL on a campaign and this workflow simply skips it.\n\n**Mark Followup** uses `$('Split Chases').item` rather than `.first()` because this\nbranch runs once per lead.",
+        "color": 6,
+        "width": 760,
+        "height": 300
+      }
+    }
+  ],
+  "connections": {
+    "Every 15 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Find Silent Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Silent Leads": {
+      "main": [
+        [
+          {
+            "node": "Split Chases",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Chases": {
+      "main": [
+        [
+          {
+            "node": "Send Follow-up Template",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Follow-up Template": {
+      "main": [
+        [
+          {
+            "node": "Mark Followup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

@@ -1,0 +1,260 @@
+{
+  "name": "Feedback Theme Analyzer",
+  "nodes": [
+    {
+      "id": "0f7dd0ec-3427-4256-ba50-1eb72cab1e54",
+      "name": "Daily 8am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "f3c1b030-2f87-49e9-b591-a36b339ae55a",
+      "name": "Get Feedback",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "getAll",
+        "tableId": "feedback",
+        "returnAll": false,
+        "limit": 200
+      }
+    },
+    {
+      "id": "59633c4b-1d99-44c4-8d96-9b65fc335935",
+      "name": "Prepare Batch",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const rows = $input.all().slice(0, 60);\nconst responses = rows.map(r => (r.json.response_text || '').toString().slice(0, 400));\nreturn [{ json: { responses, count: responses.length } }];"
+      }
+    },
+    {
+      "id": "a4b8441e-702f-46b0-8922-200674af0a0e",
+      "name": "Tag Themes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        672,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'gpt-4o-mini', response_format: { type: 'json_object' }, messages: [ { role: 'system', content: 'You are a feedback analyst. You receive a JSON array of customer responses. For EACH response, by its 0-based array index, identify 1 to 3 short theme labels and its sentiment. Use consistent short labels such as Pricing, Onboarding, Support, Performance, Bugs, Feature Request, UX. Do not invent themes that are not present. Return ONLY JSON of the form {tags: [{i: number, themes: [string], sentiment: string}]} where sentiment is positive, neutral, or negative.' }, { role: 'user', content: 'Responses: ' + JSON.stringify($json.responses) } ] }) }}"
+      }
+    },
+    {
+      "id": "9a0b0b0a-ccaf-4f6a-a0b7-07f6343a82e9",
+      "name": "Count & Summarize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "let tags = [];\ntry { tags = (JSON.parse($('Tag Themes').first().json.choices[0].message.content || '{}').tags) || []; } catch (e) {}\nconst tally = {};\nfor (const t of tags) {\n  for (const th of (t.themes || [])) {\n    if (!tally[th]) tally[th] = { mention: 0, positive: 0, neutral: 0, negative: 0 };\n    tally[th].mention++;\n    const s = t.sentiment || 'neutral';\n    if (s === 'positive') tally[th].positive++; else if (s === 'negative') tally[th].negative++; else tally[th].neutral++;\n  }\n}\nconst themes = Object.keys(tally).map(label => ({ label, mention: tally[label].mention, positive: tally[label].positive, neutral: tally[label].neutral, negative: tally[label].negative })).sort((a, b) => b.mention - a.mention);\nconst total = $('Prepare Batch').first().json.count;\nconst top = themes.slice(0, 5).map(t => t.label + ' (' + t.mention + ')').join(', ');\nreturn [{ json: { period: new Date().toISOString().slice(0, 10), total, themes, summary: 'Analyzed ' + total + ' responses. Top themes: ' + (top || 'none') } }];"
+      }
+    },
+    {
+      "id": "a6af34a4-94ef-486e-8d86-39fc268af51d",
+      "name": "Save Analysis",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "create",
+        "tableId": "feedback_analyses",
+        "dataToSend": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "period",
+              "fieldValue": "={{ $json.period }}"
+            },
+            {
+              "fieldId": "total",
+              "fieldValue": "={{ $json.total }}"
+            },
+            {
+              "fieldId": "themes",
+              "fieldValue": "={{ JSON.stringify($json.themes) }}"
+            },
+            {
+              "fieldId": "summary",
+              "fieldValue": "={{ $json.summary }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "86ff7b06-c656-428d-bfe6-7c61c42d92c5",
+      "name": "Push Summary (ntfy)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1568,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://ntfy.sh",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ topic: 'feedback-CHANGEME', title: 'Feedback analysis', message: $json.summary }) }}"
+      }
+    },
+    {
+      "id": "8e04b6e1-36e5-4022-8b48-6ea5cb8b395c",
+      "name": "Export Analysis to Sheet (disabled)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1120,
+        200
+      ],
+      "parameters": {
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": [],
+          "schema": [],
+          "value": {}
+        },
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "operation": "append",
+        "options": {},
+        "resource": "sheet",
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        }
+      },
+      "disabled": true,
+      "notes": "Placeholder export. Disabled so it cannot break the run. Add your Google Sheet document + tab, then enable."
+    }
+  ],
+  "connections": {
+    "Daily 8am": {
+      "main": [
+        [
+          {
+            "node": "Get Feedback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Feedback": {
+      "main": [
+        [
+          {
+            "node": "Prepare Batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Batch": {
+      "main": [
+        [
+          {
+            "node": "Tag Themes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tag Themes": {
+      "main": [
+        [
+          {
+            "node": "Count & Summarize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Count & Summarize": {
+      "main": [
+        [
+          {
+            "node": "Save Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Analysis": {
+      "main": [
+        [
+          {
+            "node": "Push Summary (ntfy)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Export Analysis to Sheet (disabled)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

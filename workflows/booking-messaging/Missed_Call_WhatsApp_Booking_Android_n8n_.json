@@ -1,0 +1,1749 @@
+{
+  "name": "Missed Call -> WhatsApp Booking (Android + n8n)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "missed-call-whatsapp",
+        "options": {}
+      },
+      "id": "913b0d8f-93ff-46a1-be84-73a2750019f6",
+      "name": "Missed Call Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        768
+      ],
+      "webhookId": "6b28ef39-a3d1-4085-8312-d0fdfca85ac8"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg-business-name",
+              "name": "BUSINESS_NAME",
+              "type": "string",
+              "value": "Your Business Name"
+            },
+            {
+              "id": "cfg-wa-phone-number-id",
+              "name": "WA_PHONE_NUMBER_ID",
+              "type": "string",
+              "value": "PASTE_PHONE_NUMBER_ID"
+            },
+            {
+              "id": "cfg-wa-business-account-id",
+              "name": "WA_BUSINESS_ACCOUNT_ID",
+              "type": "string",
+              "value": "PASTE_WHATSAPP_BUSINESS_ACCOUNT_ID"
+            },
+            {
+              "id": "cfg-wa-register-pin",
+              "name": "WA_REGISTER_PIN",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "cfg-graph-api-version",
+              "name": "GRAPH_API_VERSION",
+              "type": "string",
+              "value": "v25.0"
+            },
+            {
+              "id": "cfg-template-name",
+              "name": "TEMPLATE_NAME",
+              "type": "string",
+              "value": "missed_call_followup"
+            },
+            {
+              "id": "cfg-template-language",
+              "name": "TEMPLATE_LANGUAGE",
+              "type": "string",
+              "value": "en"
+            },
+            {
+              "id": "cfg-shared-secret",
+              "name": "SHARED_SECRET",
+              "type": "string",
+              "value": "mc-pAWPa71mTXGxY2CoV17bWoEIDzLx"
+            },
+            {
+              "id": "cfg-default-country-code",
+              "name": "DEFAULT_COUNTRY_CODE",
+              "type": "string",
+              "value": "92"
+            },
+            {
+              "id": "cfg-local-number-length",
+              "name": "LOCAL_NUMBER_LENGTH",
+              "type": "number",
+              "value": 10
+            },
+            {
+              "id": "cfg-timezone",
+              "name": "TIMEZONE",
+              "type": "string",
+              "value": "Asia/Karachi"
+            },
+            {
+              "id": "cfg-calendar-id",
+              "name": "CALENDAR_ID",
+              "type": "string",
+              "value": "primary"
+            },
+            {
+              "id": "cfg-sheet-id",
+              "name": "SHEET_ID",
+              "type": "string",
+              "value": "PASTE_GOOGLE_SHEET_ID"
+            },
+            {
+              "id": "cfg-slot-times",
+              "name": "SLOT_TIMES",
+              "type": "string",
+              "value": "10:00,13:00,16:00"
+            },
+            {
+              "id": "cfg-slot-minutes",
+              "name": "SLOT_MINUTES",
+              "type": "number",
+              "value": 60
+            },
+            {
+              "id": "cfg-work-days",
+              "name": "WORK_DAYS",
+              "type": "string",
+              "value": "1,2,3,4,5,6"
+            },
+            {
+              "id": "cfg-days-ahead",
+              "name": "DAYS_AHEAD",
+              "type": "number",
+              "value": 5
+            },
+            {
+              "id": "cfg-min-notice-minutes",
+              "name": "MIN_NOTICE_MINUTES",
+              "type": "number",
+              "value": 120
+            },
+            {
+              "id": "cfg-dedupe-minutes",
+              "name": "DEDUPE_MINUTES",
+              "type": "number",
+              "value": 30
+            },
+            {
+              "id": "cfg-macrodroid-sms-webhook",
+              "name": "MACRODROID_SMS_WEBHOOK",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "cfg-sms-backup-text",
+              "name": "SMS_BACKUP_TEXT",
+              "type": "string",
+              "value": "Sorry we missed your call! This is {business}. Call us back or reply to this SMS to book a visit."
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "5e1c5379-4816-412c-a169-d2539be38bfd",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        288,
+        960
+      ]
+    },
+    {
+      "parameters": {
+        "updates": [
+          "messages"
+        ],
+        "options": {
+          "messageStatusUpdates": [
+            "failed"
+          ]
+        }
+      },
+      "id": "41caf36a-8f7a-4686-bb60-0299dc056bb8",
+      "name": "WhatsApp Trigger",
+      "type": "n8n-nodes-base.whatsAppTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        960
+      ],
+      "webhookId": "039683b6-f141-440a-8d65-97e49d3ec9af"
+    },
+    {
+      "parameters": {},
+      "id": "a83dab5c-830b-4522-8af4-11b135da645b",
+      "name": "Run Setup Once",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        1152
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ !!$json.headers }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Missed call"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.messaging_product }}",
+                    "rightValue": "whatsapp",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "WhatsApp"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Setup run"
+        }
+      },
+      "id": "65891ce4-536e-4a2e-82d7-da4986d65217",
+      "name": "Route Event",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        512,
+        944
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// PART A - runs once per missed-call request sent by MacroDroid.\n// 1) checks the shared secret, 2) turns the caller number into international format,\n// 3) skips repeat calls from the same number inside DEDUPE_MINUTES,\n// 4) builds the WhatsApp template message + the Google Sheet row.\nconst cfg = $('Config').first().json;\n\nfunction normalizePhone(raw, countryCode, localLength) {\n  if (raw === undefined || raw === null) return null;\n  const s = String(raw).trim();\n  if (!s || /unknown|private|hidden|restricted|anonymous/i.test(s)) return null;\n  const hadPlus = s.startsWith('+');\n  const cc = String(countryCode || '').replace(/\\D/g, '');\n  let d = s.replace(/\\D/g, '');\n  if (!d) return null;\n  if (hadPlus) {\n    // already international, e.g. +923001234567\n  } else if (d.startsWith('00')) {\n    d = d.slice(2); // 00923001234567 -> 923001234567\n  } else if (d.startsWith('0')) {\n    d = cc + d.replace(/^0+/, ''); // 03001234567 -> 923001234567\n  } else if (d.length <= localLength) {\n    d = cc + d; // 3001234567 -> 923001234567\n  }\n  // anything longer is treated as already international (a \"+\" sent in a URL can arrive as a space)\n  if (d.length < 8 || d.length > 15) return null;\n  return d;\n}\n\nconst store = $getWorkflowStaticData('global');\nstore.lastSent = store.lastSent || {};\nconst nowMs = Date.now();\nconst nowIso = new Date(nowMs).toISOString();\nconst dedupeMs = Math.max(0, Number(cfg.DEDUPE_MINUTES) || 0) * 60 * 1000;\nfor (const [num, t] of Object.entries(store.lastSent)) {\n  if (nowMs - t > 2 * 24 * 60 * 60 * 1000) delete store.lastSent[num];\n}\n\nconst out = [];\n$input.all().forEach((item, index) => {\n  const j = item.json || {};\n  const body = j.body && typeof j.body === 'object' ? j.body : {};\n  const src = Object.assign({}, j.query || {}, body);\n\n  const secret = String(src.secret ?? '').trim();\n  const expected = String(cfg.SHARED_SECRET ?? '').trim();\n  if (!expected || /^CHANGE-ME/i.test(expected) || secret !== expected) {\n    console.log('Missed call ignored: wrong or missing secret (set SHARED_SECRET in Config)');\n    return;\n  }\n\n  const phone = normalizePhone(src.caller ?? src.number ?? src.phone, cfg.DEFAULT_COUNTRY_CODE, Number(cfg.LOCAL_NUMBER_LENGTH) || 10);\n  if (!phone) {\n    console.log('Missed call ignored: no usable caller number', src.caller);\n    return;\n  }\n\n  if (dedupeMs > 0 && store.lastSent[phone] && nowMs - store.lastSent[phone] < dedupeMs) {\n    console.log('Missed call ignored: this number was messaged recently', phone);\n    return;\n  }\n  store.lastSent[phone] = nowMs;\n\n  out.push({\n    json: {\n      phone,\n      name: '',\n      wa: {\n        messaging_product: 'whatsapp',\n        recipient_type: 'individual',\n        to: phone,\n        type: 'template',\n        template: {\n          name: String(cfg.TEMPLATE_NAME || '').trim(),\n          language: { code: String(cfg.TEMPLATE_LANGUAGE || 'en').trim() },\n          components: [\n            { type: 'button', sub_type: 'quick_reply', index: '0', parameters: [{ type: 'payload', payload: 'BOOK_VISIT' }] },\n            { type: 'button', sub_type: 'quick_reply', index: '1', parameters: [{ type: 'payload', payload: 'CALL_BACK' }] },\n          ],\n        },\n      },\n      row: { phone, status: 'whatsapp_sent', last_call_at: nowIso, updated_at: nowIso },\n      sms: null,\n    },\n    pairedItem: { item: index },\n  });\n});\n\nreturn out;\n"
+      },
+      "id": "d51147e0-85cb-4647-8ed8-9c1e5acd38f8",
+      "name": "Prepare Missed Call",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2976,
+        -208
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "85cbbf19-db8c-4316-bca2-3855445cb6ef",
+      "name": "Reply Ready",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        3760,
+        960
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// PART B - turns the raw WhatsApp webhook into simple events:\n// book | callback | slot | text | failed. Everything else is ignored.\nconst store = $getWorkflowStaticData('global');\nstore.seen = store.seen || {};\nconst nowMs = Date.now();\nfor (const [id, t] of Object.entries(store.seen)) {\n  if (nowMs - t > 24 * 60 * 60 * 1000) delete store.seen[id];\n}\nconst IGNORE_TYPES = ['reaction', 'system', 'unsupported', 'ephemeral', 'request_welcome', 'order'];\n// Whole-message opt-out words (English, Roman Urdu, Urdu). Meta requires honouring opt-outs.\nconst STOP_WORDS = ['stop', 'stop messages', 'unsubscribe', 'opt out', 'optout', 'band karo', 'bund karo',\n  'mat bhejo', 'message mat bhejo', 'بند کرو', 'میسج مت بھیجو'];\nfunction isStop(t) {\n  const s = String(t || '').toLowerCase().replace(/[^\\p{L}\\p{N}\\s]/gu, ' ').replace(/\\s+/g, ' ').trim();\n  return STOP_WORDS.includes(s);\n}\n\nconst out = [];\n$input.all().forEach((item, index) => {\n  const v = item.json || {};\n  const contacts = Array.isArray(v.contacts) ? v.contacts : [];\n\n  // Delivery reports: only \"failed\" ones matter (the trigger only sends failed ones anyway)\n  for (const st of Array.isArray(v.statuses) ? v.statuses : []) {\n    if (st.status !== 'failed') continue;\n    const err = (Array.isArray(st.errors) && st.errors[0]) || {};\n    out.push({\n      json: {\n        event: 'failed',\n        phone: String(st.recipient_id || ''),\n        name: '',\n        message_id: String(st.id || ''),\n        error_code: Number(err.code) || 0,\n        error_title: String(err.title || err.message || 'unknown error'),\n        text: '',\n        payload: '',\n        slot_id: '',\n        stop: false,\n      },\n      pairedItem: { item: index },\n    });\n  }\n\n  for (const m of Array.isArray(v.messages) ? v.messages : []) {\n    const type = String(m.type || '');\n    if (IGNORE_TYPES.includes(type)) continue;\n    if (m.id) {\n      if (store.seen[m.id]) continue; // WhatsApp sometimes delivers the same message twice\n      store.seen[m.id] = nowMs;\n    }\n    const phone = String(m.from || '');\n    if (!phone) continue;\n    const contact = contacts.find((c) => c.wa_id === phone) || contacts[0] || {};\n    const name = String((contact.profile && contact.profile.name) || '').slice(0, 60);\n\n    let event = 'text';\n    let payload = '';\n    let slotId = '';\n    let text = '';\n\n    if (type === 'button') {\n      payload = (m.button && (m.button.payload || m.button.text)) || '';\n      text = (m.button && m.button.text) || '';\n      event = 'button';\n    } else if (type === 'interactive') {\n      const it = m.interactive || {};\n      if (it.type === 'list_reply') {\n        event = 'slot';\n        slotId = (it.list_reply && it.list_reply.id) || '';\n        text = (it.list_reply && it.list_reply.title) || '';\n      } else if (it.type === 'button_reply') {\n        event = 'button';\n        payload = (it.button_reply && it.button_reply.id) || '';\n        text = (it.button_reply && it.button_reply.title) || '';\n      } else {\n        text = '[interactive reply]';\n      }\n    } else if (type === 'text') {\n      text = (m.text && m.text.body) || '';\n    } else if (type === 'location') {\n      const L = m.location || {};\n      const place = [L.name, L.address].filter(Boolean).join(', ');\n      text = 'Location: ' + (place ? place + ' - ' : '') + 'https://maps.google.com/?q=' + L.latitude + ',' + L.longitude;\n    } else {\n      text = '[' + (type || 'unknown') + ' message received]';\n    }\n\n    if (event === 'button') {\n      const p = String(payload).toUpperCase();\n      if (p.includes('BOOK')) event = 'book';\n      else if (p.includes('CALL')) event = 'callback';\n      else { event = 'text'; text = text || payload; }\n    }\n    if (event === 'slot' && !String(slotId).startsWith('SLOT|')) event = 'text';\n\n    out.push({\n      json: {\n        event,\n        phone,\n        name,\n        message_id: String(m.id || ''),\n        payload: String(payload),\n        slot_id: String(slotId),\n        text: String(text).slice(0, 1000),\n        stop: type === 'text' && isStop(text),\n        error_code: 0,\n        error_title: '',\n      },\n      pairedItem: { item: index },\n    });\n  }\n});\n\nreturn out;\n"
+      },
+      "id": "7ecefb98-e895-4bbe-975a-c42fbb1d5a54",
+      "name": "Parse WhatsApp Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        960
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.event }}",
+                    "rightValue": "book",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Book a visit"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.event }}",
+                    "rightValue": "callback",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Call me back"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.event }}",
+                    "rightValue": "slot",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Picked a time"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.event }}",
+                    "rightValue": "text",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Text or other"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.event }}",
+                    "rightValue": "failed",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Delivery failed"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "98252595-d0f1-4b41-b753-30a1fa59744a",
+      "name": "Route WhatsApp Event",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1184,
+        912
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "calendar",
+        "calendar": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Config').first().json.CALENDAR_ID }}"
+        },
+        "timeMin": "={{ $now.toISO() }}",
+        "timeMax": "={{ $now.plus({ days: Number($('Config').first().json.DAYS_AHEAD || 5) + 1 }).toISO() }}",
+        "options": {
+          "outputFormat": "raw"
+        }
+      },
+      "id": "c50848b7-aa6a-4217-a4a2-3bdbbe8efc15",
+      "name": "Get Free/Busy Times",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        3088,
+        240
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Builds up to 10 free time slots from the calendar's busy times\n// and turns them into a WhatsApp list message.\nconst cfg = $('Config').first().json;\nconst ev = $('Parse WhatsApp Event').item.json;\nconst zone = String(cfg.TIMEZONE || 'Asia/Karachi');\nconst now = DateTime.now().setZone(zone);\nconst nowIso = new Date().toISOString();\n\nconst calendars = ($json && $json.calendars) || {};\nconst firstCal = Object.values(calendars)[0] || {};\nconst busy = (Array.isArray(firstCal.busy) ? firstCal.busy : []).map((b) => ({\n  s: DateTime.fromISO(String(b.start)).toMillis(),\n  e: DateTime.fromISO(String(b.end)).toMillis(),\n}));\n\nconst slotMinutes = Math.max(15, Number(cfg.SLOT_MINUTES) || 60);\nconst noticeMs = Math.max(0, Number(cfg.MIN_NOTICE_MINUTES) || 0) * 60 * 1000;\nconst daysAhead = Math.min(Math.max(Number(cfg.DAYS_AHEAD) || 5, 1), 14);\nconst workDays = String(cfg.WORK_DAYS || '1,2,3,4,5,6')\n  .split(',').map((x) => Number(String(x).trim())).filter((n) => n >= 1 && n <= 7);\nconst times = String(cfg.SLOT_TIMES || '10:00,13:00,16:00')\n  .split(',').map((t) => String(t).trim()).filter(Boolean);\n\nconst slots = [];\nfor (let d = 0; d <= daysAhead && slots.length < 10; d++) {\n  const day = now.startOf('day').plus({ days: d });\n  if (!workDays.includes(day.weekday)) continue;\n  for (const t of times) {\n    const parts = t.split(':');\n    const hh = Number(parts[0]);\n    const mm = Number(parts[1] || 0);\n    if (!Number.isFinite(hh) || !Number.isFinite(mm)) continue;\n    const start = day.set({ hour: hh, minute: mm, second: 0, millisecond: 0 });\n    const end = start.plus({ minutes: slotMinutes });\n    if (start.toMillis() < now.toMillis() + noticeMs) continue;\n    const clash = busy.some((b) => start.toMillis() < b.e && end.toMillis() > b.s);\n    if (clash) continue;\n    slots.push({ start, end });\n    if (slots.length >= 10) break;\n  }\n}\n\nconst business = String(cfg.BUSINESS_NAME || '').trim();\nconst retry = ev.event === 'slot';\n\nif (!slots.length) {\n  return {\n    json: {\n      phone: ev.phone,\n      name: ev.name,\n      wa: {\n        messaging_product: 'whatsapp',\n        recipient_type: 'individual',\n        to: ev.phone,\n        type: 'interactive',\n        interactive: {\n          type: 'button',\n          body: { text: 'Sorry, we are fully booked for the next few days. Tap below and we will call you to find a time.' },\n          action: { buttons: [{ type: 'reply', reply: { id: 'CALL_BACK', title: 'Call me back' } }] },\n        },\n      },\n      row: { phone: ev.phone, name: ev.name || undefined, status: 'no_free_slots', updated_at: nowIso },\n      sms: null,\n    },\n  };\n}\n\nconst rows = slots.map((s) => ({\n  id: 'SLOT|' + s.start.toISO({ suppressMilliseconds: true }) + '|' + slotMinutes,\n  title: s.start.setLocale('en').toFormat('ccc d LLL, h:mm a').slice(0, 24),\n  description: (slotMinutes + ' min visit').slice(0, 72),\n}));\n\nconst interactive = {\n  type: 'list',\n  header: { type: 'text', text: 'Book a visit' },\n  body: {\n    text: retry\n      ? 'Sorry, that time is no longer available. Here are the latest free times:'\n      : 'Great! Pick a time that suits you.',\n  },\n  action: {\n    button: 'See free times',\n    sections: [{ title: 'Available times', rows }],\n  },\n};\nif (business) interactive.footer = { text: business.slice(0, 60) };\n\nreturn {\n  json: {\n    phone: ev.phone,\n    name: ev.name,\n    wa: {\n      messaging_product: 'whatsapp',\n      recipient_type: 'individual',\n      to: ev.phone,\n      type: 'interactive',\n      interactive,\n    },\n    row: { phone: ev.phone, name: ev.name || undefined, status: 'choosing_slot', updated_at: nowIso },\n    sms: null,\n  },\n};\n"
+      },
+      "id": "1f932f10-edf3-4d00-a9a7-18fa31ba64eb",
+      "name": "Build Slot List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3312,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Config').first().json.CALENDAR_ID }}"
+        },
+        "start": "={{ $now.plus({ minutes: 5 }).toISO() }}",
+        "end": "={{ $now.plus({ minutes: 20 }).toISO() }}",
+        "useDefaultReminders": false,
+        "additionalFields": {
+          "description": "=Customer tapped 'Call me back' on WhatsApp.\nPhone: +{{ $json.phone }}\nWhatsApp chat: https://wa.me/{{ $json.phone }}",
+          "summary": "=Call back: {{ $json.name || 'WhatsApp customer' }} +{{ $json.phone }}"
+        },
+        "remindersUi": {
+          "remindersValues": [
+            {
+              "method": "popup"
+            }
+          ]
+        }
+      },
+      "id": "c178df82-4a1f-4f37-a0c2-ff2495258f74",
+      "name": "Add Call-Back Reminder",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        3088,
+        656
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Runs after the call-back reminder is added to the owner's calendar.\nconst ev = $('Parse WhatsApp Event').item.json;\nconst nowIso = new Date().toISOString();\n\nreturn {\n  json: {\n    phone: ev.phone,\n    name: ev.name,\n    wa: {\n      messaging_product: 'whatsapp',\n      recipient_type: 'individual',\n      to: ev.phone,\n      type: 'text',\n      text: { body: 'Thanks! We will call you back shortly on this number.', preview_url: false },\n    },\n    row: { phone: ev.phone, name: ev.name || undefined, status: 'callback_requested', updated_at: nowIso },\n    sms: null,\n  },\n};\n"
+      },
+      "id": "64607c3b-3f64-4eeb-8126-97a3522d34a7",
+      "name": "Build Call-Back Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3312,
+        656
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Reads the time slot the customer picked (row id looks like SLOT|2026-09-29T10:00:00+05:00|60)\nconst cfg = $('Config').first().json;\nconst zone = String(cfg.TIMEZONE || 'Asia/Karachi');\nconst parts = String($json.slot_id || '').split('|');\nconst start = DateTime.fromISO(String(parts[1] || ''), { setZone: true });\nconst minutes = Math.max(15, Number(parts[2]) || Number(cfg.SLOT_MINUTES) || 60);\nconst valid = start.isValid && start.toMillis() > Date.now();\nconst end = valid ? start.plus({ minutes }) : null;\n\nreturn {\n  json: {\n    phone: $json.phone,\n    name: $json.name,\n    slot_valid: valid,\n    slot_start: valid ? start.toISO({ suppressMilliseconds: true }) : '',\n    slot_end: valid ? end.toISO({ suppressMilliseconds: true }) : '',\n    slot_label: valid ? start.setZone(zone).setLocale('en').toFormat(\"cccc d LLLL 'at' h:mm a\") : '',\n  },\n};\n"
+      },
+      "id": "2024e854-bd0e-4f47-b9c0-e3a768315a8b",
+      "name": "Check Slot",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1632,
+        768
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.slot_valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "4f050237-085a-4170-9b9d-baa79af314ed",
+      "name": "Slot In The Future?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1856,
+        768
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "calendar",
+        "calendar": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Config').first().json.CALENDAR_ID }}"
+        },
+        "timeMin": "={{ $json.slot_start }}",
+        "timeMax": "={{ $json.slot_end }}",
+        "options": {
+          "outputFormat": "availability"
+        }
+      },
+      "id": "463e34ed-7231-410b-8992-41493ebba048",
+      "name": "Is Slot Still Free?",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        2304,
+        1088
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.available }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e9e5ea52-4931-4011-8168-757a2bc7f378",
+      "name": "Slot Free?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2528,
+        1088
+      ]
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Config').first().json.CALENDAR_ID }}"
+        },
+        "start": "={{ $('Check Slot').item.json.slot_start }}",
+        "end": "={{ $('Check Slot').item.json.slot_end }}",
+        "additionalFields": {
+          "description": "=Booked via WhatsApp (missed-call bot)\nCustomer: {{ $('Check Slot').item.json.name || 'Unknown' }}\nPhone: +{{ $('Check Slot').item.json.phone }}\nWhatsApp chat: https://wa.me/{{ $('Check Slot').item.json.phone }}\n\nDetails from customer: waiting for reply",
+          "summary": "=Visit: {{ $('Check Slot').item.json.name || 'WhatsApp customer' }} (+{{ $('Check Slot').item.json.phone }})"
+        }
+      },
+      "id": "0161fdf1-728e-4aec-9eff-8febf0862404",
+      "name": "Create Booking",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        3088,
+        1168
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Runs after the calendar event is created: confirms the booking on WhatsApp\n// and asks for the address + problem details.\nconst slot = $('Check Slot').item.json;\nconst nowIso = new Date().toISOString();\nconst text =\n  'You are booked for ' + slot.slot_label + '.\\n\\n' +\n  'Please reply with your address and a short description of the problem. ' +\n  'You can also share your location using the attach (clip) button.';\n\nreturn {\n  json: {\n    phone: slot.phone,\n    name: slot.name,\n    wa: {\n      messaging_product: 'whatsapp',\n      recipient_type: 'individual',\n      to: slot.phone,\n      type: 'text',\n      text: { body: text, preview_url: false },\n    },\n    row: {\n      phone: slot.phone,\n      name: slot.name || undefined,\n      status: 'booked_awaiting_details',\n      slot: slot.slot_label,\n      slot_start: slot.slot_start,\n      event_id: String($json.id || ''),\n      details: '',\n      updated_at: nowIso,\n    },\n    sms: null,\n  },\n};\n"
+      },
+      "id": "84d9f6e7-16d4-498e-ae19-3956cc55fd07",
+      "name": "Build Booking Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3312,
+        1168
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Config').first().json.SHEET_ID }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Leads"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "phone",
+              "lookupValue": "={{ $json.phone }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2bc3d90b-e794-4de5-acfd-2b47088513a5",
+      "name": "Find Lead",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2192,
+        1552
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Decides what to do with a normal message (text, location, voice note...).\n// - STOP / unsubscribe -> opted out (Part A checks the sheet and stops messaging them)\n// - booked customer with an upcoming visit -> save it as visit details (sheet + calendar);\n//   \"cancel\" / \"reschedule\" flags the booking so the owner calls them\n// - asked for a call-back -> short thank-you\n// - anyone else -> reply with the two buttons (Book a visit / Call me back)\nconst cfg = $('Config').first().json;\nconst ev = $('Parse WhatsApp Event').item.json;\nconst lead = $json && String($json.phone || '') !== '' ? $json : null;\nconst status = lead ? String(lead.status || '') : '';\nconst nowIso = new Date().toISOString();\nconst text = String(ev.text || '').trim();\nconst name = ev.name || (lead && lead.name) || '';\nconst business = String(cfg.BUSINESS_NAME || '').trim();\n\nfunction textMessage(body) {\n  return {\n    messaging_product: 'whatsapp',\n    recipient_type: 'individual',\n    to: ev.phone,\n    type: 'text',\n    text: { body, preview_url: false },\n  };\n}\n\nif (ev.stop) {\n  return {\n    json: {\n      phone: ev.phone,\n      name,\n      update_event: false,\n      wa: textMessage('Okay, we will not send you any more messages. If you need us, just call or message us any time.'),\n      row: { phone: ev.phone, name: name || undefined, status: 'opted_out', last_message: text, updated_at: nowIso },\n      sms: null,\n    },\n  };\n}\n\nconst slotStart = lead && lead.slot_start ? DateTime.fromISO(String(lead.slot_start), { setZone: true }) : null;\nconst upcoming = !!(slotStart && slotStart.isValid && slotStart.toMillis() > Date.now());\nconst bookingOpen = status.startsWith('booked') || status === 'change_requested';\n\nif (lead && lead.event_id && bookingOpen && upcoming) {\n  const wantsChange = /\\b(cancel|cancell?ed|reschedule|postpone)\\b/i.test(text) ||\n    /\\b(change|another|different)\\s+(the\\s+)?(time|date|day|slot)\\b/i.test(text);\n  const flagged = wantsChange || status === 'change_requested';\n  const oldDetails = String(lead.details || '').trim();\n  const note = wantsChange ? '[Asked to change or cancel] ' + text : text;\n  const details = ((oldDetails ? oldDetails + '\\n' : '') + note).slice(0, 2000);\n  const summary = (flagged ? 'CHANGE/CANCEL? ' : '') + 'Visit: ' + (name || 'WhatsApp customer') + ' (+' + ev.phone + ')';\n  const description =\n    (flagged ? 'CUSTOMER ASKED TO CHANGE OR CANCEL - please call them.\\n\\n' : '') +\n    'Booked via WhatsApp (missed-call bot)\\n' +\n    'Customer: ' + (name || 'Unknown') + '\\n' +\n    'Phone: +' + ev.phone + '\\n' +\n    'WhatsApp: https://wa.me/' + ev.phone + '\\n\\n' +\n    'Details from customer:\\n' + details;\n  let reply = 'Got it, we have added that to your booking.';\n  if (wantsChange) reply = 'No problem. We will call you shortly to change or cancel your booking.';\n  else if (!oldDetails) reply = 'Thank you! We have added this to your booking for ' + (lead.slot || 'your visit') + '. See you then.';\n  return {\n    json: {\n      phone: ev.phone,\n      name,\n      update_event: true,\n      event_id: String(lead.event_id),\n      event_summary: summary,\n      event_description: description,\n      wa: textMessage(reply),\n      row: {\n        phone: ev.phone,\n        name: name || undefined,\n        status: flagged ? 'change_requested' : 'booked',\n        details,\n        last_message: text,\n        updated_at: nowIso,\n      },\n      sms: null,\n    },\n  };\n}\n\nif (status === 'callback_requested') {\n  return {\n    json: {\n      phone: ev.phone,\n      name,\n      update_event: false,\n      wa: textMessage('Thanks! We have your message and will call you back soon.'),\n      row: { phone: ev.phone, name: name || undefined, last_message: text, updated_at: nowIso },\n      sms: null,\n    },\n  };\n}\n\nreturn {\n  json: {\n    phone: ev.phone,\n    name,\n    update_event: false,\n    wa: {\n      messaging_product: 'whatsapp',\n      recipient_type: 'individual',\n      to: ev.phone,\n      type: 'interactive',\n      interactive: {\n        type: 'button',\n        body: {\n          text:\n            'Hi' + (name ? ' ' + name : '') + '! Thanks for your message' +\n            (business ? ' to ' + business : '') +\n            '. Would you like to book a visit, or should we call you back?',\n        },\n        action: {\n          buttons: [\n            { type: 'reply', reply: { id: 'BOOK_VISIT', title: 'Book a visit' } },\n            { type: 'reply', reply: { id: 'CALL_BACK', title: 'Call me back' } },\n          ],\n        },\n      },\n    },\n    row: {\n      phone: ev.phone,\n      name: name || undefined,\n      status: !lead || status === 'opted_out' ? 'new_chat' : undefined,\n      last_message: text,\n      updated_at: nowIso,\n    },\n    sms: null,\n  },\n};\n"
+      },
+      "id": "b53525d6-1af7-4f45-8b86-dc51c4716077",
+      "name": "Handle Text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2416,
+        1552
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.update_event }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5aa7c425-b2e4-4b11-9678-faced97e8399",
+      "name": "Update Booking Details?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2640,
+        1552
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "calendar": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Config').first().json.CALENDAR_ID }}"
+        },
+        "eventId": "={{ $json.event_id }}",
+        "updateFields": {
+          "description": "={{ $json.event_description }}",
+          "summary": "={{ $json.event_summary }}"
+        }
+      },
+      "id": "a8325c5c-e688-4b47-b8d9-b2034fe1cfce",
+      "name": "Add Details To Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        3088,
+        1680
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// The calendar update replaced the data, so bring back the prepared reply.\nreturn { json: $('Handle Text').item.json };\n"
+      },
+      "id": "93911986-e16c-44aa-823a-0b16f8e0d28a",
+      "name": "Keep Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3312,
+        1680
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// A WhatsApp message could not be delivered.\n// Error 131026 = the number is not on WhatsApp -> optional SMS backup through the Android phone.\nconst cfg = $('Config').first().json;\nconst nowIso = new Date().toISOString();\nconst notOnWhatsApp = Number($json.error_code) === 131026;\nconst smsUrl = String(cfg.MACRODROID_SMS_WEBHOOK || '').trim();\nconst sendSms = notOnWhatsApp && /^https:\\/\\//i.test(smsUrl);\nconst smsText = String(cfg.SMS_BACKUP_TEXT || '')\n  .split('{business}').join(String(cfg.BUSINESS_NAME || '').trim())\n  .slice(0, 300);\n\nconst row = {\n  phone: $json.phone,\n  last_error: ($json.error_code + ' ' + $json.error_title).trim().slice(0, 250),\n  updated_at: nowIso,\n};\nif (notOnWhatsApp) row.status = sendSms ? 'no_whatsapp_sms_sent' : 'no_whatsapp';\n\nreturn {\n  json: {\n    phone: $json.phone,\n    name: '',\n    wa: null,\n    row,\n    sms: sendSms && smsText ? { url: smsUrl, to: '+' + $json.phone, text: smsText } : null,\n  },\n};\n"
+      },
+      "id": "71f60d21-089c-433f-8ea8-7fe69fd40658",
+      "name": "Handle Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3104,
+        2128
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/{{ $('Config').first().json.GRAPH_API_VERSION }}/{{ $('Config').first().json.WA_BUSINESS_ACCOUNT_ID }}/subscribed_apps",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "whatsAppApi",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "id": "1cb53af8-61af-407c-937e-0f275204dcba",
+      "name": "Subscribe App To WhatsApp Account",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        848,
+        1456
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ !!$json.wa }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "6a69ef4e-0c6f-43ab-b289-bf69e11250a0",
+      "name": "Has WhatsApp Message?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3984,
+        960
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/{{ $('Config').first().json.GRAPH_API_VERSION }}/{{ $('Config').first().json.WA_PHONE_NUMBER_ID }}/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "whatsAppApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.wa) }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "id": "9782ebc7-e47d-4235-8bd6-46854f7eac39",
+      "name": "Send WhatsApp Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        4208,
+        896
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Shapes the Google Sheet row. Only the columns listed here are written;\n// other columns in the row are left as they are.\nconst r = $('Reply Ready').item.json;\nconst row = Object.assign({}, r.row || {});\nconst err = $json.error;\nif (err) {\n  const msg = typeof err === 'string' ? err : (err.message || err.description || JSON.stringify(err));\n  row.last_error = String(msg).slice(0, 250);\n  if (row.status === 'whatsapp_sent') row.status = 'whatsapp_error';\n} else if (r.wa && row.last_error === undefined) {\n  row.last_error = '';\n}\nrow.phone = String(row.phone || r.phone || '');\nfor (const key of Object.keys(row)) {\n  if (row[key] === undefined || row[key] === null) delete row[key];\n}\nreturn { json: row };\n"
+      },
+      "id": "d65cea51-60e9-411b-93c9-3da3c39b85af",
+      "name": "Build Sheet Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4432,
+        960
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Config').first().json.SHEET_ID }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Leads"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "phone"
+          ],
+          "schema": [
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "name",
+              "displayName": "name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "last_call_at",
+              "displayName": "last_call_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "slot",
+              "displayName": "slot",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "slot_start",
+              "displayName": "slot_start",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "event_id",
+              "displayName": "event_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "details",
+              "displayName": "details",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "last_message",
+              "displayName": "last_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "last_error",
+              "displayName": "last_error",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "cellFormat": "RAW",
+          "handlingExtraData": "ignoreIt"
+        }
+      },
+      "id": "ee162fac-98a2-4f67-98d8-dbf0b9610aa8",
+      "name": "Save Lead To Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        4656,
+        960
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ !!$('Reply Ready').item.json.sms }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e7bea182-c9dd-4895-aa0b-e7540844cbc9",
+      "name": "SMS Backup Needed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4880,
+        960
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Reply Ready').item.json.sms.url }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "sms_to",
+              "value": "={{ $('Reply Ready').item.json.sms.to }}"
+            },
+            {
+              "name": "sms_text",
+              "value": "={{ $('Reply Ready').item.json.sms.text }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "9564bb68-fd59-4f4d-ae76-9a1d0bb08e80",
+      "name": "Send SMS Via Phone",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        5104,
+        960
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "content": "## Missed Call -> WhatsApp Booking\nAndroid phone (MacroDroid) -> n8n -> WhatsApp Cloud API -> Google Calendar + Sheets. No Twilio.\n\n**Setup**\n1. Fill in every field in **Config**.\n2. Pick your credentials on the WhatsApp, Google Calendar and Google Sheets nodes.\n3. Click **Run Setup Once** (one time).\n4. Publish (activate) the workflow.\n\nFollow the setup guide for every step.",
+        "height": 520,
+        "width": 400,
+        "color": 4
+      },
+      "id": "19d3b044-a237-4048-817f-cf21b823bf4b",
+      "name": "Sticky Note a5f91d47",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -464,
+        -64
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Part A - Missed call\nMacroDroid sends the caller number + secret. The number is cleaned (0300... -> 92300...), repeat calls inside DEDUPE_MINUTES are skipped, callers marked opted_out in the Leads sheet are skipped, and the WhatsApp template with 2 buttons is sent.",
+        "height": 240,
+        "width": 760,
+        "color": 5
+      },
+      "id": "c0f39e48-577e-4587-bc38-e4948692b0c7",
+      "name": "Sticky Note 984cab0b",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        800,
+        -480
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Part B - WhatsApp replies\n**Book a visit**: free times from Google Calendar (up to 10).\n**Picked a time**: re-checks the slot, creates the event, asks for the address.\n**Call me back**: reminder on the owner's calendar.\n**Text / location**: added to an upcoming booking, otherwise answered with the 2 buttons.\n**Delivery failed**: error 131026 (no WhatsApp) can send an SMS from the phone.",
+        "height": 250,
+        "width": 480,
+        "color": 6
+      },
+      "id": "8610a8c5-f6fa-47ca-8be4-078b4e0a3333",
+      "name": "Sticky Note e7c79d15",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        784,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Send + log (shared)\nEvery branch ends here: send the WhatsApp message (errors are caught and logged), then update one row per customer in the **Leads** tab (matched on phone). Only the columns that changed are written.",
+        "height": 180,
+        "width": 520,
+        "color": 7
+      },
+      "id": "a88738da-5565-4afc-86bc-bfaf9e25a3d3",
+      "name": "Sticky Note 8cf265b4",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3024,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## One-time setup\nRun **Run Setup Once** after adding the WhatsApp credential. It connects your Meta app to your WhatsApp Business Account so customer replies reach n8n (success: true also proves the token works).\n\nWhen you move to a real number, put a 6-digit PIN in Config > WA_REGISTER_PIN and run it again: it also registers the number for the Cloud API.",
+        "height": 200,
+        "width": 720,
+        "color": 3
+      },
+      "id": "9ebf7819-6317-4ef3-9f24-38b4387e540b",
+      "name": "Sticky Note 0e8b20fe",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        784,
+        1328
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ String($('Config').first().json.WA_REGISTER_PIN || '').trim().length === 6 }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": ""
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          }
+        },
+        "options": {}
+      },
+      "id": "91a9352f-5ae2-456e-b52e-b0a68523323c",
+      "name": "Register Number?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1072,
+        1456
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/{{ $('Config').first().json.GRAPH_API_VERSION }}/{{ $('Config').first().json.WA_PHONE_NUMBER_ID }}/register",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "whatsAppApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ messaging_product: 'whatsapp', pin: String($('Config').first().json.WA_REGISTER_PIN).trim() }) }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "id": "535e6b67-26e6-4c4d-88c8-26eec38b47cb",
+      "name": "Register Phone Number",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1296,
+        1456
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Config').first().json.SHEET_ID }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Leads"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "phone",
+              "lookupValue": "={{ $json.phone }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "08cff8ee-a708-4d1d-b4cd-bc964f901c8a",
+      "name": "Find Caller",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3200,
+        -208
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Drops missed calls from people who opted out (status \"opted_out\" in the Leads sheet).\n// To stop messaging someone who asked by phone, type opted_out in their status cell.\nconst out = [];\n$input.all().forEach((item, index) => {\n  const prepared = $('Prepare Missed Call').itemMatching(index).json;\n  const status = String((item.json && item.json.status) || '').trim().toLowerCase();\n  if (status === 'opted_out') {\n    console.log('Missed call ignored: caller opted out', prepared.phone);\n    return;\n  }\n  out.push({ json: prepared, pairedItem: { item: index } });\n});\nreturn out;\n"
+      },
+      "id": "9bcf5436-973a-4b0b-a45e-fc357d925713",
+      "name": "Skip Opted-Out Callers",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3424,
+        -208
+      ]
+    }
+  ],
+  "connections": {
+    "Missed Call Webhook": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Route Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Setup Once": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Event": {
+      "main": [
+        [
+          {
+            "node": "Prepare Missed Call",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Parse WhatsApp Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Subscribe App To WhatsApp Account",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reply Ready": {
+      "main": [
+        [
+          {
+            "node": "Has WhatsApp Message?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse WhatsApp Event": {
+      "main": [
+        [
+          {
+            "node": "Route WhatsApp Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route WhatsApp Event": {
+      "main": [
+        [
+          {
+            "node": "Get Free/Busy Times",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Add Call-Back Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Slot",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Find Lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Free/Busy Times": {
+      "main": [
+        [
+          {
+            "node": "Build Slot List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Slot List": {
+      "main": [
+        [
+          {
+            "node": "Reply Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Call-Back Reminder": {
+      "main": [
+        [
+          {
+            "node": "Build Call-Back Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Call-Back Reply": {
+      "main": [
+        [
+          {
+            "node": "Reply Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Slot": {
+      "main": [
+        [
+          {
+            "node": "Slot In The Future?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slot In The Future?": {
+      "main": [
+        [
+          {
+            "node": "Is Slot Still Free?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Free/Busy Times",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Slot Still Free?": {
+      "main": [
+        [
+          {
+            "node": "Slot Free?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slot Free?": {
+      "main": [
+        [
+          {
+            "node": "Create Booking",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Free/Busy Times",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Booking": {
+      "main": [
+        [
+          {
+            "node": "Build Booking Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Booking Reply": {
+      "main": [
+        [
+          {
+            "node": "Reply Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Lead": {
+      "main": [
+        [
+          {
+            "node": "Handle Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Text": {
+      "main": [
+        [
+          {
+            "node": "Update Booking Details?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Booking Details?": {
+      "main": [
+        [
+          {
+            "node": "Add Details To Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reply Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Details To Event": {
+      "main": [
+        [
+          {
+            "node": "Keep Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep Reply": {
+      "main": [
+        [
+          {
+            "node": "Reply Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Failure": {
+      "main": [
+        [
+          {
+            "node": "Reply Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has WhatsApp Message?": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Sheet Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send WhatsApp Message": {
+      "main": [
+        [
+          {
+            "node": "Build Sheet Row",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Sheet Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Sheet Row": {
+      "main": [
+        [
+          {
+            "node": "Save Lead To Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Lead To Sheet": {
+      "main": [
+        [
+          {
+            "node": "SMS Backup Needed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SMS Backup Needed?": {
+      "main": [
+        [
+          {
+            "node": "Send SMS Via Phone",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Subscribe App To WhatsApp Account": {
+      "main": [
+        [
+          {
+            "node": "Register Number?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Register Number?": {
+      "main": [
+        [
+          {
+            "node": "Register Phone Number",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Missed Call": {
+      "main": [
+        [
+          {
+            "node": "Find Caller",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Caller": {
+      "main": [
+        [
+          {
+            "node": "Skip Opted-Out Callers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Opted-Out Callers": {
+      "main": [
+        [
+          {
+            "node": "Reply Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true,
+    "timezone": "Asia/Karachi",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

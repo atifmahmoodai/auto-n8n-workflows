@@ -1,0 +1,665 @@
+{
+  "name": "Advanced Customer Support Automation",
+  "nodes": [
+    {
+      "id": "3bf3eb54-05a5-49b8-9faf-85af3febc16c",
+      "name": "Customer Support Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        240,
+        496
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "support-ticket",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "webhookId": "a319c923-8095-4309-9566-d4503e499c3a"
+    },
+    {
+      "id": "d30b5f25-7baf-4ffc-80eb-53d3707abc71",
+      "name": "Extract Ticket Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        464,
+        496
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "email",
+              "value": "={{ $json.body.customer_email }}",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "subject",
+              "value": "={{ $json.body.subject }}",
+              "type": "string"
+            },
+            {
+              "id": "3",
+              "name": "message",
+              "value": "={{ $json.body.message }}",
+              "type": "string"
+            },
+            {
+              "id": "4",
+              "name": "priority",
+              "value": "={{ $json.body.priority ?? \"medium\" }}",
+              "type": "string"
+            },
+            {
+              "id": "5",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "d9cde2f0-c9d8-4036-9783-b7ab5718fcaa",
+      "name": "AI Triage Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        688,
+        496
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Analyze this customer support ticket and categorize it:\n\nSubject: {{ $json.subject }}\nMessage: {{ $json.message }}\nPriority: {{ $json.priority }}\n\nProvide structured analysis including category (technical/billing/general), urgency level (low/medium/high/critical), customer sentiment, suggested response approach, and whether human intervention is required.",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are an expert customer support triage agent. Analyze support tickets and provide structured categorization to route them appropriately. Be concise and accurate."
+        }
+      }
+    },
+    {
+      "id": "72fffed7-d9fa-4b2e-863b-685d8a934303",
+      "name": "OpenAI GPT-5 Mini",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        696,
+        720
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "2d1c2e29-5dc1-4491-83c6-fc3a962e938f",
+      "name": "Structured Triage Output",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        824,
+        720
+      ],
+      "parameters": {
+        "jsonSchemaExample": "{\"category\":\"technical\",\"urgency\":\"high\",\"sentiment\":\"frustrated\",\"suggested_response\":\"Apologize and escalate to technical team immediately\",\"requires_human\":true}"
+      }
+    },
+    {
+      "id": "b925f49e-c0bc-465b-8fb1-ecae742ea856",
+      "name": "Enrich With AI Analysis",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1040,
+        496
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "ticket_id",
+              "value": "={{ $now.toMillis() }}",
+              "type": "number"
+            },
+            {
+              "id": "2",
+              "name": "email",
+              "value": "={{ $(\"Extract Ticket Data\").item.json.email }}",
+              "type": "string"
+            },
+            {
+              "id": "3",
+              "name": "subject",
+              "value": "={{ $(\"Extract Ticket Data\").item.json.subject }}",
+              "type": "string"
+            },
+            {
+              "id": "4",
+              "name": "message",
+              "value": "={{ $(\"Extract Ticket Data\").item.json.message }}",
+              "type": "string"
+            },
+            {
+              "id": "5",
+              "name": "priority",
+              "value": "={{ $(\"Extract Ticket Data\").item.json.priority }}",
+              "type": "string"
+            },
+            {
+              "id": "6",
+              "name": "timestamp",
+              "value": "={{ $(\"Extract Ticket Data\").item.json.timestamp }}",
+              "type": "string"
+            },
+            {
+              "id": "7",
+              "name": "ai_category",
+              "value": "={{ $json.output.category }}",
+              "type": "string"
+            },
+            {
+              "id": "8",
+              "name": "ai_urgency",
+              "value": "={{ $json.output.urgency }}",
+              "type": "string"
+            },
+            {
+              "id": "9",
+              "name": "ai_sentiment",
+              "value": "={{ $json.output.sentiment }}",
+              "type": "string"
+            },
+            {
+              "id": "10",
+              "name": "suggested_response",
+              "value": "={{ $json.output.suggested_response }}",
+              "type": "string"
+            },
+            {
+              "id": "11",
+              "name": "requires_human",
+              "value": "={{ $json.output.requires_human }}",
+              "type": "boolean"
+            },
+            {
+              "id": "12",
+              "name": "status",
+              "value": "pending",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "61daca0c-27a7-45df-92aa-adc42b2464b2",
+      "name": "Save to Support Database",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1264,
+        496
+      ],
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ticket_id": "={{ $json.ticket_id }}",
+            "email": "={{ $json.email }}",
+            "subject": "={{ $json.subject }}",
+            "message": "={{ $json.message }}",
+            "priority": "={{ $json.priority }}",
+            "timestamp": "={{ $json.timestamp }}",
+            "ai_category": "={{ $json.ai_category }}",
+            "ai_urgency": "={{ $json.ai_urgency }}",
+            "ai_sentiment": "={{ $json.ai_sentiment }}",
+            "suggested_response": "={{ $json.suggested_response }}",
+            "requires_human": "={{ $json.requires_human }}",
+            "status": "={{ $json.status }}"
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "38fe41bf-7d87-4cbe-b6ba-04542e6880cf",
+      "name": "Route by Urgency",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1488,
+        464
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $(\"Enrich With AI Analysis\").item.json.ai_urgency }}",
+                    "rightValue": "critical",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Critical"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $(\"Enrich With AI Analysis\").item.json.ai_urgency }}",
+                    "rightValue": "high",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "High"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $(\"Enrich With AI Analysis\").item.json.ai_urgency }}",
+                    "rightValue": "medium",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Medium"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Low"
+        }
+      }
+    },
+    {
+      "id": "a6f7e615-cc72-44ad-9536-446b65e41778",
+      "name": "Notify Slack - Critical",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        1712,
+        208
+      ],
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "messageType": "block",
+        "blocksUi": "=[\n  {\n    \"type\": \"header\",\n    \"text\": {\n      \"type\": \"plain_text\",\n      \"text\": \"🚨 CRITICAL Support Ticket\"\n    }\n  },\n  {\n    \"type\": \"section\",\n    \"fields\": [\n      {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*Ticket ID:*\\n{{ $json.ticket_id }}\"\n      },\n      {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*Customer:*\\n{{ $json.email }}\"\n      },\n      {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*Category:*\\n{{ $json.ai_category }}\"\n      },\n      {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*Sentiment:*\\n{{ $json.ai_sentiment }}\"\n      }\n    ]\n  },\n  {\n    \"type\": \"section\",\n    \"text\": {\n      \"type\": \"mrkdwn\",\n      \"text\": \"*Subject:* {{ $json.subject }}\\n*Message:* {{ $json.message }}\"\n    }\n  },\n  {\n    \"type\": \"section\",\n    \"text\": {\n      \"type\": \"mrkdwn\",\n      \"text\": \"*AI Suggestion:* {{ $json.suggested_response }}\"\n    }\n  }\n]",
+        "text": "=🚨 CRITICAL Support Ticket #{{ $json.ticket_id }}",
+        "otherOptions": {}
+      },
+      "webhookId": "219081a2-9518-4704-aa4e-84a3af8c5849"
+    },
+    {
+      "id": "470019e4-a849-4bff-bfe7-83043b1682ac",
+      "name": "Combine All Responses",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1936,
+        304
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "0c9fda2c-3305-4c9c-bec5-ea4b9169853d",
+      "name": "Notify Slack - High Priority",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        1712,
+        400
+      ],
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "messageType": "block",
+        "blocksUi": "=[\n  {\n    \"type\": \"header\",\n    \"text\": {\n      \"type\": \"plain_text\",\n      \"text\": \"⚠️ High Priority Support Ticket\"\n    }\n  },\n  {\n    \"type\": \"section\",\n    \"fields\": [\n      {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*Ticket ID:*\\n{{ $json.ticket_id }}\"\n      },\n      {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*Customer:*\\n{{ $json.email }}\"\n      },\n      {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*Category:*\\n{{ $json.ai_category }}\"\n      },\n      {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*Sentiment:*\\n{{ $json.ai_sentiment }}\"\n      }\n    ]\n  },\n  {\n    \"type\": \"section\",\n    \"text\": {\n      \"type\": \"mrkdwn\",\n      \"text\": \"*Subject:* {{ $json.subject }}\"\n    }\n  }\n]",
+        "text": "=⚠️ High Priority Ticket #{{ $json.ticket_id }}",
+        "otherOptions": {}
+      },
+      "webhookId": "170806c0-8ed4-46d2-92c1-ea317248319e"
+    },
+    {
+      "id": "12a81890-751d-4452-ac56-40514ed40b07",
+      "name": "Send Email - Medium Priority",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1712,
+        592
+      ],
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "=Re: {{ $json.subject }} - Ticket #{{ $json.ticket_id }}",
+        "message": "=<html>\n<body>\n<h2>Thank you for contacting support</h2>\n<p>Dear Customer,</p>\n<p>We have received your support request and assigned it ticket number <strong>#{{ $json.ticket_id }}</strong>.</p>\n<p><strong>Subject:</strong> {{ $json.subject }}</p>\n<p><strong>Category:</strong> {{ $json.ai_category }}</p>\n<p>Our team will review your request and respond within 24 hours. We appreciate your patience.</p>\n<p>Best regards,<br>Support Team</p>\n</body>\n</html>",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "webhookId": "a93ae704-78a1-48fa-a910-9237630314b8"
+    },
+    {
+      "id": "5a5f39ae-fd7a-4f31-b80a-ec47772aad78",
+      "name": "Send Email - Low Priority",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1712,
+        784
+      ],
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "=Re: {{ $json.subject }} - Ticket #{{ $json.ticket_id }}",
+        "message": "=<html>\n<body>\n<h2>Thank you for your inquiry</h2>\n<p>Dear Customer,</p>\n<p>We have received your message and assigned it ticket number <strong>#{{ $json.ticket_id }}</strong>.</p>\n<p>Our team will respond within 48 hours.</p>\n<p>Best regards,<br>Support Team</p>\n</body>\n</html>",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "webhookId": "2231bfa9-7faf-4090-ab51-9190d04d488a"
+    },
+    {
+      "id": "300ae46c-d0e4-4b6e-9ed8-0452e695a0b1",
+      "name": "Generate Summary Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        304
+      ],
+      "parameters": {
+        "jsCode": "const ticketData = $input.first().json;\n\nreturn [{\n  json: {\n    summary: 'Support ticket processed successfully',\n    ticket_id: ticketData.ticket_id,\n    customer: ticketData.email,\n    category: ticketData.ai_category,\n    urgency: ticketData.ai_urgency,\n    actions_taken: [\n      'Ticket saved to database',\n      'AI analysis completed',\n      'Notifications sent',\n      'Customer acknowledged'\n    ],\n    processed_at: new Date().toISOString()\n  }\n}];"
+      }
+    },
+    {
+      "id": "03eff173-384d-49b4-bcbf-7653cb55e58e",
+      "name": "Sticky Note 52ea99c4",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        192,
+        352
+      ],
+      "parameters": {
+        "content": "## 🎯 Advanced Customer Support Automation\n\nThis workflow demonstrates:\n- AI-powered ticket triage\n- Multi-channel notifications\n- Data persistence\n- Complex routing logic\n- Structured AI output",
+        "height": 200,
+        "width": 600,
+        "color": 2
+      }
+    },
+    {
+      "id": "f56cd05f-69b7-4a77-82dc-c7487f97b2e0",
+      "name": "Sticky Note 4c0ce231",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        714,
+        364
+      ],
+      "parameters": {
+        "content": "## 🤖 AI Analysis\n\nUses GPT-5 Mini with structured output parser to:\n- Categorize tickets\n- Assess urgency\n- Analyze sentiment\n- Suggest responses",
+        "height": 500,
+        "width": 300,
+        "color": 3
+      }
+    },
+    {
+      "id": "f0f2e70e-3002-4777-8a07-cad8e229b18c",
+      "name": "Sticky Note d094203e",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1392,
+        352
+      ],
+      "parameters": {
+        "content": "## 📊 Data Persistence\n\nAll tickets saved to Data Table for:\n- Historical tracking\n- Analytics\n- Reporting\n- Audit trail",
+        "height": 200,
+        "width": 300,
+        "color": 4
+      }
+    },
+    {
+      "id": "3eebf6d6-090a-40f6-a3b5-0cc3e14f1772",
+      "name": "Sticky Note 010adbad",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1610,
+        360
+      ],
+      "parameters": {
+        "content": "## 🔀 Smart Routing\n\nTickets routed based on urgency:\n- Critical → Slack alert\n- High → Slack notification\n- Medium → Email response\n- Low → Email acknowledgment",
+        "height": 200,
+        "width": 300,
+        "color": 5
+      }
+    }
+  ],
+  "connections": {
+    "Customer Support Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract Ticket Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Ticket Data": {
+      "main": [
+        [
+          {
+            "node": "AI Triage Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Triage Agent": {
+      "main": [
+        [
+          {
+            "node": "Enrich With AI Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI GPT-5 Mini": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Triage Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Triage Output": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Triage Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrich With AI Analysis": {
+      "main": [
+        [
+          {
+            "node": "Save to Support Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Support Database": {
+      "main": [
+        [
+          {
+            "node": "Route by Urgency",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Urgency": {
+      "main": [
+        [
+          {
+            "node": "Notify Slack - Critical",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify Slack - High Priority",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Email - Medium Priority",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Email - Low Priority",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Slack - Critical": {
+      "main": [
+        [
+          {
+            "node": "Combine All Responses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine All Responses": {
+      "main": [
+        [
+          {
+            "node": "Generate Summary Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Slack - High Priority": {
+      "main": [
+        [
+          {
+            "node": "Combine All Responses",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

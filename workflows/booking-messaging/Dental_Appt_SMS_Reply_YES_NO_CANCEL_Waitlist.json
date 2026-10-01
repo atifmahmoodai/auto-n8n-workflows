@@ -1,0 +1,399 @@
+{
+  "name": "Dental Appt SMS Reply: YES/NO/CANCEL + Waitlist",
+  "nodes": [
+    {
+      "id": "47b76a3c-9d28-42b3-8d1c-b37dc2a1b22b",
+      "name": "Sticky Note 6339821a",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        100,
+        300
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "SMS Reply Architecture",
+            "position": [
+              -220,
+              60
+            ],
+            "parameters": {
+              "width": 520,
+              "height": 260,
+              "content": "APPOINTMENT SMS REPLIES\n\nTwilio inbound -> match patient -> YES/NO/CANCEL -> sheet -> waitlist broadcast on cancel"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "c939fb5f-2db9-48bc-9afc-c97f8c72e445",
+      "name": "Twilio: Inbound SMS",
+      "type": "n8n-nodes-base.twilioTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "updates": [
+          "com.twilio.messaging.inbound-message.received"
+        ]
+      },
+      "webhookId": "e84b9f78-427c-4030-aeab-1184958b8bf9"
+    },
+    {
+      "id": "091df6d2-4b58-4624-9114-337d0d811953",
+      "name": "Normalize SMS Payload",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "from-phone",
+              "name": "from_phone",
+              "value": "={{ $json.From || $json.from || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "body",
+              "name": "message_body",
+              "value": "={{ ($json.Body || $json.body || \"\").trim() }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "8a168bcc-0a90-4f5d-8c1f-eeb4aed6a6d9",
+      "name": "Sheet: Read Appointments",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_APPOINTMENTS_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Appointments"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "55359a65-c18f-44ef-b669-12780fdd91a5",
+      "name": "Match Patient & Parse Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const inbound=$('Normalize SMS Payload').item.json; const body=(inbound.message_body||'').trim(); const bodyUp=body.toUpperCase(); const phone=inbound.from_phone; const practiceName='REPLACE_WITH_PRACTICE_NAME'; const norm=p=>String(p||'').replace(/\\D/g,'').slice(-10); const rows=$('Sheet: Read Appointments').all().map(i=>i.json); let appt=rows.filter(r=>!['cancelled','canceled','completed'].includes((r.status||'').toLowerCase())).find(r=>norm(r.patient_phone)===norm(phone)); if(!appt){return{json:{matched:false,from_phone:phone,reply_sms:practiceName+': No upcoming appointment found for this number.',patient_response:'unmatched',status:'unmatched',broadcast_waitlist:false}};} let response='unknown', status=appt.status||'scheduled', reply='', broadcast=false; if(bodyUp==='YES'||bodyUp==='Y'){response='yes';status='confirmed';reply=practiceName+': Thanks! Appointment confirmed.';} else if(bodyUp==='NO'||bodyUp==='N'){response='no';status='reschedule_requested';reply=practiceName+': We will call to reschedule.';} else if(bodyUp.includes('CANCEL')){response='cancel';status='cancelled';broadcast=true;reply=practiceName+': Appointment cancelled. Waitlist will be notified.';} else {reply=practiceName+': Reply YES, NO, or CANCEL.';} return{json:{...appt,matched:true,from_phone:phone,patient_response:response,status,reply_sms:reply,broadcast_waitlist:broadcast,response_at:$now.toISO()}};"
+      }
+    },
+    {
+      "id": "356fb28e-198c-4eb1-a3a3-6f82183e69de",
+      "name": "Sheet: Update Appointment",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        960,
+        300
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_APPOINTMENTS_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Appointments"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": [
+            "appt_id"
+          ],
+          "value": {
+            "appt_id": "={{ $json.appt_id }}",
+            "status": "={{ $json.status }}",
+            "patient_response": "={{ $json.patient_response }}",
+            "response_at": "={{ $json.response_at || $now.toISO() }}"
+          },
+          "schema": [
+            {
+              "id": "appt_id",
+              "displayName": "appt_id",
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "type": "string"
+            },
+            {
+              "id": "patient_response",
+              "displayName": "patient_response",
+              "type": "string"
+            },
+            {
+              "id": "response_at",
+              "displayName": "response_at",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "cc48d888-827f-4d73-bb56-c6273d602ede",
+      "name": "Cancelled?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1200,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.broadcast_waitlist }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "6c3f9160-23f6-495d-b6c7-edae54e561f0",
+      "name": "Sheet: Read Waitlist",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1440,
+        180
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_APPOINTMENTS_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Waitlist"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ca5c74d5-3960-40f5-aac3-04fe347b0fb5",
+      "name": "Build Waitlist SMS List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        180
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const appt=$('Sheet: Update Appointment').item.json; const practiceName='REPLACE_WITH_PRACTICE_NAME'; const waitlist=$('Sheet: Read Waitlist').all().map(i=>i.json).filter(w=>(w.status||'active')==='active'&&(w.patient_phone||'').trim()); const msg=practiceName+': An appointment opened on '+(appt.appt_date||'soon')+'. Reply YES to claim.'; return waitlist.map(w=>({json:{patient_phone:w.patient_phone,sms_message:'Hi '+(w.patient_name||'there')+', '+msg}}));"
+      }
+    },
+    {
+      "id": "2107016d-69a2-4fe6-85a6-1fcb62a71e67",
+      "name": "Twilio: Waitlist Broadcast",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        1920,
+        180
+      ],
+      "parameters": {
+        "resource": "sms",
+        "operation": "send",
+        "from": "REPLACE_WITH_TWILIO_FROM_NUMBER",
+        "to": "={{ $json.patient_phone }}",
+        "message": "={{ $json.sms_message }}"
+      }
+    },
+    {
+      "id": "08ce902f-1ae8-455c-b7c0-bb05a0cc6d9e",
+      "name": "Twilio: Send Reply SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        2160,
+        300
+      ],
+      "parameters": {
+        "resource": "sms",
+        "operation": "send",
+        "from": "REPLACE_WITH_TWILIO_FROM_NUMBER",
+        "to": "={{ $(\"Sheet: Update Appointment\").item.json.from_phone || $(\"Sheet: Update Appointment\").item.json.patient_phone }}",
+        "message": "={{ $(\"Sheet: Update Appointment\").item.json.reply_sms }}"
+      }
+    }
+  ],
+  "connections": {
+    "Twilio: Inbound SMS": {
+      "main": [
+        [
+          {
+            "node": "Normalize SMS Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize SMS Payload": {
+      "main": [
+        [
+          {
+            "node": "Sheet: Read Appointments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheet: Read Appointments": {
+      "main": [
+        [
+          {
+            "node": "Match Patient & Parse Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Match Patient & Parse Reply": {
+      "main": [
+        [
+          {
+            "node": "Sheet: Update Appointment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheet: Update Appointment": {
+      "main": [
+        [
+          {
+            "node": "Cancelled?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cancelled?": {
+      "main": [
+        [
+          {
+            "node": "Sheet: Read Waitlist",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Twilio: Send Reply SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheet: Read Waitlist": {
+      "main": [
+        [
+          {
+            "node": "Build Waitlist SMS List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Waitlist SMS List": {
+      "main": [
+        [
+          {
+            "node": "Twilio: Waitlist Broadcast",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Twilio: Waitlist Broadcast": {
+      "main": [
+        [
+          {
+            "node": "Twilio: Send Reply SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

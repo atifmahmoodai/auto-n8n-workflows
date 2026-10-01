@@ -1,0 +1,1129 @@
+{
+  "name": "My workflow 14",
+  "nodes": [
+    {
+      "id": "21e9fa5c-6932-4a07-ab40-29860583330b",
+      "name": "On form submission",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.5,
+      "position": [
+        -96,
+        96
+      ],
+      "parameters": {
+        "formTitle": "Portfolio",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "how would you like to rebalance your portfolio",
+              "defaultValue": "Ensure the portfolio is 60% equity and 40% fixed income "
+            }
+          ]
+        },
+        "options": {}
+      },
+      "webhookId": "5f3087fd-645f-466b-8d83-508ae0535e18"
+    },
+    {
+      "id": "59df609e-8a0a-4b3b-8f35-e5281d294dcf",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        576,
+        224
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4.1-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "d8eb1524-fea8-4300-9a26-af98d802eace",
+      "name": "Get row(s) in sheet in Google Sheets",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        704,
+        224
+      ],
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "This tool provides details of the user's portfolio in Google Sheet. This includes the positions and the equity / fixed income breakdown. Use this tool to retrieve the Google Sheet  to see the positions before updating the prices and making rebalancing decisions. IMPORTANT: you MUST also use this tool after rebalancing decisions to check that  the new equity / fixed income breakdown achieves your goal. If not, keep iterating.",
+        "documentId": {
+          "__rl": true,
+          "value": "1ELlMDbTLz_uy_0pLrr1K-1tV25Wjx6ATjCJ7qq507uw",
+          "mode": "list",
+          "cachedResultName": "portfolio",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1ELlMDbTLz_uy_0pLrr1K-1tV25Wjx6ATjCJ7qq507uw/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1683045812,
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1ELlMDbTLz_uy_0pLrr1K-1tV25Wjx6ATjCJ7qq507uw/edit#gid=1683045812"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "d1dba769-8e20-439b-9777-48d1ab83268c",
+      "name": "Get many EoD data in Marketstack",
+      "type": "n8n-nodes-base.marketstackTool",
+      "typeVersion": 1,
+      "position": [
+        832,
+        224
+      ],
+      "parameters": {
+        "symbols": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Ticker', ``, 'string') }}",
+        "filters": {
+          "latest": true
+        }
+      }
+    },
+    {
+      "id": "cb633d88-170b-4b69-8fc7-fed1362f8fd8",
+      "name": "Update row in sheet in Google Sheets",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        960,
+        224
+      ],
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1ELlMDbTLz_uy_0pLrr1K-1tV25Wjx6ATjCJ7qq507uw",
+          "mode": "list",
+          "cachedResultName": "portfolio",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1ELlMDbTLz_uy_0pLrr1K-1tV25Wjx6ATjCJ7qq507uw/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1683045812,
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1ELlMDbTLz_uy_0pLrr1K-1tV25Wjx6ATjCJ7qq507uw/edit#gid=1683045812"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Ticker": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Ticker__using_to_match_', ``, 'string') }}",
+            "Price": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Price', ``, 'string') }}"
+          },
+          "matchingColumns": [
+            "Ticker"
+          ],
+          "schema": [
+            {
+              "id": "Ticker",
+              "displayName": "Ticker",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Quantity",
+              "displayName": "Quantity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Equity ratio",
+              "displayName": "Equity ratio",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Fixed income ratio",
+              "displayName": "Fixed income ratio",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Price",
+              "displayName": "Price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Total Value",
+              "displayName": "Total Value",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "New Quantity After Rebalancing",
+              "displayName": "New Quantity After Rebalancing",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "New Total Value",
+              "displayName": "New Total Value",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "c3db6638-3826-4e94-9cfa-d7cd2ae23d8b",
+      "name": "Update row in sheet in Google Sheets1",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        1088,
+        224
+      ],
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1ELlMDbTLz_uy_0pLrr1K-1tV25Wjx6ATjCJ7qq507uw",
+          "mode": "list",
+          "cachedResultName": "portfolio",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1ELlMDbTLz_uy_0pLrr1K-1tV25Wjx6ATjCJ7qq507uw/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1683045812,
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1ELlMDbTLz_uy_0pLrr1K-1tV25Wjx6ATjCJ7qq507uw/edit#gid=1683045812"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Ticker": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Ticker__using_to_match_', ``, 'string') }}",
+            "New Quantity After Rebalancing": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('New_Quantity_After_Rebalancing', ``, 'string') }}"
+          },
+          "matchingColumns": [
+            "Ticker"
+          ],
+          "schema": [
+            {
+              "id": "Ticker",
+              "displayName": "Ticker",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Quantity",
+              "displayName": "Quantity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Equity ratio",
+              "displayName": "Equity ratio",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Fixed income ratio",
+              "displayName": "Fixed income ratio",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Price",
+              "displayName": "Price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Total Value",
+              "displayName": "Total Value",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "New Quantity After Rebalancing",
+              "displayName": "New Quantity After Rebalancing",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "New Total Value",
+              "displayName": "New Total Value",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "fefc946f-a781-4b10-a929-dd2e2080b4d7",
+      "name": "Push a message in Pushover",
+      "type": "n8n-nodes-base.pushoverTool",
+      "typeVersion": 1,
+      "position": [
+        1216,
+        224
+      ],
+      "parameters": {
+        "userKey": "uzfmrnrdxm1mygsf8o65iu5qj8vgs3",
+        "message": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Message', ``, 'string') }}",
+        "priority": 1,
+        "additionalFields": {}
+      }
+    },
+    {
+      "id": "2fc87262-05cf-4dc1-9fb3-1f566dfebca7",
+      "name": "Send a message in Gmail",
+      "type": "n8n-nodes-base.gmailTool",
+      "typeVersion": 2.2,
+      "position": [
+        1344,
+        224
+      ],
+      "parameters": {
+        "sendTo": "atifmah428@gmail.com",
+        "subject": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Subject', ``, 'string') }}",
+        "message": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Message', ``, 'string') }}",
+        "options": {}
+      },
+      "webhookId": "11ec0b06-b425-4da7-b734-78ecd8667b3c"
+    },
+    {
+      "id": "ee0f6706-1dab-4635-ba5b-3bda7c94ab9d",
+      "name": "Validate Form Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        128,
+        0
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "timestamp",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "rebalanceGoal",
+              "name": "rebalanceGoal",
+              "value": "={{ $json[\"how would you like to rebalance your portfolio\"] }}",
+              "type": "string"
+            },
+            {
+              "id": "executionId",
+              "name": "executionId",
+              "value": "={{ $execution.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "f1cd0a5d-6100-49b6-bafc-2e822327ba1d",
+      "name": "Log Execution Start",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        352,
+        0
+      ],
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "RL7goW5HjQfUS1ch",
+          "cachedResultName": "Portfolio Execution Log"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "execution_id": "={{ $json.executionId }}",
+            "timestamp": "={{ $json.timestamp }}",
+            "rebalance_goal": "={{ $json.rebalanceGoal }}",
+            "status": "started",
+            "error_message": ""
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "182fe632-0d58-4660-a4d8-ea51c6bfa5c9",
+      "name": "Enhanced AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        888,
+        0
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Execution ID: {{ $(\"Validate Form Input\").item.json.executionId }}\nTimestamp: {{ $(\"Validate Form Input\").item.json.timestamp }}\n\nUser's Rebalancing Goal:\n{{ $(\"Validate Form Input\").item.json.rebalanceGoal }}\n\nYour mission is to execute a comprehensive portfolio rebalancing workflow:\n\n1. **READ PORTFOLIO**: Retrieve current positions from Google Sheets\n2. **FETCH PRICES**: Get latest market prices for all positions using Marketstack\n3. **UPDATE PRICES**: Write updated prices back to the spreadsheet\n4. **CALCULATE ALLOCATION**: Analyze current equity/fixed income breakdown\n5. **REBALANCE DECISION**: Determine optimal position adjustments to meet target allocation\n6. **UPDATE REBALANCING**: Write new quantities to spreadsheet\n7. **VERIFY RESULTS**: Read spreadsheet again to confirm allocation matches goal\n8. **ITERATE IF NEEDED**: If allocation is off by more than 1%, refine and update again\n9. **FINAL REPORTING**: Send detailed email report and push notification\n\nIMPORTANT RULES:\n- Always verify your work by reading the spreadsheet after updates\n- Show all calculations and reasoning\n- If target allocation is not achieved within 1% tolerance, iterate\n- Include specific buy/sell recommendations with quantities\n- Report both current and target allocations in notifications\n\nOnly respond \"MISSION COMPLETE\" after all steps are done and verified.",
+        "options": {
+          "systemMessage": "You are a professional portfolio rebalancing assistant with expertise in equity and fixed income allocation. You have access to portfolio data in Google Sheets and market data APIs. Execute all steps methodically and verify your work.",
+          "maxIterations": 50
+        }
+      }
+    },
+    {
+      "id": "71157520-6470-47ab-b9e7-aabefbc37591",
+      "name": "Check Agent Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1552,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.output }}",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              },
+              "rightValue": "MISSION COMPLETE"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "0aa1ecbb-0437-4d14-b9b1-b0166ce632e3",
+      "name": "Extract Agent Results",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1776,
+        -96
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "agentOutput",
+              "name": "agentOutput",
+              "value": "={{ $json.output }}",
+              "type": "string"
+            },
+            {
+              "id": "completionTime",
+              "name": "completionTime",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "executionId",
+              "name": "executionId",
+              "value": "={{ $(\"Validate Form Input\").item.json.executionId }}",
+              "type": "string"
+            },
+            {
+              "id": "status",
+              "name": "status",
+              "value": "completed",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "65be9dc9-8862-4128-8e3d-be3271caa571",
+      "name": "Log Execution Success",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2000,
+        -96
+      ],
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "RL7goW5HjQfUS1ch",
+          "cachedResultName": "Portfolio Execution Log"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "execution_id": "={{ $json.executionId }}",
+            "timestamp": "={{ $json.completionTime }}",
+            "rebalance_goal": "={{ $(\"Validate Form Input\").item.json.rebalanceGoal }}",
+            "status": "={{ $json.status }}",
+            "agent_output": "={{ $json.agentOutput }}",
+            "error_message": ""
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ed497d67-2f25-4628-87f0-82ba73f2656d",
+      "name": "Generate Execution Report",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2224,
+        -96
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "reportTitle",
+              "name": "reportTitle",
+              "value": "={{ \"Portfolio Rebalancing Report - \" + $now.toFormat(\"MMMM d, yyyy HH:mm\") }}",
+              "type": "string"
+            },
+            {
+              "id": "executionSummary",
+              "name": "executionSummary",
+              "value": "={{ \"Execution ID: \" + $(\"Extract Agent Results\").item.json.executionId + \"\\nStart: \" + $(\"Validate Form Input\").item.json.timestamp + \"\\nEnd: \" + $json.completionTime + \"\\nStatus: \" + $json.status }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "799ce708-710f-4338-ac2c-9ef638c00498",
+      "name": "Send Slack Notification",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        2448,
+        -96
+      ],
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "C12345",
+          "cachedResultName": "#portfolio-alerts"
+        },
+        "messageType": "block",
+        "blocksUi": "={{ [{\"type\": \"header\", \"text\": {\"type\": \"plain_text\", \"text\": $json.reportTitle}}, {\"type\": \"section\", \"text\": {\"type\": \"mrkdwn\", \"text\": \"*Execution Summary*\\n\" + $json.executionSummary}}, {\"type\": \"section\", \"text\": {\"type\": \"mrkdwn\", \"text\": \"*Agent Output*\\n\" + $json.agentOutput}}, {\"type\": \"divider\"}, {\"type\": \"context\", \"elements\": [{\"type\": \"mrkdwn\", \"text\": \"Automated by n8n Portfolio Rebalancer\"}]}] }}",
+        "text": "={{ $json.reportTitle }}",
+        "otherOptions": {}
+      },
+      "webhookId": "88640542-9612-40a5-8429-e505b3a156dc"
+    },
+    {
+      "id": "dfe538a4-ce6b-4aa6-9d27-6263b3178d87",
+      "name": "Handle Agent Error",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1776,
+        96
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "errorMessage",
+              "name": "errorMessage",
+              "value": "={{ $json.error?.message ?? \"Unknown error occurred\" }}",
+              "type": "string"
+            },
+            {
+              "id": "errorTime",
+              "name": "errorTime",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "executionId",
+              "name": "executionId",
+              "value": "={{ $(\"Validate Form Input\").item.json.executionId }}",
+              "type": "string"
+            },
+            {
+              "id": "status",
+              "name": "status",
+              "value": "failed",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "df8165cc-4541-432a-9c88-b9bf95ed2068",
+      "name": "Log Execution Error",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2000,
+        96
+      ],
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "RL7goW5HjQfUS1ch",
+          "cachedResultName": "Portfolio Execution Log"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "execution_id": "={{ $json.executionId }}",
+            "timestamp": "={{ $json.errorTime }}",
+            "rebalance_goal": "={{ $(\"Validate Form Input\").item.json.rebalanceGoal }}",
+            "status": "={{ $json.status }}",
+            "error_message": "={{ $json.errorMessage }}"
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "b0b0e1f8-dafc-4668-a4cf-f107d460d3ae",
+      "name": "Send Error Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        2224,
+        96
+      ],
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "C12345",
+          "cachedResultName": "#portfolio-alerts"
+        },
+        "messageType": "block",
+        "blocksUi": "={{ [{\"type\": \"header\", \"text\": {\"type\": \"plain_text\", \"text\": \"⚠️ Portfolio Rebalancing Failed\", \"emoji\": true}}, {\"type\": \"section\", \"text\": {\"type\": \"mrkdwn\", \"text\": \"*Execution ID:* \" + $(\"Handle Agent Error\").item.json.executionId + \"\\n*Time:* \" + $json.errorTime + \"\\n*Error:* \" + $json.errorMessage}}, {\"type\": \"divider\"}, {\"type\": \"context\", \"elements\": [{\"type\": \"mrkdwn\", \"text\": \"Please review the workflow execution logs\"}]}] }}",
+        "text": "⚠️ Portfolio Rebalancing Failed",
+        "otherOptions": {}
+      },
+      "webhookId": "9ac4f2bf-426e-409a-bb1f-aa99311b1aca"
+    },
+    {
+      "id": "7c89db3e-b534-48ca-a2d5-ec1fd73038e1",
+      "name": "Error Workflow Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        -320,
+        328
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "6f325b43-ba04-4d6e-85ab-bb87e8aa1cd0",
+      "name": "Format Critical Error",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -96,
+        328
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "workflowName",
+              "name": "workflowName",
+              "value": "={{ $json.workflow.name }}",
+              "type": "string"
+            },
+            {
+              "id": "executionId",
+              "name": "executionId",
+              "value": "={{ $json.execution.id }}",
+              "type": "string"
+            },
+            {
+              "id": "errorMessage",
+              "name": "errorMessage",
+              "value": "={{ $json.error.message }}",
+              "type": "string"
+            },
+            {
+              "id": "errorTime",
+              "name": "errorTime",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "8d773ea8-3956-4358-9d6c-7a0e3436167a",
+      "name": "Send Critical Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        128,
+        328
+      ],
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "C12345",
+          "cachedResultName": "#portfolio-alerts"
+        },
+        "messageType": "block",
+        "blocksUi": "={{ [{\"type\": \"header\", \"text\": {\"type\": \"plain_text\", \"text\": \"🚨 CRITICAL: Workflow Execution Failed\", \"emoji\": true}}, {\"type\": \"section\", \"fields\": [{\"type\": \"mrkdwn\", \"text\": \"*Workflow:*\\n\" + $json.workflowName}, {\"type\": \"mrkdwn\", \"text\": \"*Execution ID:*\\n\" + $json.executionId}]}, {\"type\": \"section\", \"text\": {\"type\": \"mrkdwn\", \"text\": \"*Error Message:*\\n```\" + $json.errorMessage + \"```\"}}, {\"type\": \"section\", \"text\": {\"type\": \"mrkdwn\", \"text\": \"*Time:* \" + $json.errorTime}}, {\"type\": \"divider\"}, {\"type\": \"context\", \"elements\": [{\"type\": \"mrkdwn\", \"text\": \"⚡ Immediate attention required\"}]}] }}",
+        "text": "🚨 CRITICAL: Workflow Execution Failed",
+        "otherOptions": {}
+      },
+      "webhookId": "e7012f49-33dd-4ec1-b95c-8fd5948c6e11"
+    },
+    {
+      "id": "35774e4e-4fe2-4926-b222-a0b5fe67ba9a",
+      "name": "Daily Portfolio Check",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -320,
+        -96
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "9b0f071e-5453-4b4f-a3aa-9aabfaf55702",
+      "name": "Prepare Daily Check",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -96,
+        -96
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "how would you like to rebalance your portfolio",
+              "name": "how would you like to rebalance your portfolio",
+              "value": "Daily automated check: Ensure the portfolio maintains 60% equity and 40% fixed income allocation. Only rebalance if drift exceeds 2%.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "86e485a0-e21f-4129-a831-5c043498e5d9",
+      "name": "Sticky Note 36af2644",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -86,
+        -40
+      ],
+      "parameters": {
+        "content": "## 📊 Portfolio Rebalancing Workflow\n\n**Main Flow:**\n1. Form submission triggers workflow\n2. Input validation and logging\n3. AI agent executes rebalancing\n4. Success/failure handling\n5. Notifications and reporting",
+        "height": 200,
+        "width": 748,
+        "color": 2
+      }
+    },
+    {
+      "id": "1d813c13-58a1-4cb6-972a-de34047b12dd",
+      "name": "Sticky Note eda3f7d6",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        626,
+        168
+      ],
+      "parameters": {
+        "content": "## ⚠️ Error Handling\n\nTwo-tier error system:\n- **Agent errors**: Caught and logged\n- **Critical errors**: Separate error trigger workflow",
+        "height": 200,
+        "width": 748,
+        "color": 4
+      }
+    },
+    {
+      "id": "a1fb25b8-03cb-4e59-a4a5-afd58db83398",
+      "name": "Sticky Note f3a8f63c",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -48,
+        560
+      ],
+      "parameters": {
+        "content": "## 🔄 Automated Daily Check\n\nScheduled trigger runs daily at 9 AM\nto monitor portfolio drift",
+        "height": 200,
+        "width": 524,
+        "color": 5
+      }
+    }
+  ],
+  "connections": {
+    "On form submission": {
+      "main": [
+        [
+          {
+            "node": "Validate Form Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Enhanced AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet in Google Sheets": {
+      "ai_tool": [
+        [
+          {
+            "node": "Enhanced AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many EoD data in Marketstack": {
+      "ai_tool": [
+        [
+          {
+            "node": "Enhanced AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update row in sheet in Google Sheets": {
+      "ai_tool": [
+        [
+          {
+            "node": "Enhanced AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update row in sheet in Google Sheets1": {
+      "ai_tool": [
+        [
+          {
+            "node": "Enhanced AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Push a message in Pushover": {
+      "ai_tool": [
+        [
+          {
+            "node": "Enhanced AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message in Gmail": {
+      "ai_tool": [
+        [
+          {
+            "node": "Enhanced AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Form Input": {
+      "main": [
+        [
+          {
+            "node": "Log Execution Start",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Execution Start": {
+      "main": [
+        [
+          {
+            "node": "Enhanced AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enhanced AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Check Agent Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Agent Success": {
+      "main": [
+        [
+          {
+            "node": "Extract Agent Results",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Agent Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Agent Results": {
+      "main": [
+        [
+          {
+            "node": "Log Execution Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Execution Success": {
+      "main": [
+        [
+          {
+            "node": "Generate Execution Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Execution Report": {
+      "main": [
+        [
+          {
+            "node": "Send Slack Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Agent Error": {
+      "main": [
+        [
+          {
+            "node": "Log Execution Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Execution Error": {
+      "main": [
+        [
+          {
+            "node": "Send Error Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Format Critical Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Critical Error": {
+      "main": [
+        [
+          {
+            "node": "Send Critical Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily Portfolio Check": {
+      "main": [
+        [
+          {
+            "node": "Prepare Daily Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Daily Check": {
+      "main": [
+        [
+          {
+            "node": "Validate Form Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

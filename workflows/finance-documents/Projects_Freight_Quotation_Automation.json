@@ -1,0 +1,316 @@
+{
+  "name": "Projects: Freight Quotation Automation",
+  "nodes": [
+    {
+      "id": "adf45c17-3bc3-4317-91d0-bdb088cbba59",
+      "name": "Sticky Note 77319dde",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        304,
+        688
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "Freight Quotation Architecture",
+            "position": [
+              -220,
+              60
+            ],
+            "parameters": {
+              "width": 540,
+              "height": 260,
+              "content": "FREIGHT QUOTATION AUTOMATION (Levcorp)\n\n1. Gmail Trigger on quote request emails\n2. AI extracts shipment params (weight, dims, mode)\n3. Code node calculates price from rate table\n4. Gmail reply with cost breakdown JSON/CSV\n\nReplace rate values in Code node before production."
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "cd452e13-8178-4f6a-bfb2-7389e91e7fc2",
+      "name": "Gmail: Quote Request",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "filters": {
+          "q": "subject:(quote OR quotation) newer_than:1d"
+        },
+        "options": {
+          "downloadAttachments": false
+        }
+      }
+    },
+    {
+      "id": "cac9c054-c069-476b-b29b-9291de4f4c33",
+      "name": "AI: Extract Shipment Details",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        280,
+        300
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ \"Extract freight shipment parameters from this email. Return mode (air/sea/courier), weight_kg, dimensions, origin, destination, currency.\\n\\nSubject: \" + ($json.subject || \"\") + \"\\nBody: \" + ($json.textPlain || $json.snippet || \"\") }}",
+        "hasOutputParser": true
+      }
+    },
+    {
+      "id": "74823443-9d14-4b19-ba44-ba8aa3c02d24",
+      "name": "GPT-4o Mini",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        304,
+        640
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "options": {
+          "temperature": 0.1
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "457dfa48-5a7a-4428-a089-b675e767e3ab",
+      "name": "Shipment Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        336,
+        432
+      ],
+      "parameters": {
+        "schemaType": "fromJson",
+        "autoFix": true,
+        "jsonSchemaExample": {
+          "mode": "air",
+          "weight_kg": 120,
+          "length_cm": 100,
+          "width_cm": 80,
+          "height_cm": 60,
+          "origin": "US",
+          "destination": "UK",
+          "currency": "USD"
+        }
+      }
+    },
+    {
+      "id": "edce8fc0-c3bc-4c4b-a18a-629945c89086",
+      "name": "Calculate Freight Quote",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const out = $input.first().json.output || $input.first().json;\nconst rates = {\n  air: 4.5,\n  sea: 1.2,\n  courier: 8.0,\n};\nconst margin = 0.18;\nconst usdRate = 1.0;\nconst handling = 75;\nconst mode = (out.mode || 'air').toLowerCase();\nconst weight = Number(out.weight_kg || 0);\nconst base = weight * (rates[mode] || rates.air);\nconst subtotal = base + handling;\nconst withMargin = subtotal * (1 + margin);\nconst total = Math.round(withMargin * usdRate * 100) / 100;\nreturn [{\n  json: {\n    ...out,\n    breakdown: {\n      base_freight: Math.round(base * 100) / 100,\n      handling,\n      margin_pct: margin * 100,\n      margin_amount: Math.round((subtotal * margin) * 100) / 100,\n      total,\n      currency: out.currency || 'USD',\n    },\n    quoted_at: new Date().toISOString(),\n  }\n}];"
+      }
+    },
+    {
+      "id": "a72801e7-ecda-42b8-b142-65b1fb06784e",
+      "name": "Format Reply Email",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        820,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "subj",
+              "name": "reply_subject",
+              "value": "={{ \"Re: \" + ($(\"Gmail: Quote Request\").item.json.subject || \"Freight Quotation\") }}",
+              "type": "string"
+            },
+            {
+              "id": "body",
+              "name": "reply_body",
+              "value": "={{ \"Freight quotation\\n\\nMode: \" + $json.mode + \"\\nWeight (kg): \" + $json.weight_kg + \"\\nBase freight: \" + $json.breakdown.base_freight + \"\\nHandling: \" + $json.breakdown.handling + \"\\nMargin: \" + $json.breakdown.margin_amount + \"\\nTOTAL: \" + $json.breakdown.total + \" \" + $json.breakdown.currency + \"\\n\\nFull breakdown attached as JSON in this email.\" }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "f3b477e4-400f-40a1-a716-ad0864e5c078",
+      "name": "Gmail: Send Quote Reply",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1080,
+        300
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "reply",
+        "messageId": "={{ $(\"Gmail: Quote Request\").item.json.id }}",
+        "emailType": "text",
+        "message": "={{ $json.reply_body + \"\\n\\n\" + JSON.stringify($json.breakdown, null, 2) }}",
+        "options": {}
+      },
+      "webhookId": "8d5e5823-0359-49de-b43d-d5972a9107f2"
+    },
+    {
+      "id": "43d5270a-3909-460f-a45f-316dfd5f74e9",
+      "name": "Log Quote to Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1340,
+        300
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Freight_Quotes"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "quoted_at": "={{ $json.quoted_at }}",
+            "mode": "={{ $json.mode }}",
+            "weight_kg": "={{ $json.weight_kg }}",
+            "total": "={{ $json.breakdown.total }}",
+            "currency": "={{ $json.breakdown.currency }}",
+            "breakdown_json": "={{ JSON.stringify($json.breakdown) }}"
+          }
+        },
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Gmail: Quote Request": {
+      "main": [
+        [
+          {
+            "node": "AI: Extract Shipment Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Extract Shipment Details": {
+      "main": [
+        [
+          {
+            "node": "Calculate Freight Quote",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT-4o Mini": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI: Extract Shipment Details",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Shipment Schema",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shipment Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI: Extract Shipment Details",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Freight Quote": {
+      "main": [
+        [
+          {
+            "node": "Format Reply Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Reply Email": {
+      "main": [
+        [
+          {
+            "node": "Gmail: Send Quote Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: Send Quote Reply": {
+      "main": [
+        [
+          {
+            "node": "Log Quote to Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

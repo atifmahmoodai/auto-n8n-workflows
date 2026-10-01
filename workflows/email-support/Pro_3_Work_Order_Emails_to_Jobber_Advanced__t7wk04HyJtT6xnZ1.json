@@ -1,0 +1,1053 @@
+{
+  "name": "Pro 3 | Work Order Emails to Jobber | Advanced",
+  "nodes": [
+    {
+      "id": "597477fc-b230-4dab-a7f9-2329448679fe",
+      "name": "New Email in Shared Inbox",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        420
+      ],
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {
+          "q": "-label:WO-Processed -label:WO-Review -label:WO-Ignored"
+        },
+        "options": {
+          "downloadAttachments": true,
+          "dataPropertyAttachmentsPrefix": "attachment_"
+        }
+      }
+    },
+    {
+      "id": "a5109fa1-3cc3-4425-8782-ba98ee309b97",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        420
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "76832424-8e6f-4bdc-a496-b8d10dd665c5",
+              "name": "jobber_api_version",
+              "value": "2025-04-16",
+              "type": "string"
+            },
+            {
+              "id": "c6835e74-9f88-4a5c-bc79-b4e05bc84ca4",
+              "name": "drive_parent_folder_id",
+              "value": "PASTE_DRIVE_FOLDER_ID",
+              "type": "string"
+            },
+            {
+              "id": "15a6de27-6e25-472c-aaf9-710225174b62",
+              "name": "sheet_id",
+              "value": "PASTE_GOOGLE_SHEET_ID",
+              "type": "string"
+            },
+            {
+              "id": "53352d34-4271-4167-b84e-0d9787e29920",
+              "name": "label_processed",
+              "value": "PASTE_LABEL_ID_WO_Processed",
+              "type": "string"
+            },
+            {
+              "id": "0918325b-8d5b-4fe8-b7b2-532156ffbc78",
+              "name": "label_review",
+              "value": "PASTE_LABEL_ID_WO_Review",
+              "type": "string"
+            },
+            {
+              "id": "4ad07609-f845-45ee-a646-82c8bff5eec6",
+              "name": "label_ignored",
+              "value": "PASTE_LABEL_ID_WO_Ignored",
+              "type": "string"
+            },
+            {
+              "id": "df6286b8-0388-4f26-8f76-d7d4f486ef92",
+              "name": "pushover_user_key",
+              "value": "PASTE_PUSHOVER_USER_KEY",
+              "type": "string"
+            },
+            {
+              "id": "49716db9-4287-444c-91a3-8bc634b4985b",
+              "name": "sender_allowlist",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "26337762-8994-471a-ab48-9a919b08a4c3",
+              "name": "strict_triage",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "3ad1855c-096c-4e9a-b08b-247b83695283",
+              "name": "set_billing_address",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "dca9187a-b276-4d75-8235-b38e44a05a6e",
+              "name": "max_body_chars",
+              "value": 6000,
+              "type": "number"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "16ac94fd-cf0f-41cf-a0c2-4e7cad46e908",
+      "name": "Triage Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        420
+      ],
+      "parameters": {
+        "jsCode": "// ===== Triage Email =====\n// Runs before any AI call. Works out what the email actually says, and whether it is\n// a work order at all. Auto-replies and newsletters are rejected here for free.\n\nconst CFG = $('Config').first().json;\nconst out = [];\n\n// ---------- helpers ----------\nconst S = (v) => (v == null ? '' : String(v));\nconst squeeze = (s) => S(s).replace(/[ \\t\\u00a0]+/g, ' ').replace(/\\n{3,}/g, '\\n\\n').trim();\n\nfunction pickHeader(j, name) {\n  const want = name.toLowerCase();\n  const bags = [j.headers, j.header, j.payload && j.payload.headers];\n  for (const bag of bags) {\n    if (!bag) continue;\n    if (Array.isArray(bag)) {                       // [{name,value}] form\n      const hit = bag.find((h) => S(h.name).toLowerCase() === want);\n      if (hit) return S(hit.value);\n    } else if (typeof bag === 'object') {           // {From: \"...\"} form\n      for (const k of Object.keys(bag)) if (k.toLowerCase() === want) return S(bag[k]);\n    }\n  }\n  return '';\n}\n// The Gmail node's shape changes with the Simplify toggle and across versions,\n// so read every field from wherever it happens to live.\nfunction field(j, names, headerName) {\n  for (const n of names) {\n    const v = n.split('.').reduce((o, k) => (o == null ? o : o[k]), j);\n    if (v == null) continue;\n    if (typeof v === 'string' && v.trim()) return v;\n    if (typeof v === 'object') {\n      if (Array.isArray(v.value) && v.value[0]) {   // mailparser: {value:[{address,name}],text}\n        const a = v.value[0];\n        return a.name ? a.name + ' <' + a.address + '>' : S(a.address);\n      }\n      if (typeof v.text === 'string' && v.text.trim()) return v.text;\n    }\n  }\n  return headerName ? pickHeader(j, headerName) : '';\n}\n\nfunction htmlToText(html) {\n  return S(html)\n    .replace(/<!--[\\s\\S]*?-->/g, '')\n    .replace(/<(script|style|head)[\\s\\S]*?<\\/\\1>/gi, '')\n    .replace(/<br\\s*\\/?>/gi, '\\n')\n    .replace(/<\\/(p|div|tr|li|h[1-6]|table)>/gi, '\\n')\n    .replace(/<li[^>]*>/gi, '\\u2022 ')\n    .replace(/<td[^>]*>/gi, '\\t')\n    .replace(/<[^>]+>/g, '')\n    .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<')\n    .replace(/&gt;/gi, '>').replace(/&quot;/gi, '\"').replace(/&#39;|&apos;/gi, \"'\")\n    .replace(/&#(\\d+);/g, (m, d) => { const n = +d; return n > 31 && n < 65536 ? String.fromCharCode(n) : ' '; })\n    .replace(/&[a-z]+;/gi, ' ');\n}\n\n// Everything below a reply marker is history, not this request.\nfunction stripQuoted(text) {\n  const lines = S(text).split(/\\r?\\n/);\n  const markers = [\n    /^\\s*-{2,}\\s*Original Message\\s*-{2,}/i,\n    /^\\s*_{5,}\\s*$/,\n    /^\\s*On .{5,80}\\b(wrote|schrieb|a \\u00e9crit)\\s*:\\s*$/i,\n    /^\\s*From:\\s.+\\s*$/i,\n    /^\\s*-{2,}\\s*Forwarded message\\s*-{2,}/i,\n    /^\\s*Sent from my (iPhone|iPad|Samsung|Android)/i,\n    /^\\s*--\\s*$/,\n  ];\n  let cut = lines.length;\n  for (let i = 0; i < lines.length; i++) {\n    if (markers.some((m) => m.test(lines[i]))) {\n      // \"From:\" only counts as a quote marker once we are past the opening lines\n      if (/^\\s*From:/i.test(lines[i]) && i < 2) continue;\n      cut = i; break;\n    }\n  }\n  let kept = lines.slice(0, cut).filter((l) => !/^\\s*>/.test(l));\n  while (kept.length && !kept[kept.length - 1].trim()) kept.pop();\n  const body = squeeze(kept.join('\\n'));\n  return body.length >= 20 ? body : squeeze(S(text).replace(/^\\s*>.*$/gm, ''));\n}\n\n// ---------- the scan ----------\nconst NOISE_SUBJECT = /(out of office|automatic reply|autoreply|auto-reply|undeliverable|delivery (status notification|has failed)|returned mail|read receipt|^read:|mail delivery (subsystem|failed)|unsubscribe confirmation)/i;\nconst NOISE_FROM = /(no-?reply|do-?not-?reply|mailer-daemon|postmaster|bounce|newsletter|notifications?@|marketing@)/i;\nconst WORK_WORDS = /\\b(repair|repairs|install(ation|ed)?|service|servicing|maintenance|fault|faulty|broken|leak(ing)?|blocked|replace(ment)?|quote|quotation|estimate|callout|call-out|work order|job|site visit|survey|inspection|boiler|heating|plumb(ing|er)|electric(al|ian)?|hvac|aircon|air con|roof(ing)?|drain|emergency|urgent|asap|po number|purchase order|reference)\\b/i;\nconst FORM_LINE = /^\\s*(name|client|customer|company|site|address|postcode|zip|phone|tel|telephone|mobile|email|description|details|issue|problem|work required|scope|priority|urgency|due|required by|po|purchase order|reference|ref)\\s*[:\\-]\\s*\\S/im;\n\nfunction findAll(re, text) { const s = new Set(); let m; const r = new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g');\n  while ((m = r.exec(text)) !== null) s.add(m[0]); return [...s]; }\n\nfor (const item of $input.all()) {\n  const j = item.json || {};\n\n  const subject = squeeze(field(j, ['subject', 'Subject'], 'Subject'));\n  const from = squeeze(field(j, ['from', 'From'], 'From'));\n  const toAddr = squeeze(field(j, ['to', 'To'], 'To'));\n  const cc = squeeze(field(j, ['cc', 'Cc'], 'Cc'));\n  const date = field(j, ['date', 'Date', 'internalDate'], 'Date');\n  const msgId = S(j.id || j.messageId || pickHeader(j, 'Message-ID')) || ('nogid-' + subject.slice(0, 40));\n  const threadId = S(j.threadId || '');\n\n  const rawText = field(j, ['text', 'textPlain', 'body.text', 'snippet']);\n  const rawHtml = field(j, ['html', 'textHtml', 'body.html']);\n  const fullText = squeeze(rawText || htmlToText(rawHtml));\n  const bodyForAi = stripQuoted(fullText);\n\n  // attachments: names come from the binary properties the Gmail node created\n  const bin = item.binary || {};\n  const attachments = Object.keys(bin)\n    .filter((k) => /^attachment/i.test(k) || CFG.treat_all_binaries_as_attachments === true)\n    .map((k) => ({ key: k, fileName: S(bin[k].fileName) || k, mimeType: S(bin[k].mimeType), size: Number(bin[k].fileSize || 0) || null }))\n    .filter((a) => !/^image\\/(png|gif)$/i.test(a.mimeType) || a.fileName.length > 12);  // drop tracking pixels / signature logos\n\n  // --- noise gate ---\n  const autoSubmitted = pickHeader(j, 'Auto-Submitted');\n  const precedence = pickHeader(j, 'Precedence');\n  const reasons = [];\n  if (autoSubmitted && !/^no$/i.test(autoSubmitted)) reasons.push('AUTO_SUBMITTED');\n  if (pickHeader(j, 'X-Autoreply') || pickHeader(j, 'X-Autorespond')) reasons.push('AUTORESPONDER');\n  if (/^(bulk|list|auto_reply|junk)$/i.test(precedence)) reasons.push('BULK_PRECEDENCE');\n  if (NOISE_SUBJECT.test(subject)) reasons.push('AUTO_SUBJECT');\n  if (NOISE_FROM.test(from)) reasons.push('NOREPLY_SENDER');\n  if (pickHeader(j, 'List-Unsubscribe') || /\\bunsubscribe\\b/i.test(fullText.slice(-600))) reasons.push('MARKETING');\n\n  // --- work-order signals ---\n  const hay = subject + '\\n' + bodyForAi;\n  const signals = [];\n  if (WORK_WORDS.test(hay)) signals.push('WORK_LANGUAGE');\n  if (FORM_LINE.test(bodyForAi)) signals.push('FORM_FIELDS');\n  if (attachments.length) signals.push('HAS_ATTACHMENT');\n  if (CFG.sender_allowlist) {\n    const allow = S(CFG.sender_allowlist).split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);\n    if (allow.length && allow.some((d) => from.toLowerCase().includes(d))) signals.push('TRUSTED_SENDER');\n  }\n\n  const noisy = reasons.length > 0 && !signals.includes('TRUSTED_SENDER');\n  const enough = CFG.strict_triage === false ? true : signals.length > 0;\n  const isWorkOrder = !noisy && enough && bodyForAi.length >= 15;\n  if (!isWorkOrder && !noisy && bodyForAi.length < 15) reasons.push('EMPTY_BODY');\n  if (!isWorkOrder && !noisy && !enough) reasons.push('NO_WORK_SIGNALS');\n\n  // a stable reference: the same email always produces the same one\n  let h = 0; for (let i = 0; i < msgId.length; i++) { h = ((h << 5) - h + msgId.charCodeAt(i)) | 0; }\n  const ref = 'WO-' + Math.abs(h).toString(36).toUpperCase().padStart(6, '0').slice(0, 6);\n\n  // candidates are used later to prove the model did not invent contact details\n  const senderEmail = (from.match(/[\\w.+-]+@[\\w-]+\\.[\\w.-]+/) || [''])[0].toLowerCase();\n  const candidates = {\n    emails: [...new Set(findAll(/[\\w.+-]+@[\\w-]+\\.[\\w.-]+/g, hay).map((e) => e.toLowerCase()).concat(senderEmail ? [senderEmail] : []))],\n    phones: findAll(/(?:\\+?\\d[\\d\\s().-]{7,}\\d)/g, hay).map((p) => p.trim()),\n    postcodes: findAll(/\\b[A-Z]{1,2}\\d[A-Z\\d]?\\s?\\d[A-Z]{2}\\b/gi, hay).map((p) => p.toUpperCase()),\n  };\n\n  out.push({\n    json: {\n      ref, msgId, threadId, subject, from, senderEmail, to: toAddr, cc, date: S(date),\n      bodyForAi: bodyForAi.slice(0, Number(CFG.max_body_chars) || 6000),\n      bodyTruncated: bodyForAi.length > (Number(CFG.max_body_chars) || 6000),\n      fullText, attachments, candidates,\n      isWorkOrder, triageSignals: signals, triageReasons: reasons,\n    },\n    binary: item.binary,          // carry the original attachments forward\n  });\n}\nreturn out;\n"
+      }
+    },
+    {
+      "id": "b831f5f1-4104-44c5-8ec1-8f4d14549024",
+      "name": "Work Order?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        420
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "dd76538d-f8d0-4af2-af52-7d283c3cc048",
+              "leftValue": "={{ $json.isWorkOrder }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "a6d5e864-6b66-4ed1-9141-02ce33582f0f",
+      "name": "Extract Work Order",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        1100,
+        300
+      ],
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You read one email sent to a trades company's shared inbox and pull out the work order.\n\nReply with JSON only, no prose and no code fences, using exactly these keys:\n{\"title\":\"\",\"client_name\":\"\",\"client_company\":\"\",\"client_email\":\"\",\"client_phone\":\"\",\"site_address\":\"\",\"work_overview\":\"\",\"urgency\":\"\",\"requested_date\":\"\",\"notes\":\"\"}\n\nRules:\n- Use \"\" for anything the email does not tell you. Never use null. Never guess.\n- Copy emails, phone numbers and addresses character for character from the email. If it is not written in the email, leave it empty. Inventing one is worse than leaving it blank.\n- title: a short line an office manager would recognise on a job list, under 80 characters. Describe the work, not the email (\"No hot water, boiler fault F28\" rather than \"Re: urgent\").\n- client_name is the person. client_company is their business, if any.\n- site_address is where the work happens, which may differ from any billing address.\n- work_overview: what needs doing, what is broken, what access or timing constraints are mentioned. Plain sentences. Do not add anything the email does not say.\n- urgency: one of emergency, urgent, normal, low. Judge it from the email's own words.\n- requested_date: YYYY-MM-DD only if the email names a date. Leave empty for \"as soon as possible\".\n- notes: anything a scheduler should know that does not fit above, or \"\"."
+            },
+            {
+              "content": "=Subject: {{ $json.subject }}\nFrom: {{ $json.from }}\nReceived: {{ $json.date }}\nAttachments: {{ $json.attachments.map(a => a.fileName).join(\", \") || \"none\" }}\n\n--- EMAIL ---\n{{ $json.bodyForAi }}"
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "options": {
+          "temperature": 0
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2500,
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "d3267c59-d601-4ac7-95b4-f72ebd0be534",
+      "name": "Validate Extraction",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// ===== Validate Extraction =====\n// The model reads. This code decides. Nothing reaches Jobber that is not either\n// present in the original email or clearly flagged for a human.\n\nconst src = $('Triage Email').first().json;\nconst CFG = $('Config').first().json;\nconst S = (v) => (v == null ? '' : String(v));\nconst clip = (s, n) => (S(s).length > n ? S(s).slice(0, n - 1).trim() + '\\u2026' : S(s).trim());\nconst digits = (s) => S(s).replace(/\\D/g, '');\nconst flags = [];\n\n// ---------- 1. get JSON out of the model, whatever it wrapped it in ----------\nlet raw = $input.first().json;\nlet ai = raw && raw.message ? raw.message.content : (raw.content !== undefined ? raw.content : raw);\nif (typeof ai === 'string') {\n  const txt = ai.replace(/^\\s*```(?:json)?/i, '').replace(/```\\s*$/, '').trim();\n  try { ai = JSON.parse(txt); }\n  catch (e) {\n    const m = txt.match(/\\{[\\s\\S]*\\}/);          // a JSON object hiding inside chatter\n    if (!m) { ai = {}; flags.push('MODEL_OUTPUT_UNREADABLE'); }\n    else {\n      try { ai = JSON.parse(m[0]); flags.push('MODEL_OUTPUT_REPAIRED'); }\n      catch (e2) { ai = {}; flags.push('MODEL_OUTPUT_UNREADABLE'); }\n    }\n  }\n}\nif (!ai || typeof ai !== 'object' || Array.isArray(ai)) { ai = {}; flags.push('MODEL_OUTPUT_UNREADABLE'); }\n\nconst hay = (src.subject + '\\n' + src.bodyForAi).toLowerCase();\n\n// ---------- 2. title ----------\nlet title = clip(ai.title, 100);\nif (!title) { title = clip(src.subject || 'Work order from ' + src.from, 100); flags.push('TITLE_FROM_SUBJECT'); }\n\n// ---------- 3. who the client is ----------\nlet company = clip(ai.client_company, 100);\nlet person = clip(ai.client_name, 100);\nif (!person) {                       // a company name is not a contact name\n  const nameFromHeader = (src.from.match(/^\\s*\"?([^\"<]+?)\"?\\s*</) || [, ''])[1].trim();\n  person = clip(nameFromHeader, 100);\n  if (person) flags.push('CLIENT_NAME_FROM_SENDER');\n}\n// Jobber rejects a client with no last name, so always produce one.\nlet firstName = '', lastName = '';\nif (person) {\n  const parts = person.replace(/\\s+/g, ' ').trim().split(' ');\n  if (parts.length === 1) { lastName = parts[0]; }\n  else { firstName = parts.slice(0, -1).join(' '); lastName = parts[parts.length - 1]; }\n}\nif (!lastName) {\n  lastName = company || clip(src.senderEmail.split('@')[0] || 'Unknown', 60);\n  flags.push('CLIENT_LAST_NAME_SUBSTITUTED');\n}\n// a person the email never mentions is a made-up person\nconst whoHay = (src.subject + '\\n' + src.bodyForAi + '\\n' + src.from).toLowerCase();\nconst nameParts = [firstName, lastName].filter((p) => p && p.length > 2).map((p) => p.toLowerCase());\nif (nameParts.length && !nameParts.some((p) => whoHay.includes(p))) flags.push('CLIENT_NAME_NOT_IN_EMAIL');\n\n// ---------- 4. contact details must actually appear in the email ----------\nlet email = S(ai.client_email).trim().toLowerCase();\nif (email) {\n  const known = (src.candidates.emails || []).map((e) => e.toLowerCase());\n  if (!known.includes(email)) { flags.push('EMAIL_NOT_IN_EMAIL_BODY'); email = ''; }\n}\nif (!email && src.senderEmail) { email = src.senderEmail; flags.push('EMAIL_FROM_SENDER'); }\n\nlet phone = S(ai.client_phone).trim();\nif (phone) {\n  const want = digits(phone);\n  const known = (src.candidates.phones || []).map(digits);\n  const ok = want.length >= 7 && known.some((k) => k === want || k.endsWith(want.slice(-9)) || want.endsWith(k.slice(-9)));\n  if (!ok) { flags.push('PHONE_NOT_IN_EMAIL_BODY'); phone = ''; }\n}\n\n// ---------- 5. address ----------\nlet address = clip(ai.site_address, 200);\nif (address) {\n  const pc = (address.match(/\\b[A-Z]{1,2}\\d[A-Z\\d]?\\s?\\d[A-Z]{2}\\b/i) || [''])[0].toUpperCase().replace(/\\s/g, '');\n  const knownPc = (src.candidates.postcodes || []).map((p) => p.replace(/\\s/g, ''));\n  const words = address.toLowerCase().split(/[\\s,]+/).filter((w) => w.length > 3);\n  const overlap = words.filter((w) => hay.includes(w)).length;\n  // a postcode the email never contains is invented, whether or not the email had one\n  if (pc && !knownPc.includes(pc)) { flags.push('POSTCODE_NOT_IN_EMAIL_BODY'); address = ''; }\n  else if (!overlap && words.length) { flags.push('ADDRESS_NOT_IN_EMAIL_BODY'); address = ''; }\n}\nif (!address) flags.push('NO_SITE_ADDRESS');\n\n// ---------- 6. the work itself ----------\nlet overview = clip(ai.work_overview, 2000);\nif (!overview || overview.length < 15) {\n  overview = clip(src.bodyForAi, 2000);\n  flags.push('OVERVIEW_FROM_RAW_EMAIL');\n}\n\nconst URGENCY = ['emergency', 'urgent', 'normal', 'low'];\nlet urgency = S(ai.urgency).toLowerCase().trim();\nif (!URGENCY.includes(urgency)) { urgency = /\\b(emergency|asap|immediately|urgent)\\b/i.test(hay) ? 'urgent' : 'normal'; }\n\n// ---------- 7. requested date ----------\nlet requested = null;\nif (ai.requested_date) {\n  const d = new Date(S(ai.requested_date).length <= 10 ? S(ai.requested_date) + 'T09:00:00Z' : S(ai.requested_date));\n  const days = (d - new Date()) / 86400000;\n  if (!isNaN(d.getTime()) && days > -2 && days < 366) requested = d.toISOString().slice(0, 10);\n  else flags.push('REQUESTED_DATE_IMPLAUSIBLE');\n}\n\n// ---------- 8. verdict ----------\nconst hard = ['MODEL_OUTPUT_UNREADABLE', 'EMAIL_NOT_IN_EMAIL_BODY', 'PHONE_NOT_IN_EMAIL_BODY',\n              'POSTCODE_NOT_IN_EMAIL_BODY', 'ADDRESS_NOT_IN_EMAIL_BODY', 'OVERVIEW_FROM_RAW_EMAIL',\n              'CLIENT_LAST_NAME_SUBSTITUTED', 'CLIENT_NAME_NOT_IN_EMAIL'];\nconst needsReview = flags.some((f) => hard.includes(f)) || (!address && urgency === 'emergency') || src.bodyTruncated;\nif (src.bodyTruncated) flags.push('EMAIL_TRUNCATED_FOR_MODEL');\n\nreturn [{\n  json: {\n    ...src,\n    extracted: {\n      title, firstName, lastName, company, email, phone, address,\n      overview, urgency, requestedDate: requested,\n      modelNotes: clip(ai.notes, 300),\n    },\n    flags, needsReview,\n    status: needsReview ? 'NEEDS_REVIEW' : 'AUTO_OK',\n  },\n  binary: $('Triage Email').first().binary,\n}];\n"
+      }
+    },
+    {
+      "id": "8712691a-846d-4344-b45f-db2af11d808b",
+      "name": "Create Job Folder",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1540,
+        300
+      ],
+      "parameters": {
+        "resource": "folder",
+        "operation": "create",
+        "name": "={{ $json.ref }} {{ ($json.extracted.company || $json.extracted.lastName).replace(/[\\\\/:*?\"<>|]/g, \"-\").slice(0,60) }}",
+        "driveId": {
+          "__rl": true,
+          "value": "My Drive",
+          "mode": "list"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.drive_parent_folder_id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2500
+    },
+    {
+      "id": "a54f8273-07f8-4060-90d6-8aaedb3935d6",
+      "name": "Build PDF + Split Files",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// ===== Build PDF + Split Files =====\n// Writes a real PDF with no library, because an n8n Code node cannot install one.\n// Then emits one item per file (the snapshot first, then the original attachments)\n// so the Drive node can upload them one at a time.\n\nconst v = $('Validate Extraction').first().json;\nconst srcBinary = $('Triage Email').first().binary || {};\nconst folder = $input.first().json || {};\nconst CFG = $('Config').first().json;\nconst e = v.extracted;\n\n// ---------------- PDF writer ----------------\nconst PAGE_W = 595, PAGE_H = 842, MARGIN = 50;\nconst BODY_SIZE = 9, BODY_LEAD = 12;\nconst COURIER_W = 0.6;                                   // Courier is monospaced: exact wrapping\nconst MAX_CHARS = Math.floor((PAGE_W - MARGIN * 2) / (BODY_SIZE * COURIER_W));   // 91\nconst WIN = { 0x2018: 0x91, 0x2019: 0x92, 0x201c: 0x93, 0x201d: 0x94, 0x2013: 0x96,\n              0x2014: 0x97, 0x2022: 0x95, 0x20ac: 0x80, 0x2026: 0x85, 0x2122: 0x99 };\n\nfunction toWinAnsi(s) {\n  let out = '';\n  for (const ch of String(s == null ? '' : s)) {\n    const c = ch.codePointAt(0);\n    if (c === 9) { out += '    '; continue; }\n    if (c < 32) continue;\n    if (c < 256) { out += ch; continue; }\n    out += WIN[c] !== undefined ? String.fromCharCode(WIN[c]) : '?';\n  }\n  return out;\n}\nconst esc = (s) => toWinAnsi(s).replace(/\\\\/g, '\\\\\\\\').replace(/\\(/g, '\\\\(').replace(/\\)/g, '\\\\)');\n\nfunction wrap(text, width) {\n  const lines = [];\n  for (const para of String(text == null ? '' : text).split(/\\r?\\n/)) {\n    if (!para.trim()) { lines.push(''); continue; }\n    let line = '';\n    for (const word of para.split(/\\s+/)) {\n      if (word.length > width) {                          // a URL or a long token\n        if (line) { lines.push(line); line = ''; }\n        for (let i = 0; i < word.length; i += width) lines.push(word.slice(i, i + width));\n        continue;\n      }\n      if (!line) line = word;\n      else if ((line + ' ' + word).length <= width) line += ' ' + word;\n      else { lines.push(line); line = word; }\n    }\n    if (line) lines.push(line);\n  }\n  return lines;\n}\n\n// A document is a flat list of drawing instructions; pagination happens afterwards.\nconst doc = [];\nconst push = (font, size, text, lead, gap) => doc.push({ font, size, text: String(text == null ? '' : text), lead: lead || BODY_LEAD, gap: gap || 0 });\nconst rule = () => doc.push({ rule: true, lead: 8, gap: 4 });\nconst heading = (t) => { doc.push({ font: 'F2', size: 11, text: t, lead: 15, gap: 10 }); rule(); };\nconst kv = (label, value) => {\n  if (value === null || value === undefined || value === '') return;\n  const lines = wrap(String(value), MAX_CHARS - 20);\n  push('F2', BODY_SIZE, label, BODY_LEAD);\n  doc[doc.length - 1].inlineValue = lines[0] || '';\n  for (let i = 1; i < lines.length; i++) push('F3', BODY_SIZE, '                    ' + lines[i], BODY_LEAD);\n};\n\nconst nowIso = new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC';\nfor (const l of wrap(v.ref + '  ' + e.title, 46)) push('F2', 15, l, 19);\npush('F1', 9, 'Snapshot taken ' + nowIso + ' \\u00b7 ' + (v.status === 'AUTO_OK' ? 'Extracted automatically' : 'FLAGGED FOR REVIEW'), 14, 2);\nrule();\n\nheading('WORK ORDER');\nkv('Client', [e.firstName, e.lastName].filter(Boolean).join(' '));\nkv('Company', e.company);\nkv('Email', e.email);\nkv('Phone', e.phone);\nkv('Site address', e.address);\nkv('Urgency', e.urgency.toUpperCase());\nkv('Requested date', e.requestedDate);\nkv('Checks', v.flags.length ? v.flags.join(', ') : 'none raised');\n\nheading('WORK OVERVIEW');\nfor (const l of wrap(e.overview, MAX_CHARS)) push('F3', BODY_SIZE, l);\n\nheading('ORIGINAL EMAIL');\nkv('From', v.from);\nkv('To', v.to);\nkv('Cc', v.cc);\nkv('Date', v.date);\nkv('Subject', v.subject);\nkv('Gmail id', v.msgId);\nconst names = (v.attachments || []).map((a) => a.fileName);\nkv('Attachments', names.length ? names.join(', ') : 'none');\npush('F1', 9, '', 8);\nfor (const l of wrap(v.fullText || '(no readable body)', MAX_CHARS)) push('F3', BODY_SIZE, l);\n\n// ---------------- paginate ----------------\nconst TOP = PAGE_H - MARGIN, BOTTOM = MARGIN + 24;\nconst pages = []; let cur = []; let y = TOP;\nfor (const op of doc) {\n  const need = (op.gap || 0) + (op.lead || BODY_LEAD);\n  if (y - need < BOTTOM) { pages.push(cur); cur = []; y = TOP; }\n  y -= (op.gap || 0);\n  cur.push({ ...op, y: y });\n  y -= (op.lead || BODY_LEAD);\n}\npages.push(cur);\n\n// ---------------- emit ----------------\nfunction contentFor(ops, pageNo, total) {\n  let s = '';\n  for (const op of ops) {\n    if (op.rule) { s += '0.75 w 0.6 G ' + MARGIN + ' ' + op.y.toFixed(2) + ' m ' + (PAGE_W - MARGIN) + ' ' + op.y.toFixed(2) + ' l S 0 G\\n'; continue; }\n    if (op.text !== '') s += 'BT /' + op.font + ' ' + op.size + ' Tf ' + MARGIN + ' ' + op.y.toFixed(2) + ' Td (' + esc(op.text) + ') Tj ET\\n';\n    if (op.inlineValue) s += 'BT /F3 ' + op.size + ' Tf ' + (MARGIN + 110) + ' ' + op.y.toFixed(2) + ' Td (' + esc(op.inlineValue) + ') Tj ET\\n';\n  }\n  s += 'BT /F1 8 Tf ' + MARGIN + ' ' + (MARGIN - 6) + ' Td (' + esc(v.ref + '  \\u00b7  page ' + pageNo + ' of ' + total) + ') Tj ET\\n';\n  return s;\n}\n\nconst objs = [];\nobjs[1] = '<< /Type /Catalog /Pages 2 0 R >>';\nconst firstPageObj = 6;\nconst kids = pages.map((_, i) => (firstPageObj + i * 2) + ' 0 R').join(' ');\nobjs[2] = '<< /Type /Pages /Kids [' + kids + '] /Count ' + pages.length + ' >>';\nobjs[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';\nobjs[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';\nobjs[5] = '<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>';\npages.forEach((ops, i) => {\n  const pageNum = firstPageObj + i * 2, contentNum = pageNum + 1;\n  objs[pageNum] = '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + PAGE_W + ' ' + PAGE_H + ']'\n    + ' /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents ' + contentNum + ' 0 R >>';\n  const stream = contentFor(ops, i + 1, pages.length);\n  objs[contentNum] = '<< /Length ' + Buffer.byteLength(stream, 'latin1') + ' >>\\nstream\\n' + stream + 'endstream';\n});\n\nlet pdf = '%PDF-1.4\\n%\\xe2\\xe3\\xcf\\xd3\\n';\nconst offsets = [];\nfor (let i = 1; i < objs.length; i++) {\n  offsets[i] = Buffer.byteLength(pdf, 'latin1');\n  pdf += i + ' 0 obj\\n' + objs[i] + '\\nendobj\\n';\n}\nconst xrefAt = Buffer.byteLength(pdf, 'latin1');\npdf += 'xref\\n0 ' + objs.length + '\\n0000000000 65535 f \\n';\nfor (let i = 1; i < objs.length; i++) pdf += String(offsets[i]).padStart(10, '0') + ' 00000 n \\n';\npdf += 'trailer\\n<< /Size ' + objs.length + ' /Root 1 0 R >>\\nstartxref\\n' + xrefAt + '\\n%%EOF\\n';\n\n// ---------------- files out ----------------\nconst safe = (n) => String(n || 'file').replace(/[\\\\/:*?\"<>|\\u0000-\\u001f]/g, '_').replace(/\\s+/g, ' ').trim().slice(0, 90) || 'file';\nconst folderId = folder.id || CFG.drive_parent_folder_id;\nconst folderLink = folder.id ? 'https://drive.google.com/drive/folders/' + folder.id : '';\nconst common = { ref: v.ref, folderId, folderLink, needsReview: v.needsReview };\n\nconst out = [{\n  json: { ...common, fileName: v.ref + ' email snapshot.pdf', kind: 'snapshot', pages: pages.length },\n  binary: { data: { data: Buffer.from(pdf, 'latin1').toString('base64'),\n    mimeType: 'application/pdf', fileName: v.ref + ' email snapshot.pdf', fileExtension: 'pdf' } },\n}];\n\n(v.attachments || []).forEach((a, i) => {\n  const b = srcBinary[a.key];\n  if (!b || !b.data) return;\n  const name = v.ref + ' ' + safe(a.fileName);\n  out.push({ json: { ...common, fileName: name, kind: 'attachment', index: i },\n             binary: { data: { ...b, fileName: name } } });\n});\n\nreturn out;\n"
+      }
+    },
+    {
+      "id": "3d277e18-9639-4777-a05a-a6200c3d9e3a",
+      "name": "Upload Files",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1980,
+        300
+      ],
+      "parameters": {
+        "resource": "file",
+        "operation": "upload",
+        "name": "={{ $json.fileName }}",
+        "driveId": {
+          "__rl": true,
+          "value": "My Drive",
+          "mode": "list"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $json.folderId }}",
+          "mode": "id"
+        },
+        "inputDataFieldName": "data",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2500
+    },
+    {
+      "id": "5a085423-f2f4-4eac-8ff5-17fc8964936b",
+      "name": "Collect Files",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        2200,
+        300
+      ],
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "files",
+        "options": {}
+      }
+    },
+    {
+      "id": "2960ae16-184c-4d9f-9f52-dde9865564ef",
+      "name": "Build Jobber Documents",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// ===== Build Jobber Documents =====\n// Turns the checked extraction into (a) a client search and (b) a client create,\n// plus the instructions text the office will actually read in Jobber.\n\nconst v = $('Validate Extraction').first().json;\nconst CFG = $('Config').first().json;\nconst files = ($input.first().json.files || []).filter(Boolean);\nconst e = v.extracted;\n\n// --- GraphQL literal writer -------------------------------------------------\n// Values are written as literals, never concatenated as raw text. Strings go\n// through JSON.stringify, whose escaping rules match GraphQL's, so a client\n// called  Bob\") { x } #  lands in Jobber as that exact name instead of\n// rewriting the query.\nfunction gql(v) {\n  if (v === null || v === undefined) return 'null';\n  if (typeof v === 'boolean') return v ? 'true' : 'false';\n  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'null';\n  if (Array.isArray(v)) return '[' + v.map(gql).join(', ') + ']';\n  if (typeof v === 'object') {\n    if (v.__enum !== undefined) return String(v.__enum).replace(/[^A-Za-z0-9_]/g, '');\n    const keys = Object.keys(v).filter((k) => v[k] !== undefined && v[k] !== null && v[k] !== '');\n    return '{' + keys.map((k) => k.replace(/[^A-Za-z0-9_]/g, '') + ': ' + gql(v[k])).join(', ') + '}';\n  }\n  return JSON.stringify(String(v));\n}\n\nconst S = (v2) => (v2 == null ? '' : String(v2));\n// Drive replaces the item with its own response, so the folder link comes from the\n// node that built it, and each file's kind is read back off its name.\nconst folderLink = S($('Build PDF + Split Files').first().json.folderLink);\nconst named = files.map((f) => {\n  const name = S(f.name || f.fileName);\n  return { id: S(f.id), name, kind: /snapshot/i.test(name) ? 'snapshot' : 'attachment' };\n});\nconst snapshot = named.find((f) => f.kind === 'snapshot');\nconst fileLines = named.map((f) => '  - ' + f.name + (f.id ? '  https://drive.google.com/file/d/' + f.id + '/view' : ''));\n\n// ---------- what a human sees inside Jobber ----------\nconst instructions = [\n  e.overview,\n  '',\n  '--- intake details ---',\n  'Reference: ' + v.ref,\n  'Urgency: ' + e.urgency.toUpperCase(),\n  e.requestedDate ? 'Requested date: ' + e.requestedDate : '',\n  e.address ? 'Site address: ' + e.address : 'Site address: NOT GIVEN IN EMAIL',\n  'From: ' + v.from,\n  'Received: ' + (v.date || 'unknown'),\n  'Subject: ' + v.subject,\n  folderLink ? 'Original email + attachments: ' + folderLink : '',\n  fileLines.length ? 'Files:' : '',\n  ...fileLines,\n  v.flags.length ? 'Automatic checks raised: ' + v.flags.join(', ') : 'Automatic checks: none raised',\n].filter((l) => l !== '').join('\\n').slice(0, 8000);\n\n// ---------- client search ----------\nconst searchTerm = e.email || [e.firstName, e.lastName].filter(Boolean).join(' ') || e.company;\nconst findQuery = 'query FindClient {\\n'\n  + '  clients(first: 5, searchTerm: ' + gql(searchTerm) + ') {\\n'\n  + '    totalCount\\n'\n  + '    nodes { id firstName lastName companyName jobberWebUri emails { address } }\\n'\n  + '  }\\n}';\n\n// ---------- client create (used only if the search finds nobody) ----------\nconst postcode = (e.address.match(/\\b[A-Z]{1,2}\\d[A-Z\\d]?\\s?\\d[A-Z]{2}\\b/i) || [''])[0];\nconst street = e.address.replace(postcode, '').replace(/[,\\s]+$/, '').trim();\nconst clientInput = {\n  firstName: e.firstName,\n  lastName: e.lastName,\n  companyName: e.company,\n  emails: e.email ? [{ description: { __enum: 'MAIN' }, primary: true, address: e.email }] : undefined,\n  phones: e.phone ? [{ description: { __enum: 'MAIN' }, primary: true, number: e.phone }] : undefined,\n  billingAddress: (CFG.set_billing_address !== false && e.address)\n    ? { street1: street.slice(0, 120), postalCode: postcode || undefined } : undefined,\n};\nconst createClientQuery = 'mutation CreateClient {\\n'\n  + '  clientCreate(input: ' + gql(clientInput) + ') {\\n'\n  + '    client { id firstName lastName companyName jobberWebUri }\\n'\n  + '    userErrors { message path }\\n'\n  + '  }\\n}';\n\nreturn [{\n  json: {\n    ...v,\n    files: named,\n    folderLink,\n    snapshotLink: snapshot && snapshot.id ? 'https://drive.google.com/file/d/' + snapshot.id + '/view' : '',\n    instructions,\n    searchTerm,\n    findBody: { query: findQuery },\n    createClientBody: { query: createClientQuery },\n  },\n}];\n"
+      }
+    },
+    {
+      "id": "f097c927-fa64-4990-a3a3-46804fe5d9b1",
+      "name": "Jobber: Find Client",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2640,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.getjobber.com/api/graphql",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-JOBBER-GRAPHQL-VERSION",
+              "value": "={{ $('Config').first().json.jobber_api_version }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.findBody) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2500
+    },
+    {
+      "id": "ab748779-07e4-4cf3-94d1-fa9cc6fc4b2d",
+      "name": "Choose Client",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2860,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// ===== Choose Client =====\n// Reads the search result. Jobber returns HTTP 200 even when it refuses the query,\n// so top-level errors are checked here rather than trusted.\nconst ctx = $('Build Jobber Documents').first().json;\nconst res = $input.first().json || {};\nconst flags = [...(ctx.flags || [])];\nconst S = (v) => (v == null ? '' : String(v));\n\nlet clientId = '';\nlet clientName = '';\nlet clientWebUri = '';\nlet searchWorked = true;\n\nif (Array.isArray(res.errors) && res.errors.length) {\n  searchWorked = false;\n  const msg = S(res.errors[0].message);\n  // e.g. the searchTerm argument not existing on this API version\n  flags.push(/argument|field|unknown/i.test(msg) ? 'CLIENT_SEARCH_UNSUPPORTED' : 'CLIENT_SEARCH_FAILED');\n} else {\n  const nodes = ((res.data || {}).clients || {}).nodes || [];\n  const wantEmail = S(ctx.extracted.email).toLowerCase();\n  const wantName = [ctx.extracted.firstName, ctx.extracted.lastName].filter(Boolean).join(' ').toLowerCase();\n  const wantCompany = S(ctx.extracted.company).toLowerCase();\n\n  const byEmail = wantEmail && nodes.find((n) => (n.emails || []).some((x) => S(x.address).toLowerCase() === wantEmail));\n  const byName = !byEmail && wantName && nodes.find((n) => [n.firstName, n.lastName].filter(Boolean).join(' ').toLowerCase() === wantName);\n  const byCompany = !byEmail && !byName && wantCompany && nodes.find((n) => S(n.companyName).toLowerCase() === wantCompany);\n  const hit = byEmail || byName || byCompany;\n\n  if (hit) {\n    clientId = S(hit.id);\n    clientName = [hit.firstName, hit.lastName].filter(Boolean).join(' ') || S(hit.companyName);\n    clientWebUri = S(hit.jobberWebUri);\n    if (!byEmail) flags.push('CLIENT_MATCHED_ON_NAME_ONLY');   // a human should confirm this is the same person\n  } else if (nodes.length) {\n    flags.push('SIMILAR_CLIENTS_EXIST');                        // search found people, none of them a confident match\n  }\n}\n\nreturn [{\n  json: {\n    ...ctx,\n    clientId, clientName, clientWebUri,\n    clientFound: !!clientId,\n    searchWorked,\n    flags,\n    needsReview: ctx.needsReview || flags.includes('CLIENT_MATCHED_ON_NAME_ONLY')\n      || flags.includes('SIMILAR_CLIENTS_EXIST') || !searchWorked,\n  },\n}];\n"
+      }
+    },
+    {
+      "id": "7fdc26bf-3431-4702-9f91-4cfc04e9a719",
+      "name": "Client Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3080,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "5685bc94-f7a0-4ea5-b38d-192f8cee625c",
+              "leftValue": "={{ $json.clientFound }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "3a45306f-773f-4571-b5af-26155b77f30b",
+      "name": "Build Request Document",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3520,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// ===== Build Request Document =====\n// Reached from both branches: the client was already in Jobber, or we just created one.\nconst ctx = $('Choose Client').first().json;\nconst inbound = $input.first().json || {};\nconst flags = [...(ctx.flags || [])];\n\n// --- GraphQL literal writer -------------------------------------------------\n// Values are written as literals, never concatenated as raw text. Strings go\n// through JSON.stringify, whose escaping rules match GraphQL's, so a client\n// called  Bob\") { x } #  lands in Jobber as that exact name instead of\n// rewriting the query.\nfunction gql(v) {\n  if (v === null || v === undefined) return 'null';\n  if (typeof v === 'boolean') return v ? 'true' : 'false';\n  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'null';\n  if (Array.isArray(v)) return '[' + v.map(gql).join(', ') + ']';\n  if (typeof v === 'object') {\n    if (v.__enum !== undefined) return String(v.__enum).replace(/[^A-Za-z0-9_]/g, '');\n    const keys = Object.keys(v).filter((k) => v[k] !== undefined && v[k] !== null && v[k] !== '');\n    return '{' + keys.map((k) => k.replace(/[^A-Za-z0-9_]/g, '') + ': ' + gql(v[k])).join(', ') + '}';\n  }\n  return JSON.stringify(String(v));\n}\n\nconst S = (v) => (v == null ? '' : String(v));\n// If the client step failed there is nothing to create, but the HTTP node still runs.\n// Sending the cheapest possible query keeps the run alive so Check Result can report\n// the real reason instead of n8n throwing on an empty body.\nconst NOOP = { query: 'query NoOp { account { id } }' };\nlet clientId = S(ctx.clientId);\nlet clientName = S(ctx.clientName);\nlet clientWebUri = S(ctx.clientWebUri);\nlet created = false;\n\nif (!clientId) {                                   // we came through clientCreate\n  const payload = ((inbound.data || {}).clientCreate) || {};\n  const userErrors = payload.userErrors || [];\n  if (Array.isArray(inbound.errors) && inbound.errors.length) {\n    return [{ json: { ...ctx, flags: [...flags, 'CLIENT_CREATE_REJECTED'], needsReview: true,\n      fatal: 'clientCreate: ' + S(inbound.errors[0].message), requestBody: NOOP } }];\n  }\n  if (userErrors.length) {\n    return [{ json: { ...ctx, flags: [...flags, 'CLIENT_CREATE_REJECTED'], needsReview: true,\n      fatal: 'clientCreate: ' + userErrors.map((u) => S(u.message) + ' (' + (u.path || []).join('.') + ')').join('; '), requestBody: NOOP } }];\n  }\n  const c = payload.client || {};\n  clientId = S(c.id);\n  clientName = [c.firstName, c.lastName].filter(Boolean).join(' ') || S(c.companyName);\n  clientWebUri = S(c.jobberWebUri);\n  created = true;\n  if (!clientId) {\n    return [{ json: { ...ctx, flags: [...flags, 'CLIENT_CREATE_EMPTY'], needsReview: true,\n      fatal: 'clientCreate returned no client id', requestBody: NOOP } }];\n  }\n}\n\nconst input = {\n  clientId,\n  title: ctx.extracted.title,\n  assessment: { instructions: ctx.instructions },\n};\nconst query = 'mutation CreateRequest {\\n'\n  + '  requestCreate(input: ' + gql(input) + ') {\\n'\n  + '    request { id title }\\n'\n  + '    userErrors { message path }\\n'\n  + '  }\\n}';\n\nreturn [{ json: { ...ctx, clientId, clientName, clientWebUri, clientCreated: created, flags,\n  requestBody: { query }, fatal: '' } }];\n"
+      }
+    },
+    {
+      "id": "180c24c9-ce0b-4333-afa3-b8e3a7a6471f",
+      "name": "Jobber: Create Client",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3300,
+        420
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.getjobber.com/api/graphql",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-JOBBER-GRAPHQL-VERSION",
+              "value": "={{ $('Config').first().json.jobber_api_version }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Choose Client').first().json.createClientBody) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2500
+    },
+    {
+      "id": "0c5f631b-368b-4443-b3a3-bd3e3c3fdc3e",
+      "name": "Label: Not a Work Order",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1100,
+        620
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "addLabels",
+        "messageId": "={{ $json.msgId }}",
+        "labelIds": "={{ [$('Config').first().json.label_ignored] }}"
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "ff7954ef-f182-4a00-9412-57db4f323f20"
+    },
+    {
+      "id": "de07658a-50ff-4f25-9ccb-df22d322af7d",
+      "name": "Loop Over Items",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        440,
+        420
+      ],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "8e227721-412f-4895-af82-7db261c79691",
+      "name": "Jobber: Create Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3740,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.getjobber.com/api/graphql",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-JOBBER-GRAPHQL-VERSION",
+              "value": "={{ $('Config').first().json.jobber_api_version }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.requestBody) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2500
+    },
+    {
+      "id": "d2784089-1702-41de-ae5c-2605e282c4ae",
+      "name": "Check Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3960,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// ===== Check Result =====\n// Jobber answers 200 even when it refuses the work, so success is proved here,\n// not assumed. Everything downstream (the log row, the label, the alert) is decided\n// from this one node.\nconst ctx = $('Build Request Document').first().json;\nconst CFG = $('Config').first().json;\nconst res = $input.first().json || {};\nconst S = (v) => (v == null ? '' : String(v));\nconst flags = [...(ctx.flags || [])];\n\nlet requestId = ''; let problem = S(ctx.fatal);\n\nif (!problem) {\n  if (Array.isArray(res.errors) && res.errors.length) {\n    problem = 'requestCreate: ' + res.errors.map((e) => S(e.message)).join('; ');\n    flags.push('JOBBER_REJECTED_QUERY');\n  } else {\n    const payload = ((res.data || {}).requestCreate) || {};\n    const userErrors = payload.userErrors || [];\n    if (userErrors.length) {\n      problem = 'requestCreate: ' + userErrors.map((u) => S(u.message) + ' (' + (u.path || []).join('.') + ')').join('; ');\n      flags.push('JOBBER_REJECTED_REQUEST');\n    } else if (payload.request && payload.request.id) {\n      requestId = S(payload.request.id);\n    } else {\n      problem = 'requestCreate returned no request';\n      flags.push('JOBBER_EMPTY_RESPONSE');\n    }\n  }\n}\n\nconst ok = !problem && !!requestId;\nconst status = !ok ? 'FAILED' : (ctx.needsReview || flags.length ? 'NEEDS_REVIEW' : 'AUTO_OK');\nconst cost = ((res.extensions || {}).cost || {});\nconst e = ctx.extracted || {};\n\nconst alert = [\n  status === 'FAILED' ? 'WORK ORDER FAILED' : 'Work order needs a look',\n  ctx.ref + ' \\u00b7 ' + S(e.title),\n  'Client: ' + (S(ctx.clientName) || S(e.lastName)) + (ctx.clientCreated ? ' (new in Jobber)' : ''),\n  e.urgency && e.urgency !== 'normal' ? 'Urgency: ' + S(e.urgency).toUpperCase() : '',\n  problem ? 'Problem: ' + problem : 'Checks: ' + flags.join(', '),\n  ctx.folderLink ? ctx.folderLink : '',\n].filter(Boolean).join('\\n').slice(0, 900);\n\n// one flat row for the sheet, in a fixed column order\nconst row = {\n  logged_at: new Date().toISOString(),\n  ref: ctx.ref,\n  status,\n  title: S(e.title),\n  client: S(ctx.clientName) || [e.firstName, e.lastName].filter(Boolean).join(' '),\n  company: S(e.company),\n  email: S(e.email),\n  phone: S(e.phone),\n  site_address: S(e.address),\n  urgency: S(e.urgency),\n  requested_date: S(e.requestedDate),\n  from: S(ctx.from),\n  subject: S(ctx.subject),\n  gmail_id: S(ctx.msgId),\n  jobber_request_id: requestId,\n  jobber_client_id: S(ctx.clientId),\n  drive_folder: S(ctx.folderLink),\n  snapshot_pdf: S(ctx.snapshotLink),\n  attachments: (ctx.files || []).filter((f) => f.kind === 'attachment').length,\n  flags: flags.join('|'),\n  problem: problem,\n};\n\n// The row sits at the top level so the Sheets node can map it straight onto the\n// header row; everything else the later nodes need rides alongside it.\nreturn [{\n  json: {\n    ...row,\n    ok,\n    threadId: ctx.threadId,\n    msgId: ctx.msgId,\n    labelIds: [ok && status === 'AUTO_OK' ? S(CFG.label_processed) : S(CFG.label_review)].filter(Boolean),\n    jobber: { requestId, clientId: S(ctx.clientId), clientName: S(ctx.clientName),\n              clientCreated: !!ctx.clientCreated, clientWebUri: S(ctx.clientWebUri),\n              queryCost: cost.actualQueryCost || null, budgetLeft: (cost.throttleStatus || {}).currentlyAvailable || null },\n    alert,\n    needsAlert: !ok || status === 'NEEDS_REVIEW',\n    flagList: flags,\n    row,\n  },\n}];\n"
+      }
+    },
+    {
+      "id": "8bedbf26-80e9-444d-a638-8e2e6cc6e7dc",
+      "name": "Log to Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        4180,
+        300
+      ],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheet_id }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Work Orders",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2500,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "b8e95d08-7e9f-4970-ae45-6747e6969967",
+      "name": "Label the Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        4400,
+        300
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "addLabels",
+        "messageId": "={{ $('Check Result').first().json.msgId }}",
+        "labelIds": "={{ $('Check Result').first().json.labelIds }}"
+      },
+      "onError": "continueRegularOutput",
+      "webhookId": "1a75c0d0-edbf-457b-a4fa-0fb51fe194fd"
+    },
+    {
+      "id": "58e7690e-055e-4688-a861-1e19800ef441",
+      "name": "Needs a Human?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4620,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ffd2c197-4c9a-4a02-b428-109d40ef8135",
+              "leftValue": "={{ $('Check Result').first().json.needsAlert }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "b1771197-fe59-4336-a9b1-a17502c12370",
+      "name": "Send Alert",
+      "type": "n8n-nodes-base.pushover",
+      "typeVersion": 1,
+      "position": [
+        4840,
+        200
+      ],
+      "parameters": {
+        "userKey": "={{ $('Config').first().json.pushover_user_key }}",
+        "message": "={{ $('Check Result').first().json.alert }}",
+        "priority": 0,
+        "additionalFields": {
+          "title": "={{ $('Check Result').first().json.status === 'FAILED' ? 'Work order FAILED' : 'Work order needs review' }}"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "5e95cd26-df6d-47c5-aa51-bb0c5b4717ba",
+      "name": "Sticky Note e7f558a8",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -60,
+        -120
+      ],
+      "parameters": {
+        "content": "## Work order emails → Jobber\nEvery email in the shared inbox is read, checked, snapshotted as a PDF, and raised\nin Jobber as a request against the right client. Attachments travel with it.\n\n**Set up in this order**\n1. Credentials: Gmail, OpenAI, Google Drive, Google Sheets, Pushover, and an\n   **OAuth2 API** credential for Jobber (see the Jobber note on the right).\n2. In Gmail create three labels: `WO-Processed`, `WO-Review`, `WO-Ignored`.\n   Get their IDs with a one-off Gmail node (Resource: Label → Get Many) and paste\n   them into **Config**. Label names will not work here, only IDs.\n3. Create a Drive folder for the archive and a Google Sheet with a tab called\n   **Work Orders**. Paste both IDs into Config.\n4. The sheet's first row must be exactly these 21 headers, in this order:\n   `logged_at, ref, status, title, client, company, email, phone, site_address,\n   urgency, requested_date, from, subject, gmail_id, jobber_request_id,\n   jobber_client_id, drive_folder, snapshot_pdf, attachments, flags, problem`\n5. Activate. The trigger polls every minute and ignores anything already labelled.",
+        "color": 4,
+        "width": 820,
+        "height": 440
+      }
+    },
+    {
+      "id": "7ac93279-3bc2-4842-a443-a99963030b3e",
+      "name": "Sticky Note e595bf9a",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        620,
+        640
+      ],
+      "parameters": {
+        "content": "## Nothing reaches the model unchecked\n**Triage Email** reads the message whatever shape the Gmail node returns it in,\nturns HTML into text, cuts quoted replies and signatures, and decides whether this\nis a work order at all. Out-of-office replies, bounces and newsletters stop here\nand cost nothing.\n\n**Loop Over Items** processes one email at a time. That is what makes\n`$('Node').first()` safe further down, and stops one email's attachments being\nmixed with another's.",
+        "color": 5,
+        "width": 620,
+        "height": 280
+      }
+    },
+    {
+      "id": "0eb1effb-669e-418e-8924-d6597b6938e4",
+      "name": "Sticky Note 18e79893",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1280,
+        20
+      ],
+      "parameters": {
+        "content": "## The model reads, the code decides\n**Validate Extraction** checks the model's answer against the email itself.\nAny email address, phone number or postcode that is not in the original text is\nremoved and flagged. A client name the email never mentions is flagged. Missing\nfields fall back to the subject line and the sender.\n\nNothing is ever blocked: a flagged work order still reaches Jobber, marked\nNEEDS_REVIEW, labelled `WO-Review` and pushed to your phone.",
+        "color": 5,
+        "width": 620,
+        "height": 250
+      }
+    },
+    {
+      "id": "35dd00dc-bbb7-409b-b047-51d7e797945c",
+      "name": "Sticky Note 85e95b53",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1700,
+        20
+      ],
+      "parameters": {
+        "content": "## The PDF is built here, not bought\n**Build PDF + Split Files** writes a real PDF in plain JavaScript, because an n8n\nCode node cannot install a library. The snapshot keeps the full original email\nincluding the quoted history, so the archive is complete even though the model\nonly ever saw the trimmed version.\n\nThen it emits one item per file so Drive can upload them one at a time, and\n**Collect Files** puts them back into a single item.",
+        "color": 6,
+        "width": 620,
+        "height": 250
+      }
+    },
+    {
+      "id": "e827f5b7-ded4-4bc2-8630-355cbe1b845b",
+      "name": "Sticky Note b08065d0",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2600,
+        540
+      ],
+      "parameters": {
+        "content": "## Jobber\n**Credential:** Type *OAuth2 API*, Grant Type *Authorization Code*.\nAuthorize URL `https://api.getjobber.com/api/oauth/authorize`\nAccess Token URL `https://api.getjobber.com/api/oauth/token`\nClient ID/Secret come from your Jobber Developer Center app. Access tokens last\n60 minutes; n8n refreshes them for you.\n\n**Two things to check in GraphiQL once, against your API version:**\n1. `clients(first: 5, searchTerm: \"...\")` — if `searchTerm` is not accepted on\n   your version, the run still works: it flags CLIENT_SEARCH_UNSUPPORTED and\n   creates the client, so watch for duplicates until you fix the argument name\n   in **Build Jobber Documents**.\n2. `requestCreate` — swap it for `jobCreate` in **Build Request Document** if you\n   would rather skip the request stage and book work straight in.\n\nEvery mutation asks for `userErrors`, and **Check Result** treats a 200 with\nerrors as a failure, because Jobber returns 200 either way.",
+        "color": 3,
+        "width": 700,
+        "height": 400
+      }
+    },
+    {
+      "id": "cf4f2483-e6a2-4e59-85e4-8fccbe1fa981",
+      "name": "Sticky Note d29d5960",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3900,
+        560
+      ],
+      "parameters": {
+        "content": "## Why the files go to Drive\nJobber's public API has no file upload mutation, so the PDF and the attachments\nlive in a Drive folder and the request in Jobber carries the link. If Jobber adds\nan upload endpoint, only **Build Jobber Documents** needs to change.",
+        "color": 7,
+        "width": 620,
+        "height": 180
+      }
+    }
+  ],
+  "connections": {
+    "New Email in Shared Inbox": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Triage Email": {
+      "main": [
+        [
+          {
+            "node": "Work Order?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Work Order?": {
+      "main": [
+        [
+          {
+            "node": "Extract Work Order",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Label: Not a Work Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Work Order": {
+      "main": [
+        [
+          {
+            "node": "Validate Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Extraction": {
+      "main": [
+        [
+          {
+            "node": "Create Job Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Job Folder": {
+      "main": [
+        [
+          {
+            "node": "Build PDF + Split Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build PDF + Split Files": {
+      "main": [
+        [
+          {
+            "node": "Upload Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Files": {
+      "main": [
+        [
+          {
+            "node": "Collect Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Files": {
+      "main": [
+        [
+          {
+            "node": "Build Jobber Documents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Jobber Documents": {
+      "main": [
+        [
+          {
+            "node": "Jobber: Find Client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Jobber: Find Client": {
+      "main": [
+        [
+          {
+            "node": "Choose Client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Choose Client": {
+      "main": [
+        [
+          {
+            "node": "Client Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Client Found?": {
+      "main": [
+        [
+          {
+            "node": "Build Request Document",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Jobber: Create Client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Request Document": {
+      "main": [
+        [
+          {
+            "node": "Jobber: Create Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Jobber: Create Client": {
+      "main": [
+        [
+          {
+            "node": "Build Request Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Label: Not a Work Order": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Triage Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Jobber: Create Request": {
+      "main": [
+        [
+          {
+            "node": "Check Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Result": {
+      "main": [
+        [
+          {
+            "node": "Log to Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Sheet": {
+      "main": [
+        [
+          {
+            "node": "Label the Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Label the Email": {
+      "main": [
+        [
+          {
+            "node": "Needs a Human?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs a Human?": {
+      "main": [
+        [
+          {
+            "node": "Send Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Alert": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

@@ -1,0 +1,958 @@
+{
+  "name": "Project 1 - Lead Qualification Agent",
+  "nodes": [
+    {
+      "id": "eb2cd72f-40a3-497e-8859-132bd158da5c",
+      "name": "Lead Intake Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        200,
+        360
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-qualification-agent",
+        "authentication": "none",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*",
+          "ignoreBots": true
+        }
+      },
+      "webhookId": "7bf89962-b0cc-4057-b4da-b216e9fbd21c"
+    },
+    {
+      "id": "a445d703-c762-462c-8572-5587cc53cfe8",
+      "name": "Normalize + Validate Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        360
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "function pick(obj, keys, fallback = '') { for (const key of keys) { const value = obj?.[key]; if (value !== undefined && value !== null && String(value).trim() !== '') return value; } return fallback; }\nfunction clean(value) { return String(value ?? '').replace(/\\s+/g, ' ').trim(); }\nfunction email(value) { return clean(value).toLowerCase(); }\nfunction phone(value) { return clean(value).replace(/[^+0-9]/g, ''); }\nfunction money(value) { const parsed = Number(String(value ?? '').replace(/[^0-9.]/g, '')); return Number.isFinite(parsed) ? parsed : 0; }\nfunction days(value) { const text = clean(value).toLowerCase(); if (/today|asap|urgent|now/.test(text)) return 0; if (/tomorrow/.test(text)) return 1; if (/week/.test(text)) return 7; if (/month/.test(text)) return 30; const n = Number((text.match(/\\d+/) || [])[0]); return Number.isFinite(n) ? n : 999; }\nfunction shortHash(text) { let h = 0; for (let i = 0; i < text.length; i++) h = Math.imul(31, h) + text.charCodeAt(i) | 0; return Math.abs(h).toString(16); }\nreturn items.map((item, index) => { const p = item.json.body && typeof item.json.body === 'object' ? item.json.body : item.json; const name = clean(pick(p, ['name','full_name','fullName','contact_name'])); const em = email(pick(p, ['email','email_address','work_email'])); const ph = phone(pick(p, ['phone','phone_number','mobile','whatsapp'])); const company = clean(pick(p, ['company','company_name','business','organization'])); const source = clean(pick(p, ['source','utm_source','channel'], 'unknown')); const need = clean(pick(p, ['service_needed','service','need','project_type','interest'])); const budget = money(pick(p, ['budget_amount','budget','estimated_budget','price_range'])); const timelineText = clean(pick(p, ['timeline','urgency','start_date','needed_by'])); const timelineDays = days(timelineText); const message = clean(pick(p, ['message','notes','description','pain','problem'])); const base = `${em}|${ph}|${company}|${need}`.toLowerCase(); const fingerprint = shortHash(base || JSON.stringify(p)); const leadId = clean(pick(p, ['lead_id','id','submission_id'])) || `lead_${fingerprint}`; const errors = []; if (!em && !ph) errors.push('missing_contact'); if (!need && !message) errors.push('missing_need_or_message'); const linkCount = (JSON.stringify(p).match(/https?:\\/\\//g) || []).length; const spamScore = (!em && !ph ? 45 : 0) + (linkCount > 3 ? 25 : 0) + (message.length > 1500 ? 20 : 0); const validationStatus = spamScore >= 60 ? 'spam' : errors.length ? 'manual_review' : 'valid'; return { json: { lead_id: leadId, fingerprint, received_at: new Date().toISOString(), name, email: em, phone: ph, company, source, service_needed: need, budget_amount: budget, timeline_text: timelineText, timeline_days: timelineDays, message, spam_score: spamScore, validation_status: validationStatus, validation_errors: errors, raw_payload: JSON.stringify(p), item_index: index } }; });"
+      }
+    },
+    {
+      "id": "6f7551ef-1cdb-41b6-9784-e66def384e58",
+      "name": "Upsert Raw Lead First",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        800,
+        360
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "mnmJCuAFNbOBIrpq",
+          "cachedResultName": "lead_qualification_leads"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "lead_id",
+              "condition": "eq",
+              "keyValue": "={{ $(\"Normalize + Validate Lead\").item.json.lead_id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "lead_id": "={{ $(\"Normalize + Validate Lead\").item.json.lead_id }}",
+            "received_at": "={{ $(\"Normalize + Validate Lead\").item.json.received_at }}",
+            "updated_at": "={{ $now.toISO() }}",
+            "name": "={{ $(\"Normalize + Validate Lead\").item.json.name }}",
+            "email": "={{ $(\"Normalize + Validate Lead\").item.json.email }}",
+            "phone": "={{ $(\"Normalize + Validate Lead\").item.json.phone }}",
+            "company": "={{ $(\"Normalize + Validate Lead\").item.json.company }}",
+            "source": "={{ $(\"Normalize + Validate Lead\").item.json.source }}",
+            "service_needed": "={{ $(\"Normalize + Validate Lead\").item.json.service_needed }}",
+            "budget_amount": "={{ $(\"Normalize + Validate Lead\").item.json.budget_amount }}",
+            "timeline_days": "={{ $(\"Normalize + Validate Lead\").item.json.timeline_days }}",
+            "message": "={{ $(\"Normalize + Validate Lead\").item.json.message }}",
+            "raw_payload": "={{ $(\"Normalize + Validate Lead\").item.json.raw_payload }}",
+            "status": "RECEIVED"
+          },
+          "schema": [
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "received_at",
+              "displayName": "received_at",
+              "type": "date"
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "type": "date"
+            },
+            {
+              "id": "name",
+              "displayName": "name",
+              "type": "string"
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "type": "string"
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "type": "string"
+            },
+            {
+              "id": "company",
+              "displayName": "company",
+              "type": "string"
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "type": "string"
+            },
+            {
+              "id": "service_needed",
+              "displayName": "service_needed",
+              "type": "string"
+            },
+            {
+              "id": "budget_amount",
+              "displayName": "budget_amount",
+              "type": "number"
+            },
+            {
+              "id": "timeline_days",
+              "displayName": "timeline_days",
+              "type": "number"
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "type": "string"
+            },
+            {
+              "id": "raw_payload",
+              "displayName": "raw_payload",
+              "type": "string"
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "edfea311-e585-4509-b240-bd20c546e23b",
+      "name": "Ready for AI Scoring?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1070,
+        360
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $(\"Normalize + Validate Lead\").item.json.validation_status }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "valid"
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "ad89f25b-172b-467d-a975-c79797d42dce",
+      "name": "AI Lead Scoring Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1360,
+        180
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Score this inbound lead. Lead JSON: {{ JSON.stringify($(\"Normalize + Validate Lead\").item.json) }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a strict B2B lead qualification analyst. Score 0-100. HOT means clear pain, contact, urgency, budget, and fit. WARM means real but less urgent. COLD means vague or weak. Do not invent facts. Output structured JSON only.",
+          "maxIterations": 2
+        },
+        "enableStreaming": false
+      }
+    },
+    {
+      "id": "1b63209b-1ce5-4e37-a067-a63a52a7d432",
+      "name": "OpenAI Scoring Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1360,
+        650
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini",
+          "cachedResultName": "gpt-5-mini"
+        },
+        "responsesApiEnabled": true,
+        "options": {
+          "temperature": 0.1,
+          "reasoningEffort": "low",
+          "maxRetries": 2,
+          "timeout": 45000
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "4cadd6e7-09df-4291-bf73-7f25b7f91607",
+      "name": "Lead Score JSON Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1570,
+        650
+      ],
+      "parameters": {
+        "schemaType": "fromJson",
+        "jsonSchemaExample": "{\"ai_score\":82,\"score_band\":\"HOT\",\"route\":\"sales_now\",\"priority\":\"high\",\"fit_reason\":\"Budget and urgency are clear.\",\"risk_flags\":[\"none\"],\"recommended_owner\":\"senior_sales\",\"next_action\":\"Call within 5 minutes.\",\"follow_up_message\":\"Thanks for reaching out. Our team will contact you shortly.\"}",
+        "autoFix": true
+      }
+    },
+    {
+      "id": "65f598d5-c3ba-4a71-8c5b-f240bd868a1d",
+      "name": "Combine AI Score + Guardrails",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1660,
+        180
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "function clamp(v){return Math.max(0,Math.min(100,Math.round(Number(v)||0)));}\nfunction parse(raw){ if(raw?.output && typeof raw.output==='object') return raw.output; if(raw?.output && typeof raw.output==='string'){ try{return JSON.parse(raw.output)}catch(e){return {}} } return raw||{}; }\nfunction rule(lead){ let s=0; if(lead.email)s+=8; if(lead.phone)s+=10; if(lead.company)s+=7; if(lead.service_needed)s+=12; if(lead.message&&lead.message.length>30)s+=8; if(lead.budget_amount>=5000)s+=25; else if(lead.budget_amount>=2000)s+=18; else if(lead.budget_amount>=500)s+=10; if(lead.timeline_days<=2)s+=22; else if(lead.timeline_days<=7)s+=18; else if(lead.timeline_days<=30)s+=8; if(/urgent|asap|today|miss calls|losing leads|need this/i.test(`${lead.message} ${lead.timeline_text}`))s+=15; return clamp(s); }\nfunction band(score){ if(score>=75)return 'HOT'; if(score>=50)return 'WARM'; if(score>=25)return 'COLD'; return 'MANUAL_REVIEW'; }\nconst lead = $('Normalize + Validate Lead').first().json;\nreturn items.map(item=>{ const ai=parse(item.json); const deterministic=rule(lead); const aiScore=Number.isFinite(Number(ai.ai_score??ai.score))?clamp(ai.ai_score??ai.score):deterministic; let finalScore=clamp(aiScore*0.7+deterministic*0.3); let status=band(finalScore); const route=status==='HOT'?'sales_now':status==='WARM'?'sales_nurture':status==='COLD'?'marketing_nurture':'manual_review'; return { json:{ lead_id:lead.lead_id,status,ai_score:finalScore,route,fit_reason:ai.fit_reason||`Rule score ${deterministic}; AI score ${aiScore}.`,next_action:ai.next_action||(status==='HOT'?'Call within 5 minutes.':'Add to follow-up queue.'),model_used:'gpt-5-mini',updated_at:new Date().toISOString() } }; });"
+      }
+    },
+    {
+      "id": "a7d7a106-5fcd-48d3-ac47-5d7253d4846e",
+      "name": "Upsert Qualified Lead Result",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1940,
+        180
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "mnmJCuAFNbOBIrpq",
+          "cachedResultName": "lead_qualification_leads"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "lead_id",
+              "condition": "eq",
+              "keyValue": "={{ $(\"Normalize + Validate Lead\").item.json.lead_id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "lead_id": "={{ $(\"Normalize + Validate Lead\").item.json.lead_id }}",
+            "updated_at": "={{ $now.toISO() }}",
+            "status": "={{ $(\"Combine AI Score + Guardrails\").item.json.status }}",
+            "ai_score": "={{ $(\"Combine AI Score + Guardrails\").item.json.ai_score }}",
+            "route": "={{ $(\"Combine AI Score + Guardrails\").item.json.route }}",
+            "fit_reason": "={{ $(\"Combine AI Score + Guardrails\").item.json.fit_reason }}",
+            "next_action": "={{ $(\"Combine AI Score + Guardrails\").item.json.next_action }}",
+            "model_used": "={{ $(\"Combine AI Score + Guardrails\").item.json.model_used }}"
+          },
+          "schema": [
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "type": "date"
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "type": "string"
+            },
+            {
+              "id": "ai_score",
+              "displayName": "ai_score",
+              "type": "number"
+            },
+            {
+              "id": "route",
+              "displayName": "route",
+              "type": "string"
+            },
+            {
+              "id": "fit_reason",
+              "displayName": "fit_reason",
+              "type": "string"
+            },
+            {
+              "id": "next_action",
+              "displayName": "next_action",
+              "type": "string"
+            },
+            {
+              "id": "model_used",
+              "displayName": "model_used",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "80547093-29ba-4f73-80d7-13c500d46eab",
+      "name": "Route by Lead Status",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        2220,
+        180
+      ],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "outputKey": "HOT",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $(\"Combine AI Score + Guardrails\").item.json.status }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "HOT"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "WARM",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $(\"Combine AI Score + Guardrails\").item.json.status }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "WARM"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "COLD",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $(\"Combine AI Score + Guardrails\").item.json.status }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "COLD"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Manual/Fallback"
+        }
+      }
+    },
+    {
+      "id": "9001efb1-cf68-473a-a19c-d3f7f1d8ab0e",
+      "name": "Respond - Hot Lead",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2500,
+        0
+      ],
+      "parameters": {
+        "enableResponseOutput": true,
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, saved: true, lead_id: $(\"Normalize + Validate Lead\").item.json.lead_id, status: $(\"Combine AI Score + Guardrails\").item.json.status, score: $(\"Combine AI Score + Guardrails\").item.json.ai_score, route: $(\"Combine AI Score + Guardrails\").item.json.route, next_action: $(\"Combine AI Score + Guardrails\").item.json.next_action } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "1f734f05-5fa1-47e6-9cab-32872d5c5f26",
+      "name": "Hot Lead Push Alert",
+      "type": "n8n-nodes-base.pushover",
+      "typeVersion": 1,
+      "position": [
+        2790,
+        0
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "push",
+        "userKey": "<__PLACEHOLDER_VALUE__Pushover user/group key__>",
+        "message": "=HOT LEAD: {{ $(\"Normalize + Validate Lead\").item.json.name || \"Unknown\" }} | Score {{ $(\"Combine AI Score + Guardrails\").item.json.ai_score }} | {{ $(\"Normalize + Validate Lead\").item.json.phone || $(\"Normalize + Validate Lead\").item.json.email }} | Need: {{ $(\"Normalize + Validate Lead\").item.json.service_needed }}",
+        "priority": 1,
+        "additionalFields": {
+          "title": "Hot Lead Alert",
+          "html": false
+        }
+      }
+    },
+    {
+      "id": "22a2e1a8-99cb-43b8-865a-f1d68680db1b",
+      "name": "Respond - Warm Lead",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2500,
+        160
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, saved: true, lead_id: $(\"Normalize + Validate Lead\").item.json.lead_id, status: $(\"Combine AI Score + Guardrails\").item.json.status, score: $(\"Combine AI Score + Guardrails\").item.json.ai_score, route: $(\"Combine AI Score + Guardrails\").item.json.route, next_action: $(\"Combine AI Score + Guardrails\").item.json.next_action } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "fc578d64-bd33-44fc-8639-53a727e7a68b",
+      "name": "Respond - Cold Lead",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2500,
+        320
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, saved: true, lead_id: $(\"Normalize + Validate Lead\").item.json.lead_id, status: $(\"Combine AI Score + Guardrails\").item.json.status, score: $(\"Combine AI Score + Guardrails\").item.json.ai_score, route: $(\"Combine AI Score + Guardrails\").item.json.route, next_action: $(\"Combine AI Score + Guardrails\").item.json.next_action } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "28872425-54c5-4ed3-a99b-daafb0e559b3",
+      "name": "Respond - Manual or Fallback",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2500,
+        480
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, saved: true, lead_id: $(\"Normalize + Validate Lead\").item.json.lead_id, status: $(\"Combine AI Score + Guardrails\").item.json.status, score: $(\"Combine AI Score + Guardrails\").item.json.ai_score, route: \"manual_review\", next_action: $(\"Combine AI Score + Guardrails\").item.json.next_action } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "179dc958-331a-4821-a0e5-54fedaeb0405",
+      "name": "Prepare Invalid Lead Result",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1360,
+        500
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "lead-id",
+              "name": "lead_id",
+              "value": "={{ $(\"Normalize + Validate Lead\").item.json.lead_id }}",
+              "type": "string"
+            },
+            {
+              "id": "status",
+              "name": "status",
+              "value": "={{ $(\"Normalize + Validate Lead\").item.json.validation_status === \"spam\" ? \"SPAM\" : \"MANUAL_REVIEW\" }}",
+              "type": "string"
+            },
+            {
+              "id": "score",
+              "name": "ai_score",
+              "value": 0,
+              "type": "number"
+            },
+            {
+              "id": "route",
+              "name": "route",
+              "value": "manual_review",
+              "type": "string"
+            },
+            {
+              "id": "fit",
+              "name": "fit_reason",
+              "value": "={{ \"Validation failed: \" + $(\"Normalize + Validate Lead\").item.json.validation_errors.join(\", \") }}",
+              "type": "string"
+            },
+            {
+              "id": "action",
+              "name": "next_action",
+              "value": "Manual review required before routing to sales.",
+              "type": "string"
+            },
+            {
+              "id": "model",
+              "name": "model_used",
+              "value": "none",
+              "type": "string"
+            },
+            {
+              "id": "updated",
+              "name": "updated_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "92f53864-9df4-4332-9069-511b0bcdb2a3",
+      "name": "Upsert Invalid Lead Result",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1660,
+        500
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "mnmJCuAFNbOBIrpq",
+          "cachedResultName": "lead_qualification_leads"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "lead_id",
+              "condition": "eq",
+              "keyValue": "={{ $(\"Normalize + Validate Lead\").item.json.lead_id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "lead_id": "={{ $(\"Normalize + Validate Lead\").item.json.lead_id }}",
+            "updated_at": "={{ $now.toISO() }}",
+            "status": "={{ $(\"Prepare Invalid Lead Result\").item.json.status }}",
+            "ai_score": 0,
+            "route": "={{ $(\"Prepare Invalid Lead Result\").item.json.route }}",
+            "fit_reason": "={{ $(\"Prepare Invalid Lead Result\").item.json.fit_reason }}",
+            "next_action": "={{ $(\"Prepare Invalid Lead Result\").item.json.next_action }}",
+            "model_used": "none"
+          },
+          "schema": [
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "type": "date"
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "type": "string"
+            },
+            {
+              "id": "ai_score",
+              "displayName": "ai_score",
+              "type": "number"
+            },
+            {
+              "id": "route",
+              "displayName": "route",
+              "type": "string"
+            },
+            {
+              "id": "fit_reason",
+              "displayName": "fit_reason",
+              "type": "string"
+            },
+            {
+              "id": "next_action",
+              "displayName": "next_action",
+              "type": "string"
+            },
+            {
+              "id": "model_used",
+              "displayName": "model_used",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "2e4a40aa-36eb-41fb-acf0-0df57619b17d",
+      "name": "Respond - Invalid or Spam Lead",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1940,
+        500
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, saved: true, lead_id: $(\"Normalize + Validate Lead\").item.json.lead_id, status: $(\"Prepare Invalid Lead Result\").item.json.status, score: 0, route: $(\"Prepare Invalid Lead Result\").item.json.route, validation_errors: $(\"Normalize + Validate Lead\").item.json.validation_errors, next_action: $(\"Prepare Invalid Lead Result\").item.json.next_action } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "a2a46d55-8bd5-4c3f-94db-2661d0aa964d",
+      "name": "Sticky Note c6e9375d",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        150,
+        310
+      ],
+      "parameters": {
+        "content": "## Project 1 — Lead Qualification Agent\nWebhook intake, raw lead storage, validation, AI scoring, deterministic guardrail scoring, routing, response, and hot lead alert.\n\nPOST to `/webhook/lead-qualification-agent`.",
+        "color": 4,
+        "width": 900,
+        "height": 200
+      }
+    },
+    {
+      "id": "a30ac522-2e79-4e11-8a1d-5c8767b0a4ee",
+      "name": "Sticky Note d9b3e2c6",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1310,
+        130
+      ],
+      "parameters": {
+        "content": "## Scoring\nHOT >= 75, WARM >= 50, COLD >= 25, otherwise manual review. AI is blended with rules so a bad model response does not wreck routing.",
+        "color": 5,
+        "width": 1160,
+        "height": 200
+      }
+    },
+    {
+      "id": "5bae6fc2-da4d-4db3-94f2-10772b4376b2",
+      "name": "Sticky Note 473ad588",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        750,
+        130
+      ],
+      "parameters": {
+        "content": "## Storage\nUses Data Table `lead_qualification_leads`. Raw lead is saved before AI. Final result is saved after scoring.",
+        "color": 3,
+        "width": 1440,
+        "height": 520
+      }
+    },
+    {
+      "id": "83d092f1-4e3a-403f-8c80-6f598b69a332",
+      "name": "Sticky Note 23de0d90",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2450,
+        -50
+      ],
+      "parameters": {
+        "content": "## Alert Setup\nSet your Pushover user/group key in `Hot Lead Push Alert`. No Slack/Gmail credential was available, so Pushover is wired as the live alert channel.",
+        "color": 6,
+        "width": 590,
+        "height": 200
+      }
+    }
+  ],
+  "connections": {
+    "Lead Intake Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize + Validate Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize + Validate Lead": {
+      "main": [
+        [
+          {
+            "node": "Upsert Raw Lead First",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Raw Lead First": {
+      "main": [
+        [
+          {
+            "node": "Ready for AI Scoring?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ready for AI Scoring?": {
+      "main": [
+        [
+          {
+            "node": "AI Lead Scoring Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Invalid Lead Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Lead Scoring Agent": {
+      "main": [
+        [
+          {
+            "node": "Combine AI Score + Guardrails",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Scoring Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Lead Scoring Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Lead Score JSON Parser",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Score JSON Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Lead Scoring Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine AI Score + Guardrails": {
+      "main": [
+        [
+          {
+            "node": "Upsert Qualified Lead Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Qualified Lead Result": {
+      "main": [
+        [
+          {
+            "node": "Route by Lead Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Lead Status": {
+      "main": [
+        [
+          {
+            "node": "Respond - Hot Lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Warm Lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Cold Lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Manual or Fallback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond - Hot Lead": {
+      "main": [
+        [
+          {
+            "node": "Hot Lead Push Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Invalid Lead Result": {
+      "main": [
+        [
+          {
+            "node": "Upsert Invalid Lead Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Invalid Lead Result": {
+      "main": [
+        [
+          {
+            "node": "Respond - Invalid or Spam Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

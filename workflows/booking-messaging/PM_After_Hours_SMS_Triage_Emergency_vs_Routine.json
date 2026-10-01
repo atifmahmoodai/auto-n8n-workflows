@@ -1,0 +1,397 @@
+{
+  "name": "PM After-Hours SMS Triage: Emergency vs Routine",
+  "nodes": [
+    {
+      "id": "3801b09e-8e06-462b-8649-08649309f169",
+      "name": "Sticky Note 4d2bacd2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        100,
+        300
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "After-Hours Architecture",
+            "position": [
+              -220,
+              60
+            ],
+            "parameters": {
+              "width": 520,
+              "height": 260,
+              "content": "PM AFTER-HOURS TRIAGE\n\n1. Twilio inbound SMS from tenants\n2. Keyword classify: flood/leak/fire/no heat = emergency\n3. Append Ticket_Log sheet\n4. Emergency: SMS on-call vendor + Slack urgent\n5. Routine: queue in sheet (no immediate vendor dispatch)\n\nA2P 10DLC registration required for production SMS."
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "b1c2d838-5dd7-4725-86b0-6f5d9c8ecbed",
+      "name": "Twilio: Inbound SMS",
+      "type": "n8n-nodes-base.twilioTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "updates": [
+          "com.twilio.messaging.inbound-message.received"
+        ]
+      },
+      "webhookId": "e2df43ad-6cc3-4814-9779-d4314e90e764"
+    },
+    {
+      "id": "8cdcd557-c90a-46a5-9167-18811873891f",
+      "name": "Normalize SMS Payload",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "from-phone",
+              "name": "from_phone",
+              "value": "={{ $json.From || $json.from || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "to-phone",
+              "name": "to_phone",
+              "value": "={{ $json.To || $json.to || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "body",
+              "name": "message_body",
+              "value": "={{ ($json.Body || $json.body || \"\").trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "msg-sid",
+              "name": "message_sid",
+              "value": "={{ $json.MessageSid || $json.message_sid || \"\" }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "2646c75c-7cea-46c8-bc64-8f6fe19c269a",
+      "name": "Classify Emergency vs Routine",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const inbound = $input.item.json;\nconst body = (inbound.message_body || '').toLowerCase();\nconst emergencyKeywords = ['flood', 'flooding', 'leak', 'leaking', 'fire', 'smoke', 'no heat', 'no heating', 'frozen pipe', 'burst pipe', 'gas smell'];\nlet matchedKeyword = '';\nlet isEmergency = false;\n\nfor (const kw of emergencyKeywords) {\n  if (body.includes(kw)) {\n    isEmergency = true;\n    matchedKeyword = kw;\n    break;\n  }\n}\n\nconst ticketId = 'PM-' + $now.toFormat('yyyyLLdd-HHmmss') + '-' + (inbound.message_sid || '').slice(-6);\nconst priority = isEmergency ? 'emergency' : 'routine';\nconst queue = isEmergency ? 'on_call_dispatch' : 'routine_queue';\n\nreturn {\n  json: {\n    ticket_id: ticketId,\n    created_at: $now.toISO(),\n    from_phone: inbound.from_phone,\n    to_phone: inbound.to_phone,\n    message_sid: inbound.message_sid,\n    message_body: inbound.message_body,\n    priority,\n    queue,\n    is_emergency: isEmergency,\n    matched_keyword: matchedKeyword,\n    status: isEmergency ? 'dispatched' : 'queued',\n    vendor_notified: isEmergency ? 'pending' : 'n/a',\n    property_address: '',\n    unit: '',\n    notes: isEmergency ? 'Auto-classified emergency from SMS keywords' : 'Routine after-hours request queued for morning review',\n    vendor_sms: isEmergency\n      ? 'URGENT PM DISPATCH: ' + (inbound.message_body || '').slice(0, 200) + ' — Reply from ' + inbound.from_phone\n      : '',\n  },\n};"
+      }
+    },
+    {
+      "id": "a2bc2664-b45d-4beb-be5d-bfc5cb5aaf9d",
+      "name": "Append Ticket_Log",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Ticket_Log"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "schema": [
+            {
+              "id": "ticket_id",
+              "displayName": "ticket_id",
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "type": "string"
+            },
+            {
+              "id": "from_phone",
+              "displayName": "from_phone",
+              "type": "string"
+            },
+            {
+              "id": "to_phone",
+              "displayName": "to_phone",
+              "type": "string"
+            },
+            {
+              "id": "message_sid",
+              "displayName": "message_sid",
+              "type": "string"
+            },
+            {
+              "id": "message_body",
+              "displayName": "message_body",
+              "type": "string"
+            },
+            {
+              "id": "priority",
+              "displayName": "priority",
+              "type": "string"
+            },
+            {
+              "id": "queue",
+              "displayName": "queue",
+              "type": "string"
+            },
+            {
+              "id": "is_emergency",
+              "displayName": "is_emergency",
+              "type": "boolean"
+            },
+            {
+              "id": "matched_keyword",
+              "displayName": "matched_keyword",
+              "type": "string"
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "type": "string"
+            },
+            {
+              "id": "vendor_notified",
+              "displayName": "vendor_notified",
+              "type": "string"
+            },
+            {
+              "id": "property_address",
+              "displayName": "property_address",
+              "type": "string"
+            },
+            {
+              "id": "unit",
+              "displayName": "unit",
+              "type": "string"
+            },
+            {
+              "id": "notes",
+              "displayName": "notes",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "8827452e-9bc1-4d2e-99ea-e69a33841b13",
+      "name": "Emergency?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        960,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.is_emergency }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "282b5d6b-b7fe-43f2-af20-947985518b5d",
+      "name": "Twilio: SMS On-Call Vendor",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        180
+      ],
+      "parameters": {
+        "resource": "sms",
+        "operation": "send",
+        "from": "REPLACE_WITH_TWILIO_FROM_NUMBER",
+        "to": "REPLACE_WITH_ONCALL_VENDOR_PHONE",
+        "message": "={{ $json.vendor_sms }}"
+      }
+    },
+    {
+      "id": "2e1e3bdf-70b5-4a9f-baac-5b073c44fac5",
+      "name": "Slack: Urgent Emergency",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.5,
+      "position": [
+        1440,
+        180
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SLACK_CHANNEL_ID"
+        },
+        "messageType": "text",
+        "text": "={{ \":rotating_light: AFTER-HOURS EMERGENCY\\n*From:* \" + $json.from_phone + \"\\n*Keyword:* \" + ($json.matched_keyword || \"n/a\") + \"\\n*Message:* \" + $json.message_body + \"\\n*Ticket:* \" + $json.ticket_id + \"\\nOn-call vendor SMS sent.\" }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": true,
+          "mrkdwn": true
+        }
+      },
+      "webhookId": "9943ded9-db4e-40dd-97b2-ac41567e9598"
+    },
+    {
+      "id": "19daa163-1fc2-444d-88d7-87303d467e2e",
+      "name": "Sticky Note 54844b46",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        100,
+        300
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "Routine Queue",
+            "position": [
+              1200,
+              420
+            ],
+            "parameters": {
+              "width": 280,
+              "height": 100,
+              "content": "Routine tickets logged to Ticket_Log.\nReviewed in morning digest at 7 AM."
+            }
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Twilio: Inbound SMS": {
+      "main": [
+        [
+          {
+            "node": "Normalize SMS Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize SMS Payload": {
+      "main": [
+        [
+          {
+            "node": "Classify Emergency vs Routine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Emergency vs Routine": {
+      "main": [
+        [
+          {
+            "node": "Append Ticket_Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append Ticket_Log": {
+      "main": [
+        [
+          {
+            "node": "Emergency?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Emergency?": {
+      "main": [
+        [
+          {
+            "node": "Twilio: SMS On-Call Vendor",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sticky Note 54844b46",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Twilio: SMS On-Call Vendor": {
+      "main": [
+        [
+          {
+            "node": "Slack: Urgent Emergency",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

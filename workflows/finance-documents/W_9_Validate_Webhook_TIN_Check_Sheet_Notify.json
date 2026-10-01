@@ -1,0 +1,345 @@
+{
+  "name": "W-9 Validate: Webhook -> TIN Check -> Sheet -> Notify",
+  "nodes": [
+    {
+      "id": "7dec5c58-c171-4ced-8996-b12546c50c37",
+      "name": "Sticky Note 7f85ac93",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        100,
+        300
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "W-9 Validate Architecture",
+            "position": [
+              -200,
+              80
+            ],
+            "parameters": {
+              "width": 500,
+              "height": 220,
+              "content": "W-9 FORM VALIDATION\n\n1. POST webhook w9/submit with vendor fields\n2. Code validates TIN (SSN xxx-xx-xxxx or EIN xx-xxxxxxx)\n3. appendOrUpdate Vendor_W9 validated or rejected\n4. Validated: Slack AP notify\n5. Rejected: Gmail correction request"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "c26effcb-eab2-420c-8adb-5fa80c7ecdd0",
+      "name": "Webhook: W-9 Submit",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "w9/submit",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "ac86964a-e91c-4f06-9e0f-2f3d3e33a5e4"
+    },
+    {
+      "id": "71252fdd-7c25-4a75-af59-23d6eeda5646",
+      "name": "Validate TIN & Required Fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const p = $input.item.json.body || $input.item.json;\nconst vendorId = (p.vendor_id || p.vendorId || '').trim();\nconst vendorName = (p.vendor_name || p.vendorName || '').trim();\nconst vendorEmail = (p.vendor_email || p.vendorEmail || '').trim();\nconst businessName = (p.business_name || p.businessName || vendorName).trim();\nconst tin = (p.tin || p.tax_id || '').trim();\nconst address = (p.address || '').trim();\nconst formUrl = 'REPLACE_WITH_W9_FORM_URL';\n\nconst errors = [];\nif (!vendorEmail) errors.push('vendor_email is required');\nif (!businessName) errors.push('business_name is required');\nif (!address || address.length < 10) errors.push('address must be at least 10 characters');\nif (!tin) errors.push('tin is required');\n\nconst ssnPattern = /^\\d{3}-\\d{2}-\\d{4}$/;\nconst einPattern = /^\\d{2}-\\d{7}$/;\nconst tinDigits = tin.replace(/[^0-9]/g, '');\nlet normalizedTin = tin;\n\nif (tinDigits.length === 9) {\n  if (ssnPattern.test(tin) || einPattern.test(tin)) {\n    normalizedTin = tin;\n  } else if (tinDigits.length === 9 && !tin.includes('-')) {\n    normalizedTin = tinDigits.slice(0, 2) + '-' + tinDigits.slice(2);\n  }\n} else {\n  errors.push('tin must be SSN (xxx-xx-xxxx) or EIN (xx-xxxxxxx)');\n}\n\nif (tin && !ssnPattern.test(normalizedTin) && !einPattern.test(normalizedTin)) {\n  errors.push('tin format invalid — use xxx-xx-xxxx (SSN) or xx-xxxxxxx (EIN)');\n}\n\nconst isValid = errors.length === 0;\nconst status = isValid ? 'validated' : 'rejected';\nconst rejectionReason = errors.join('; ');\n\nconst correctionSubject = 'W-9 Correction Needed — ' + (businessName || vendorName || 'Vendor');\nconst correctionBody = [\n  'Hello,',\n  '',\n  'We could not validate your W-9 submission for the following reason(s):',\n  rejectionReason,\n  '',\n  'Please resubmit here: ' + formUrl,\n  vendorId ? ('Vendor reference: ' + vendorId) : '',\n  '',\n  'Thank you,',\n  'Accounts Payable',\n].filter(Boolean).join('\\n');\n\nreturn {\n  json: {\n    vendor_id: vendorId || ('VND-' + $now.toFormat('yyyyLLdd-HHmmss')),\n    vendor_name: vendorName || businessName,\n    vendor_email: vendorEmail,\n    business_name: businessName,\n    tin: isValid ? normalizedTin : tin,\n    address,\n    status,\n    is_valid: isValid,\n    rejection_reason: rejectionReason,\n    validated_at: isValid ? $now.toISO() : '',\n    requested_at: $now.toISO(),\n    correction_subject: correctionSubject,\n    correction_body: correctionBody,\n  },\n};"
+      }
+    },
+    {
+      "id": "c0ae7e38-051a-4806-a4a9-ff1dda948185",
+      "name": "Sheet: Upsert Vendor_W9",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Vendor_W9"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": [
+            "vendor_id"
+          ],
+          "value": {},
+          "schema": [
+            {
+              "id": "vendor_id",
+              "displayName": "vendor_id",
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "vendor_name",
+              "displayName": "vendor_name",
+              "type": "string"
+            },
+            {
+              "id": "vendor_email",
+              "displayName": "vendor_email",
+              "type": "string"
+            },
+            {
+              "id": "business_name",
+              "displayName": "business_name",
+              "type": "string"
+            },
+            {
+              "id": "tin",
+              "displayName": "tin",
+              "type": "string"
+            },
+            {
+              "id": "address",
+              "displayName": "address",
+              "type": "string"
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "type": "string"
+            },
+            {
+              "id": "rejection_reason",
+              "displayName": "rejection_reason",
+              "type": "string"
+            },
+            {
+              "id": "validated_at",
+              "displayName": "validated_at",
+              "type": "string"
+            },
+            {
+              "id": "requested_at",
+              "displayName": "requested_at",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "cb9d017b-460a-4fef-b42e-902ffd22a258",
+      "name": "Validated?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.is_valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "957ee4b4-3710-4ae5-8079-ef2bfd061205",
+      "name": "Slack: AP Validated W-9",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.5,
+      "position": [
+        960,
+        200
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SLACK_CHANNEL_ID"
+        },
+        "messageType": "text",
+        "text": "={{ \":white_check_mark: W-9 VALIDATED\\n*Vendor:* \" + $json.business_name + \"\\n*Email:* \" + $json.vendor_email + \"\\n*ID:* \" + $json.vendor_id + \"\\nReady for AP onboarding.\" }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": true,
+          "mrkdwn": true
+        }
+      },
+      "webhookId": "05eb8679-7f2b-436a-be06-4fe832cb13b9"
+    },
+    {
+      "id": "4991a036-5d32-42f7-a17a-e20f953068ca",
+      "name": "Respond Validated",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1200,
+        200
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, vendor_id: $json.vendor_id, status: \"validated\" } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "11630ad8-8262-4ae1-83b2-948ad6b2c463",
+      "name": "Gmail: Request Correction",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        960,
+        420
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.vendor_email }}",
+        "subject": "={{ $json.correction_subject }}",
+        "emailType": "text",
+        "message": "={{ $json.correction_body }}",
+        "options": {}
+      },
+      "webhookId": "1458e455-5a3f-4ad0-b07e-704a11a44428"
+    },
+    {
+      "id": "1417a433-5106-4b8c-a444-369851db5dc7",
+      "name": "Respond Rejected",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1200,
+        420
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: false, vendor_id: $json.vendor_id, status: \"rejected\", errors: $json.rejection_reason } }}",
+        "options": {
+          "responseCode": 422
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook: W-9 Submit": {
+      "main": [
+        [
+          {
+            "node": "Validate TIN & Required Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate TIN & Required Fields": {
+      "main": [
+        [
+          {
+            "node": "Sheet: Upsert Vendor_W9",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheet: Upsert Vendor_W9": {
+      "main": [
+        [
+          {
+            "node": "Validated?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validated?": {
+      "main": [
+        [
+          {
+            "node": "Slack: AP Validated W-9",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gmail: Request Correction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack: AP Validated W-9": {
+      "main": [
+        [
+          {
+            "node": "Respond Validated",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: Request Correction": {
+      "main": [
+        [
+          {
+            "node": "Respond Rejected",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

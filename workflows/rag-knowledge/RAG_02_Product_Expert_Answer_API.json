@@ -1,0 +1,327 @@
+{
+  "name": "RAG 02 — Product Expert Answer API",
+  "nodes": [
+    {
+      "id": "56039543-8c9e-4233-a18b-d698fb4cd730",
+      "name": "Product Expert Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        120,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "product-expert-qa",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "webhookId": "d1ab371f-67d0-41e6-b025-2f7ed142d78b"
+    },
+    {
+      "id": "aaeab981-b0ab-48cb-a79e-b2754ee6fb68",
+      "name": "Normalize Question",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        420,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "question",
+              "name": "question",
+              "value": "={{ $json.body?.question ?? $json.question ?? \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "category",
+              "name": "category",
+              "value": "={{ $json.body?.category ?? $json.category ?? \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "channel",
+              "name": "channel",
+              "value": "={{ $json.body?.channel ?? $json.channel ?? \"web\" }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ae3cd146-468f-43de-9e02-5f217c28290d",
+      "name": "Retrieve Product Matches",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "typeVersion": 1.3,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "mode": "load",
+        "tableName": {
+          "__rl": true,
+          "mode": "id",
+          "value": "product_database"
+        },
+        "prompt": "={{ $json.question }}",
+        "topK": 8,
+        "includeDocumentMetadata": true,
+        "options": {
+          "queryName": "match_documents",
+          "metadata": {
+            "metadataValues": [
+              {
+                "name": "entity_type",
+                "value": "product"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "01a570c4-db80-4103-8c93-f8875eb24730",
+      "name": "OpenAI Query Embeddings",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        720,
+        520
+      ],
+      "parameters": {
+        "model": "text-embedding-3-small",
+        "options": {
+          "dimensions": 1536
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "aca8d4a6-1d0c-42c8-9ef9-5828287a9194",
+      "name": "Build Retrieval Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1020,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const docs=$input.all().map((i,idx)=>{const j=i.json||{}; const m=j.metadata||j.document?.metadata||{}; const text=j.pageContent||j.content||j.text||j.document?.pageContent||JSON.stringify(j); return {rank:idx+1,content:text,metadata:m,score:j.score??j.similarity??j.distance??null};}); const q=$items('Normalize Question')[0].json.question; const sources=docs.map(d=>({sku:d.metadata.sku,product_name:d.metadata.product_name,price:d.metadata.price,score:d.score})); const contextText=docs.map(d=>`SOURCE ${d.rank} | SKU: ${d.metadata.sku||'n/a'} | Product: ${d.metadata.product_name||'n/a'} | Price: ${d.metadata.price||'n/a'}\\n${d.content}`).join('\\n\\n'); return [{json:{question:q,context:contextText,sources,match_count:docs.length}}];"
+      }
+    },
+    {
+      "id": "46b616ca-af76-40e8-ae8c-71d847de03d5",
+      "name": "Generate Expert Answer",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        1320,
+        300
+      ],
+      "parameters": {
+        "resource": "text",
+        "operation": "response",
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gpt-4.1-mini"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "type": "text",
+              "content": "You are a product expert for this business. Answer only from retrieved product context. Do not invent prices, stock, warranty, compatibility, or SKUs. Return concise JSON with keys answer, confidence, follow_up_question."
+            },
+            {
+              "role": "user",
+              "type": "text",
+              "content": "=Customer question:\n{{ $json.question }}\n\nRetrieved product context:\n{{ $json.context }}"
+            }
+          ]
+        },
+        "simplify": true,
+        "options": {
+          "temperature": 0.2,
+          "maxTokens": 700,
+          "textFormat": {
+            "textOptions": {
+              "type": "json_object",
+              "verbosity": "medium"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "e43ccccf-9191-40e6-bc76-0bf454cd72b9",
+      "name": "Format API Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1620,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const raw=$json.output_text||$json.text||$json.output||$json.message||JSON.stringify($json); let parsed; try{parsed=typeof raw==='string'?JSON.parse(raw):raw;}catch(e){parsed={answer:String(raw),confidence:'medium',follow_up_question:''};} const previous=$items('Build Retrieval Context')[0].json; return {answer:parsed.answer||'',confidence:parsed.confidence||'medium',follow_up_question:parsed.follow_up_question||'',sources:previous.sources,match_count:previous.match_count};"
+      }
+    },
+    {
+      "id": "349a5d02-cd8e-430b-8de7-bdc1c29437ca",
+      "name": "Return JSON Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1920,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "77720815-9fb6-4578-b56b-a678100c3693",
+      "name": "Sticky Note e8c1c490",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        70,
+        250
+      ],
+      "parameters": {
+        "content": "Webhook body: { \"question\": \"Which product is best for Mac?\", \"category\": \"Mouse\", \"channel\": \"web\" }. Connect ElevenLabs, WhatsApp, or web app to this endpoint.",
+        "color": 4,
+        "width": 2100,
+        "height": 200
+      }
+    }
+  ],
+  "connections": {
+    "Product Expert Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Question",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Question": {
+      "main": [
+        [
+          {
+            "node": "Retrieve Product Matches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retrieve Product Matches": {
+      "main": [
+        [
+          {
+            "node": "Build Retrieval Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Query Embeddings": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Retrieve Product Matches",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Retrieval Context": {
+      "main": [
+        [
+          {
+            "node": "Generate Expert Answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Expert Answer": {
+      "main": [
+        [
+          {
+            "node": "Format API Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format API Response": {
+      "main": [
+        [
+          {
+            "node": "Return JSON Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

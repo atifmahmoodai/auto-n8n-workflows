@@ -1,0 +1,809 @@
+{
+  "name": "Staffing Timesheet Ingest: Email -> AI Extract -> Sheet",
+  "nodes": [
+    {
+      "id": "a6ae7e05-6be4-4e0f-bc60-c66142627bcd",
+      "name": "Sticky Note f78a4c95",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1872,
+        688
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "Ingest Architecture",
+            "position": [
+              -200,
+              80
+            ],
+            "parameters": {
+              "width": 520,
+              "height": 260,
+              "content": "STAFFING TIMESHEET INGEST\n\n1. Client timesheet emails with attachments\n2. Split PDF/Excel per file\n3. Extract text from each document\n4. AI extracts worker name, hours, dates\n5. Append to Timesheet_Intake sheet\n\nConfigure Gmail + Sheets credentials before activating."
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "3e66487d-345d-4f60-86aa-d5659567390b",
+      "name": "Gmail: Client Timesheet Email",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "maxResults": 5,
+        "filters": {
+          "q": "has:attachment (timesheet OR hours OR payroll) -label:Staffing/Processed",
+          "readStatus": "unread"
+        },
+        "options": {
+          "downloadAttachments": true,
+          "dataPropertyAttachmentsPrefixName": "attachment_"
+        }
+      }
+    },
+    {
+      "id": "43a1de7b-6798-44ad-8adb-226d650a1894",
+      "name": "Has Attachments?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ Object.keys($binary || {}).length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "c0185e3b-65c6-4d57-8958-4ad78dafb57f",
+      "name": "Split Attachments",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const output = [];\nfor (const item of $input.all()) {\n  const binary = item.binary || {};\n  const keys = Object.keys(binary).filter((k) => k.startsWith('attachment_'));\n  for (const key of keys) {\n    const file = binary[key];\n    const fileName = (file.fileName || '').toLowerCase();\n    const mime = (file.mimeType || '').toLowerCase();\n    output.push({\n      json: {\n        gmailMessageId: item.json.id,\n        threadId: item.json.threadId,\n        emailSubject: item.json.subject || '',\n        emailFrom: item.json.from || '',\n        emailDate: item.json.date || '',\n        attachmentKey: key,\n        fileName: file.fileName || key,\n        mimeType: mime,\n        fileExt: fileName.includes('.') ? fileName.split('.').pop() : '',\n      },\n      binary: { data: file },\n    });\n  }\n}\nreturn output;"
+      }
+    },
+    {
+      "id": "29b491c7-db0b-43f6-8133-7f0a83fe13b6",
+      "name": "Valid Timesheet Files",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "combinator": "or",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.mimeType }}",
+              "rightValue": "application/pdf",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "leftValue": "={{ $json.mimeType }}",
+              "rightValue": "spreadsheet",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "leftValue": "={{ $json.mimeType }}",
+              "rightValue": "excel",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "leftValue": "={{ $json.fileExt }}",
+              "rightValue": "xlsx",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "leftValue": "={{ $json.fileExt }}",
+              "rightValue": "xls",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "leftValue": "={{ $json.fileExt }}",
+              "rightValue": "csv",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "18774814-f650-42ff-a5fa-b1f9de24241c",
+      "name": "Route by File Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        960,
+        300
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "outputKey": "PDF",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.mimeType }}",
+                    "rightValue": "application/pdf",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "outputKey": "Excel",
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                },
+                "combinator": "or",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.fileExt }}",
+                    "rightValue": "xlsx",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  },
+                  {
+                    "leftValue": "={{ $json.fileExt }}",
+                    "rightValue": "xls",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  },
+                  {
+                    "leftValue": "={{ $json.fileExt }}",
+                    "rightValue": "csv",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Unsupported"
+        }
+      }
+    },
+    {
+      "id": "b1a0a1ef-49f1-4e2c-b38a-0ef5f4e18395",
+      "name": "Extract PDF Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        1200,
+        180
+      ],
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "data",
+        "options": {
+          "joinPages": true
+        }
+      }
+    },
+    {
+      "id": "a86f041c-71f4-44c4-a8e5-aa2f8f34d3d8",
+      "name": "Set PDF Context",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1440,
+        180
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "extracted-text",
+              "name": "extractedText",
+              "value": "={{ $json.text || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "extraction-method",
+              "name": "extractionMethod",
+              "value": "pdf_text",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {
+          "includeBinary": true
+        }
+      }
+    },
+    {
+      "id": "67846471-5223-4d6d-80d3-c05c087bcf5e",
+      "name": "Prepare AI Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1680,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ai-prompt",
+              "name": "aiPrompt",
+              "value": "={{ \"CLIENT EMAIL FROM: \" + ($json.emailFrom || \"\") + \"\\nSUBJECT: \" + ($json.emailSubject || \"\") + \"\\nFILE: \" + ($json.fileName || \"\") + \"\\n\\nTIMESHEET TEXT:\\n\" + ($json.extractedText || \"\") }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "3599b1e0-d9e8-4b72-8fd6-d347a780ce1e",
+      "name": "AI Timesheet Extractor",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1920,
+        300
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.aiPrompt }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a staffing agency timesheet extraction specialist. Extract worker name, total hours, pay period dates, and daily hour entries from client-submitted timesheets. Return only valid JSON matching the schema. Never invent worker names or hours. If totals do not match daily entries, set needs_manual_review=true.",
+          "maxIterations": 3,
+          "passthroughBinaryImages": false
+        }
+      }
+    },
+    {
+      "id": "169ebc3f-48a6-4114-8744-b53aeabb60b9",
+      "name": "GPT-5 Mini",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1872,
+        640
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "options": {
+          "temperature": 0.1
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "39863e90-e186-46e1-920d-02d664a04e06",
+      "name": "Timesheet JSON Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1904,
+        432
+      ],
+      "parameters": {
+        "schemaType": "fromJson",
+        "autoFix": true,
+        "jsonSchemaExample": {
+          "worker_name": "Jane Smith",
+          "client_name": "Acme Warehouse",
+          "pay_period_start": "2026-06-23",
+          "pay_period_end": "2026-06-29",
+          "total_hours": 38.5,
+          "daily_entries": [
+            {
+              "date": "2026-06-23",
+              "hours": 8
+            },
+            {
+              "date": "2026-06-24",
+              "hours": 7.5
+            }
+          ],
+          "confidence_score": 0.91,
+          "extraction_notes": "All dates within pay period.",
+          "needs_manual_review": false
+        }
+      }
+    },
+    {
+      "id": "a3a29884-52d7-4d54-b396-3db1d9c1c54f",
+      "name": "Validate & Build Intake Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const src = $input.item.json;\nconst out = src.output || src;\nconst daily = Array.isArray(out.daily_entries) ? out.daily_entries : [];\nconst dailySum = daily.reduce((sum, d) => sum + (Number(d.hours) || 0), 0);\nconst totalHours = Number(out.total_hours) || dailySum;\nlet confidence = Number(out.confidence_score);\nif (Number.isNaN(confidence)) confidence = 0.5;\nconst needsReview = Boolean(out.needs_manual_review) || confidence < 0.85 || !out.worker_name || totalHours <= 0;\nconst intakeId = 'TS-' + $now.toFormat('yyyyLLdd-HHmmss') + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();\nreturn {\n  json: {\n    intake_id: intakeId,\n    received_at: $now.toISO(),\n    gmail_message_id: src.gmailMessageId || $('Split Attachments').item.json.gmailMessageId,\n    email_from: src.emailFrom || $('Split Attachments').item.json.emailFrom,\n    email_subject: src.emailSubject || $('Split Attachments').item.json.emailSubject,\n    attachment_name: src.fileName || $('Split Attachments').item.json.fileName,\n    extraction_method: src.extractionMethod || 'unknown',\n    worker_name: out.worker_name || '',\n    client_name: out.client_name || '',\n    pay_period_start: out.pay_period_start || '',\n    pay_period_end: out.pay_period_end || '',\n    total_hours: totalHours,\n    daily_entries_json: JSON.stringify(daily),\n    confidence_score: confidence,\n    extraction_notes: out.extraction_notes || '',\n    needs_manual_review: needsReview,\n    status: 'pending_reconcile',\n    flagged_reason: '',\n    reconciled_at: '',\n  },\n};"
+      }
+    },
+    {
+      "id": "dc81bd61-35b4-47d9-af5e-f375684e8b2a",
+      "name": "Append Timesheet_Intake",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2400,
+        300
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Timesheet_Intake"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "schema": [
+            {
+              "id": "intake_id",
+              "displayName": "intake_id",
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "received_at",
+              "displayName": "received_at",
+              "type": "string"
+            },
+            {
+              "id": "gmail_message_id",
+              "displayName": "gmail_message_id",
+              "type": "string"
+            },
+            {
+              "id": "email_from",
+              "displayName": "email_from",
+              "type": "string"
+            },
+            {
+              "id": "email_subject",
+              "displayName": "email_subject",
+              "type": "string"
+            },
+            {
+              "id": "attachment_name",
+              "displayName": "attachment_name",
+              "type": "string"
+            },
+            {
+              "id": "extraction_method",
+              "displayName": "extraction_method",
+              "type": "string"
+            },
+            {
+              "id": "worker_name",
+              "displayName": "worker_name",
+              "type": "string"
+            },
+            {
+              "id": "client_name",
+              "displayName": "client_name",
+              "type": "string"
+            },
+            {
+              "id": "pay_period_start",
+              "displayName": "pay_period_start",
+              "type": "string"
+            },
+            {
+              "id": "pay_period_end",
+              "displayName": "pay_period_end",
+              "type": "string"
+            },
+            {
+              "id": "total_hours",
+              "displayName": "total_hours",
+              "type": "number"
+            },
+            {
+              "id": "daily_entries_json",
+              "displayName": "daily_entries_json",
+              "type": "string"
+            },
+            {
+              "id": "confidence_score",
+              "displayName": "confidence_score",
+              "type": "number"
+            },
+            {
+              "id": "extraction_notes",
+              "displayName": "extraction_notes",
+              "type": "string"
+            },
+            {
+              "id": "needs_manual_review",
+              "displayName": "needs_manual_review",
+              "type": "boolean"
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "type": "string"
+            },
+            {
+              "id": "flagged_reason",
+              "displayName": "flagged_reason",
+              "type": "string"
+            },
+            {
+              "id": "reconciled_at",
+              "displayName": "reconciled_at",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "5882b71a-892b-4e9d-8d6d-464f6dd25195",
+      "name": "Extract Excel Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        1200,
+        420
+      ],
+      "parameters": {
+        "operation": "xlsx",
+        "binaryPropertyName": "data",
+        "options": {}
+      }
+    },
+    {
+      "id": "eba7fa97-00db-474c-8d2c-8c03cb729fe8",
+      "name": "Set Excel Context",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1440,
+        420
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "excel-text",
+              "name": "extractedText",
+              "value": "={{ JSON.stringify($json.data || $json) }}",
+              "type": "string"
+            },
+            {
+              "id": "excel-method",
+              "name": "extractionMethod",
+              "value": "excel_parse",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {
+          "includeBinary": true
+        }
+      }
+    },
+    {
+      "id": "53db0d5d-06c6-4799-8e0c-96514bdb2bb1",
+      "name": "Sticky Note 9bd744d5",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1872,
+        688
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "No Attachment Path",
+            "position": [
+              480,
+              520
+            ],
+            "parameters": {
+              "width": 260,
+              "height": 100,
+              "content": "Emails without attachments are ignored.\nClient must attach timesheet PDF/Excel."
+            }
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Gmail: Client Timesheet Email": {
+      "main": [
+        [
+          {
+            "node": "Has Attachments?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Attachments?": {
+      "main": [
+        [
+          {
+            "node": "Split Attachments",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sticky Note 9bd744d5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Attachments": {
+      "main": [
+        [
+          {
+            "node": "Valid Timesheet Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid Timesheet Files": {
+      "main": [
+        [
+          {
+            "node": "Route by File Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by File Type": {
+      "main": [
+        [
+          {
+            "node": "Extract PDF Text",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract Excel Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract PDF Text": {
+      "main": [
+        [
+          {
+            "node": "Set PDF Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set PDF Context": {
+      "main": [
+        [
+          {
+            "node": "Prepare AI Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare AI Input": {
+      "main": [
+        [
+          {
+            "node": "AI Timesheet Extractor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Timesheet Extractor": {
+      "main": [
+        [
+          {
+            "node": "Validate & Build Intake Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT-5 Mini": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Timesheet Extractor",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Timesheet JSON Schema",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Timesheet JSON Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Timesheet Extractor",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate & Build Intake Row": {
+      "main": [
+        [
+          {
+            "node": "Append Timesheet_Intake",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Excel Text": {
+      "main": [
+        [
+          {
+            "node": "Set Excel Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Excel Context": {
+      "main": [
+        [
+          {
+            "node": "Prepare AI Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

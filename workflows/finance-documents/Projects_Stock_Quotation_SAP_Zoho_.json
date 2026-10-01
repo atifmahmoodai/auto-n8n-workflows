@@ -1,0 +1,410 @@
+{
+  "name": "Projects: Stock Quotation (SAP + Zoho)",
+  "nodes": [
+    {
+      "id": "c601163d-9046-4f7a-8fa6-ff5be0599a3a",
+      "name": "Sticky Note 69792ecd",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        304,
+        688
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "Stock Quotation Architecture",
+            "position": [
+              -220,
+              60
+            ],
+            "parameters": {
+              "width": 540,
+              "height": 260,
+              "content": "PRODUCT STOCK QUOTATION (SAP -> Zoho)\n\n1. Gmail Trigger on customer product inquiry\n2. AI identifies product SKU/name\n3. HTTP checks SAP stock (replace URL)\n4. If in stock: generate quote + log Zoho opportunity via HTTP\n5. Gmail sends quote to customer"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "16a5a8db-5734-484b-ad90-7ef653373ed0",
+      "name": "Gmail: Product Inquiry",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "filters": {
+          "q": "subject:(stock OR quote OR availability) newer_than:1d"
+        },
+        "options": {
+          "downloadAttachments": false
+        }
+      }
+    },
+    {
+      "id": "f5a2c89a-1fa3-436e-a114-de4b9529af01",
+      "name": "AI: Extract Product Request",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        280,
+        300
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ \"Extract product SKU, product name, quantity requested, customer email and name from this email.\\n\\nFrom: \" + ($json.from?.text || \"\") + \"\\nSubject: \" + ($json.subject || \"\") + \"\\nBody: \" + ($json.textPlain || $json.snippet || \"\") }}",
+        "hasOutputParser": true
+      }
+    },
+    {
+      "id": "3505d85c-dd4a-4000-818c-0027c0523736",
+      "name": "GPT-4o Mini",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        304,
+        640
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "options": {
+          "temperature": 0.1
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "27592da4-3243-42c0-af1a-eda8ff5326f4",
+      "name": "Product Inquiry Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        336,
+        432
+      ],
+      "parameters": {
+        "schemaType": "fromJson",
+        "autoFix": true,
+        "jsonSchemaExample": {
+          "product_sku": "SKU-12345",
+          "product_name": "Industrial Pump",
+          "quantity_requested": 10,
+          "customer_email": "buyer@example.com",
+          "customer_name": "Jane Buyer"
+        }
+      }
+    },
+    {
+      "id": "707350d5-eb44-48ab-ba69-78a4ca189252",
+      "name": "SAP: Check Stock",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        560,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ \"https://REPLACE_SAP_HOST/api/stock?sku=\" + encodeURIComponent($json.output?.product_sku || $json.product_sku || \"\") }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "aa68fec6-eee0-426a-8e9f-269270bf51ed",
+      "name": "Build Quote Document",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        820,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const product = $('AI: Extract Product Request').first().json.output || $('AI: Extract Product Request').first().json;\nconst stock = $input.first().json;\nconst available = Number(stock.available_qty ?? stock.quantity ?? 0);\nconst unitPrice = Number(stock.unit_price ?? 100);\nconst qty = Math.min(Number(product.quantity_requested || 1), available);\nconst total = Math.round(unitPrice * qty * 100) / 100;\nreturn [{\n  json: {\n    ...product,\n    available_qty: available,\n    quoted_qty: qty,\n    unit_price: unitPrice,\n    total,\n    in_stock: available > 0,\n    quote_id: 'Q-' + Date.now(),\n    quoted_at: new Date().toISOString(),\n  }\n}];"
+      }
+    },
+    {
+      "id": "ef9a25bd-746c-4e8b-8194-4962653fb4d2",
+      "name": "In Stock?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1080,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.in_stock }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "8dc7af1a-982a-425c-853a-2c48005032dd",
+      "name": "Zoho: Create Opportunity",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1340,
+        220
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.zohoapis.com/crm/v2/Deals",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n        data: [{\n          Deal_Name: \"Quote \" + $json.quote_id + \" - \" + $json.product_name,\n          Stage: \"Qualification\",\n          Amount: $json.total,\n          Contact_Email: $json.customer_email,\n          Description: \"Auto quote for SKU \" + $json.product_sku + \" qty \" + $json.quoted_qty\n        }]\n      } }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "5b4b350e-8c3c-4fe5-9c61-81273ba7fae4",
+      "name": "Gmail: Send Stock Quote",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1600,
+        220
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $(\"Build Quote Document\").item.json.customer_email }}",
+        "subject": "={{ \"Quote \" + $(\"Build Quote Document\").item.json.quote_id + \" - \" + $(\"Build Quote Document\").item.json.product_name }}",
+        "emailType": "text",
+        "message": "={{ \"Hello \" + $(\"Build Quote Document\").item.json.customer_name + \",\\n\\nProduct: \" + $(\"Build Quote Document\").item.json.product_name + \"\\nSKU: \" + $(\"Build Quote Document\").item.json.product_sku + \"\\nAvailable: \" + $(\"Build Quote Document\").item.json.available_qty + \"\\nQuoted Qty: \" + $(\"Build Quote Document\").item.json.quoted_qty + \"\\nUnit Price: \" + $(\"Build Quote Document\").item.json.unit_price + \"\\nTotal: \" + $(\"Build Quote Document\").item.json.total + \"\\n\\nThank you.\" }}",
+        "options": {}
+      },
+      "webhookId": "efc8087b-5bc0-43f9-8036-86296f52a650"
+    },
+    {
+      "id": "5a4f471e-de59-4d4a-982b-6fb241fc988d",
+      "name": "Log Quote to Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1860,
+        220
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Stock_Quotes"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "quoted_at": "={{ $(\"Build Quote Document\").item.json.quoted_at }}",
+            "quote_id": "={{ $(\"Build Quote Document\").item.json.quote_id }}",
+            "product_sku": "={{ $(\"Build Quote Document\").item.json.product_sku }}",
+            "quoted_qty": "={{ $(\"Build Quote Document\").item.json.quoted_qty }}",
+            "total": "={{ $(\"Build Quote Document\").item.json.total }}",
+            "in_stock": "={{ $(\"Build Quote Document\").item.json.in_stock }}"
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "e8f0127f-4db3-407e-9e85-78ba32bdab4c",
+      "name": "Gmail: Out of Stock Reply",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1340,
+        420
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "reply",
+        "messageId": "={{ $(\"Gmail: Product Inquiry\").item.json.id }}",
+        "emailType": "text",
+        "message": "={{ \"Thank you for your inquiry. The requested product (\" + $json.product_name + \" / \" + $json.product_sku + \") is currently out of stock. We will notify you when available.\" }}",
+        "options": {}
+      },
+      "webhookId": "e480dd6c-90d7-4c02-b7ec-e12920e42ad6"
+    }
+  ],
+  "connections": {
+    "Gmail: Product Inquiry": {
+      "main": [
+        [
+          {
+            "node": "AI: Extract Product Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Extract Product Request": {
+      "main": [
+        [
+          {
+            "node": "SAP: Check Stock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT-4o Mini": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI: Extract Product Request",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Product Inquiry Schema",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Product Inquiry Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI: Extract Product Request",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SAP: Check Stock": {
+      "main": [
+        [
+          {
+            "node": "Build Quote Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Quote Document": {
+      "main": [
+        [
+          {
+            "node": "In Stock?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "In Stock?": {
+      "main": [
+        [
+          {
+            "node": "Zoho: Create Opportunity",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gmail: Out of Stock Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Zoho: Create Opportunity": {
+      "main": [
+        [
+          {
+            "node": "Gmail: Send Stock Quote",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: Send Stock Quote": {
+      "main": [
+        [
+          {
+            "node": "Log Quote to Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

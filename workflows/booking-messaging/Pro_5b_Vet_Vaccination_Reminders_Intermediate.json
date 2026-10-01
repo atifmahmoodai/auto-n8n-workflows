@@ -1,0 +1,608 @@
+{
+  "name": "Pro 5b | Vet Vaccination Reminders | Intermediate",
+  "nodes": [
+    {
+      "id": "10d696d3-9182-4a3f-9fef-c86cf2b64fe7",
+      "name": "Every Morning at 9",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "23b6a890-8835-4d8d-91ca-f2a4a2e4c796",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "07415d49-f44e-4aaa-9fb7-b2616a76e8ce",
+              "name": "clinic_name",
+              "value": "Greenway Vets",
+              "type": "string"
+            },
+            {
+              "id": "b2c790b8-27ee-4f6d-bf74-aaa93d0cd1e2",
+              "name": "sheet_id",
+              "value": "PASTE_GOOGLE_SHEET_ID",
+              "type": "string"
+            },
+            {
+              "id": "e4d013a8-67bd-4cf6-a4b2-bdeb817e62f0",
+              "name": "calendar_id",
+              "value": "PASTE_CALENDAR_ID@group.calendar.google.com",
+              "type": "string"
+            },
+            {
+              "id": "65a22f2c-b3fa-4b87-aefc-0d90d09a0300",
+              "name": "timezone",
+              "value": "Europe/London",
+              "type": "string"
+            },
+            {
+              "id": "fe4228b7-b5cb-46a8-afa8-54bc5ba8e3e7",
+              "name": "phone_number_id",
+              "value": "PASTE_WHATSAPP_PHONE_NUMBER_ID",
+              "type": "string"
+            },
+            {
+              "id": "dab37ca5-948e-4739-a950-5504d2453e70",
+              "name": "wa_token",
+              "value": "PASTE_PERMANENT_WHATSAPP_TOKEN",
+              "type": "string"
+            },
+            {
+              "id": "174c1087-676f-4e37-a207-068ef91b30e1",
+              "name": "graph_version",
+              "value": "v25.0",
+              "type": "string"
+            },
+            {
+              "id": "54f585c8-de16-4987-9a8b-04fcfceefec7",
+              "name": "clinic_phone",
+              "value": "01632 960123",
+              "type": "string"
+            },
+            {
+              "id": "dac5d09a-5e81-43ed-9755-fe993ccd678a",
+              "name": "emergency_phone",
+              "value": "01632 960123",
+              "type": "string"
+            },
+            {
+              "id": "e3024a13-682a-42c0-80e7-38500d0e6204",
+              "name": "out_of_hours",
+              "value": "Vets Now 01632 960999",
+              "type": "string"
+            },
+            {
+              "id": "fb92d61e-6207-463d-912c-4d552486e9d1",
+              "name": "team_hours",
+              "value": "Mon-Fri 8:30-18:00, Sat 9-12",
+              "type": "string"
+            },
+            {
+              "id": "72c764b1-00c7-4213-9878-79c0c3471051",
+              "name": "opening_hours",
+              "value": "{\"1\":[\"08:30-12:30\",\"13:30-18:00\"],\"2\":[\"08:30-12:30\",\"13:30-18:00\"],\"3\":[\"08:30-12:30\",\"13:30-18:00\"],\"4\":[\"08:30-12:30\",\"13:30-18:00\"],\"5\":[\"08:30-12:30\",\"13:30-17:00\"],\"6\":[\"09:00-12:00\"],\"0\":[]}",
+              "type": "string"
+            },
+            {
+              "id": "cfdbff67-6294-4ea2-8e92-e9c8c7270922",
+              "name": "slot_step_min",
+              "value": 15,
+              "type": "number"
+            },
+            {
+              "id": "afcd9242-0fdf-4653-b114-379854261886",
+              "name": "min_notice_min",
+              "value": 60,
+              "type": "number"
+            },
+            {
+              "id": "51d3e914-0938-420b-b181-0ea2cbd719d8",
+              "name": "buffer_min",
+              "value": 0,
+              "type": "number"
+            },
+            {
+              "id": "237d48ee-2156-4fa6-8dee-4fc95b15ec80",
+              "name": "booking_days",
+              "value": 14,
+              "type": "number"
+            },
+            {
+              "id": "dfd77108-0c23-44ca-9b0c-f9a7e00bc088",
+              "name": "session_hours",
+              "value": 6,
+              "type": "number"
+            },
+            {
+              "id": "bf4933a5-9953-421f-b75b-fafb69c299d4",
+              "name": "date_order",
+              "value": "DMY",
+              "type": "string"
+            },
+            {
+              "id": "44ccd594-4171-4ebc-b9f9-8d3713eed6a4",
+              "name": "vaccination_interval_months",
+              "value": 12,
+              "type": "number"
+            },
+            {
+              "id": "5b8d5a17-15a6-4ba2-b0fc-5d904daaa754",
+              "name": "reminder_template",
+              "value": "vaccination_reminder",
+              "type": "string"
+            },
+            {
+              "id": "b61eb486-5953-4b63-b425-19c410d7992e",
+              "name": "template_lang",
+              "value": "en_GB",
+              "type": "string"
+            },
+            {
+              "id": "3f5c8299-4ee3-45e6-8819-84d9ced5d7f1",
+              "name": "reminder_offsets",
+              "value": "[14,0,-14]",
+              "type": "string"
+            },
+            {
+              "id": "62b9280d-6d24-4532-a150-d6d256e1d175",
+              "name": "reminder_grace_days",
+              "value": 3,
+              "type": "number"
+            },
+            {
+              "id": "35642d90-1295-472d-9dbf-8de9b0714b85",
+              "name": "pushover_user_key",
+              "value": "PASTE_PUSHOVER_USER_KEY",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "1a9c4f17-73d3-478e-ad9c-9d9c25220e91",
+      "name": "Load Reminder Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://sheets.googleapis.com/v4/spreadsheets/{{ encodeURIComponent($json.sheet_id) }}/values:batchGet?majorDimension=ROWS&valueRenderOption=FORMATTED_VALUE&ranges=Owners&ranges=Pets&ranges=Appointments&ranges=Reminders&ranges=AppointmentTypes",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "568b4c03-21fd-48f0-a41c-f3de2869d21d",
+      "name": "Find Due Vaccinations",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// ===== Find Due Vaccinations =====\n// Runs once a day. Works out who is due, skips anyone who has opted out, already booked,\n// or already been reminded for this due date, and reports rows with dates it cannot read.\nconst CFG = $('Config').first().json;\n// --- Google Sheets helpers (identical copy in every node that reads the sheet) ---\nconst S = (v) => (v == null ? '' : String(v));\nconst digits = (s) => S(s).replace(/\\D/g, '');\n\n// values:batchGet returns ragged rows: trailing empty cells are simply missing, and a\n// blank line comes back as []. Read by header name and keep the real sheet row number.\nfunction readTables(batch, names) {\n  const out = {};\n  const vrs = (batch && batch.valueRanges) || [];\n  names.forEach((name, i) => {\n    const vr = vrs[i] || {};\n    const got = S(vr.range).replace(/^'|'?!.*$/g, '');\n    if (vr.range && got && got !== name) throw new Error('Sheet order mismatch: expected ' + name + ', got ' + got);\n    const rows = vr.values || [];\n    const header = (rows[0] || []).map((h) => S(h).trim());\n    const recs = [];\n    for (let r = 1; r < rows.length; r++) {\n      const row = rows[r] || [];\n      if (!row.some((c) => S(c).trim() !== '')) continue;\n      const rec = { __row: r + 1 };\n      header.forEach((h, c) => { if (h) rec[h] = row[c] === undefined ? '' : S(row[c]).trim(); });\n      recs.push(rec);\n    }\n    out[name] = { header, rows: recs };\n  });\n  return out;\n}\n\n// Staff type dates however they like, and Sheets displays them in the sheet's locale.\nfunction parseDate(raw, order, zone) {\n  const v = S(raw).trim();\n  if (!v) return null;\n  let d = null;\n  if (/^\\d{4}-\\d{2}-\\d{2}/.test(v)) d = DateTime.fromISO(v.slice(0, 10), { zone });\n  else if (/^\\d{4,5}(\\.\\d+)?$/.test(v)) {                          // a raw Sheets serial number\n    d = DateTime.fromISO('1899-12-30', { zone }).plus({ days: Math.floor(Number(v)) });\n  } else {\n    const m = v.match(/^(\\d{1,2})[\\/.\\-](\\d{1,2})[\\/.\\-](\\d{2,4})$/);\n    if (m) {\n      const a = +m[1], b = +m[2]; let y = +m[3]; if (y < 100) y += 2000;\n      const [day, month] = order === 'MDY' ? [b, a] : [a, b];\n      d = DateTime.fromObject({ year: y, month, day }, { zone });\n    } else {\n      for (const f of ['d LLL yyyy', 'd LLLL yyyy', 'LLL d, yyyy', 'LLLL d, yyyy', 'd-LLL-yyyy']) {\n        const t = DateTime.fromFormat(v, f, { zone });\n        if (t.isValid) { d = t; break; }\n      }\n    }\n  }\n  return d && d.isValid ? d.startOf('day') : null;\n}\nconst zone = CFG.timezone || 'Europe/London';\n// If the sheet cannot be read, sending nothing looks exactly like nobody being due.\n// Say so loudly instead - a silent day means missed vaccinations.\nconst batch = $input.first().json || {};\nlet T;\ntry {\n  if (batch.error || !Array.isArray(batch.valueRanges)) throw new Error(S((batch.error && (batch.error.message || batch.error)) || 'no data returned'));\n  T = readTables(batch, ['Owners', 'Pets', 'Appointments', 'Reminders', 'AppointmentTypes']);\n  if (!T.Pets.header.length || !T.Owners.header.length) throw new Error('the Pets or Owners tab is empty - check the tab names and header row');\n} catch (err) {\n  return [{ json: { summary: true, due: 0, skipped: {}, bad: [], worthTelling: true, priority: 1, failed: true,\n    message: 'No vaccination reminders went out today: the clinic sheet could not be read (' + S(err.message).slice(0, 200)\n      + '). Nothing was sent or logged, so today\\'s reminders will go out on the next run.' } }];\n}\nconst today = DateTime.now().setZone(zone).startOf('day');\nconst months = Number(CFG.vaccination_interval_months) || 12;\nlet offsets = [14, 0, -14];\ntry { const o = JSON.parse(S(CFG.reminder_offsets)); if (Array.isArray(o) && o.length) offsets = o.map(Number); } catch (e) {}\nconst grace = Number(CFG.reminder_grace_days) || 3;           // catch up if a run was missed\n\nconst sent = new Set(T.Reminders.rows.map((r) => S(r.reminder_key)));\nconst vaccType = T.AppointmentTypes.rows.find((t) => /vacc/i.test(t.name) && !/^(no|false|0)$/i.test(t.active || 'yes'));\nconst out = []; const bad = [];\nconst skipped = { opted_out: 0, already_booked: 0, no_phone: 0, already_sent: 0 };\n\nfor (const p of T.Pets.rows) {\n  const lastV = parseDate(p.last_vaccination, CFG.date_order, zone);\n  const nextV = parseDate(p.next_vaccination_due, CFG.date_order, zone);\n  if ((p.last_vaccination && !lastV) || (p.next_vaccination_due && !nextV)) bad.push(S(p.name) + ' (' + S(p.pet_id) + ', row ' + p.__row + ')');\n  const due = nextV || (lastV ? lastV.plus({ months }) : null);   // luxon turns 29 Feb + 12 months into 28 Feb\n  if (!due) continue;\n\n  const open = offsets.map((off) => ({ off, from: due.minus({ days: off }) }))\n    .filter((w) => today >= w.from && today < w.from.plus({ days: grace }))\n    .sort((a, b) => b.from.toMillis() - a.from.toMillis());\n  if (!open.length) continue;\n  const w = open[0];\n  const key = S(p.pet_id) + '|' + due.toISODate() + '|' + w.off;\n  if (sent.has(key)) { skipped.already_sent++; continue; }\n\n  const owner = T.Owners.rows.find((o) => digits(o.phone) && digits(o.phone) === digits(p.owner_phone));\n  if (!owner || digits(owner.phone).length < 8) { skipped.no_phone++; continue; }\n  if (/^(yes|true|1|y)$/i.test(S(owner.reminders_opt_out))) { skipped.opted_out++; continue; }\n  const booked = T.Appointments.rows.some((a) => a.pet_id === p.pet_id && /^booked$/i.test(a.status)\n    && /vacc/i.test(S(a.type)) && DateTime.fromISO(S(a.start), { zone }).isValid && DateTime.fromISO(S(a.start), { zone }) >= today);\n  if (booked) { skipped.already_booked++; continue; }\n\n  const phrase = w.off > 0 ? 'due on ' + due.toFormat('ccc d LLL')\n    : w.off === 0 ? 'due today' : 'overdue - it was due on ' + due.toFormat('d LLL');\n  out.push({ json: {\n    reminder: true, key, pet_id: S(p.pet_id), pet_name: S(p.name), owner_phone: '+' + digits(owner.phone),\n    due_date: due.toISODate(), offset_days: w.off, phone_number_id: CFG.phone_number_id,\n    graph_version: CFG.graph_version || 'v25.0', token: CFG.wa_token,\n    payload: {\n      messaging_product: 'whatsapp', recipient_type: 'individual', to: digits(owner.phone), type: 'template',\n      template: { name: S(CFG.reminder_template), language: { code: S(CFG.template_lang) || 'en' },\n        components: [\n          { type: 'body', parameters: [\n            { type: 'text', text: (S(owner.name).split(' ')[0] || 'there').slice(0, 60) },\n            { type: 'text', text: S(p.name).slice(0, 60) },\n            { type: 'text', text: phrase.slice(0, 60) }] },\n          { type: 'button', sub_type: 'quick_reply', index: '0',\n            parameters: [{ type: 'payload', payload: 'book:' + S(p.pet_id) + ':' + (vaccType ? S(vaccType.id) : '') }] },\n          { type: 'button', sub_type: 'quick_reply', index: '1', parameters: [{ type: 'payload', payload: 'stop_reminders' }] },\n        ] },\n    },\n  } });\n}\nout.push({ json: { summary: true, due: out.length, skipped, bad, priority: -1,\n  worthTelling: out.length > 0 || bad.length > 0,\n  message: out.length + ' vaccination reminder(s) going out today.'\n    + (Object.values(skipped).some(Boolean) ? ' Skipped: ' + Object.entries(skipped).filter(([, n]) => n).map(([k, n]) => n + ' ' + k.replace(/_/g, ' ')).join(', ') + '.' : '')\n    + (bad.length ? ' Dates I cannot read: ' + bad.slice(0, 10).join('; ') + (bad.length > 10 ? ' and ' + (bad.length - 10) + ' more' : '') + '.' : '') } });\nreturn out;\n"
+      }
+    },
+    {
+      "id": "f521634a-8fe1-4601-b867-6b7754601fb3",
+      "name": "Reminder or Summary?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "491444b0-0d7f-46f2-9c53-172780db1e2f",
+              "leftValue": "={{ $json.reminder === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "85d73833-7c13-4cda-be7b-252988c14467",
+      "name": "Send Reminder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        180
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/{{ $json.graph_version }}/{{ $json.phone_number_id }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 20,
+              "batchInterval": 1000
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "dad253d5-8cda-4225-8d80-da4adae602a0",
+      "name": "Log Reminders",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        180
+      ],
+      "parameters": {
+        "jsCode": "// ===== Log Reminders =====\n// Pairs each send result with its reminder, in order, and writes one row per reminder.\n// A failed send is logged as failed, so it is retried tomorrow within the grace window.\nconst CFG = $('Config').first().json;\n// --- Google Sheets helpers (identical copy in every node that reads the sheet) ---\nconst S = (v) => (v == null ? '' : String(v));\nconst digits = (s) => S(s).replace(/\\D/g, '');\n\n// values:batchGet returns ragged rows: trailing empty cells are simply missing, and a\n// blank line comes back as []. Read by header name and keep the real sheet row number.\nfunction readTables(batch, names) {\n  const out = {};\n  const vrs = (batch && batch.valueRanges) || [];\n  names.forEach((name, i) => {\n    const vr = vrs[i] || {};\n    const got = S(vr.range).replace(/^'|'?!.*$/g, '');\n    if (vr.range && got && got !== name) throw new Error('Sheet order mismatch: expected ' + name + ', got ' + got);\n    const rows = vr.values || [];\n    const header = (rows[0] || []).map((h) => S(h).trim());\n    const recs = [];\n    for (let r = 1; r < rows.length; r++) {\n      const row = rows[r] || [];\n      if (!row.some((c) => S(c).trim() !== '')) continue;\n      const rec = { __row: r + 1 };\n      header.forEach((h, c) => { if (h) rec[h] = row[c] === undefined ? '' : S(row[c]).trim(); });\n      recs.push(rec);\n    }\n    out[name] = { header, rows: recs };\n  });\n  return out;\n}\n\n// Staff type dates however they like, and Sheets displays them in the sheet's locale.\nfunction parseDate(raw, order, zone) {\n  const v = S(raw).trim();\n  if (!v) return null;\n  let d = null;\n  if (/^\\d{4}-\\d{2}-\\d{2}/.test(v)) d = DateTime.fromISO(v.slice(0, 10), { zone });\n  else if (/^\\d{4,5}(\\.\\d+)?$/.test(v)) {                          // a raw Sheets serial number\n    d = DateTime.fromISO('1899-12-30', { zone }).plus({ days: Math.floor(Number(v)) });\n  } else {\n    const m = v.match(/^(\\d{1,2})[\\/.\\-](\\d{1,2})[\\/.\\-](\\d{2,4})$/);\n    if (m) {\n      const a = +m[1], b = +m[2]; let y = +m[3]; if (y < 100) y += 2000;\n      const [day, month] = order === 'MDY' ? [b, a] : [a, b];\n      d = DateTime.fromObject({ year: y, month, day }, { zone });\n    } else {\n      for (const f of ['d LLL yyyy', 'd LLLL yyyy', 'LLL d, yyyy', 'LLLL d, yyyy', 'd-LLL-yyyy']) {\n        const t = DateTime.fromFormat(v, f, { zone });\n        if (t.isValid) { d = t; break; }\n      }\n    }\n  }\n  return d && d.isValid ? d.startOf('day') : null;\n}\nconst sentItems = $('Find Due Vaccinations').all().filter((i) => i.json.reminder).map((i) => i.json);\nconst results = $input.all().map((i) => i.json || {});\nconst T = readTables($('Load Reminder Data').first().json, ['Owners', 'Pets', 'Appointments', 'Reminders', 'AppointmentTypes']);\nconst writes = []; const failed = [];\n// One response per reminder, in order. If that is ever not true (a node-level failure can\n// collapse them), record nothing as sent: a duplicate tomorrow beats a missed vaccination.\nconst aligned = results.length === sentItems.length;\nif (!aligned) failed.push('the send step returned ' + results.length + ' results for ' + sentItems.length + ' reminders');\nsentItems.forEach((r, i) => {\n  const res = (aligned && results[i]) || {};\n  const ok = aligned && Array.isArray(res.messages) && res.messages.length > 0 && !res.error;\n  if (!ok) failed.push(r.pet_name + ': ' + S((res.error && (res.error.message || res.error.code)) || 'no response').slice(0, 80));\n  // only successful sends are recorded under the dedupe key; failures get their own key\n  writes.push({ op: 'append', tab: 'Reminders', record: {\n    reminder_key: ok ? r.key : r.key + '|failed|' + DateTime.now().toUTC().toISO(),\n    pet_id: r.pet_id, owner_phone: r.owner_phone, due_date: r.due_date, offset_days: String(r.offset_days),\n    sent_at: DateTime.now().toUTC().toISO(), status: ok ? 'sent' : 'failed',\n    detail: ok ? S(res.messages[0].id) : S(JSON.stringify(res.error || res)).slice(0, 300) } });\n});\n// Without a header row nothing can be logged, and an unlogged reminder is sent again\n// tomorrow, and the day after. Staff need to hear about that.\nif (!T.Reminders.header.length) {\n  failed.unshift('the Reminders tab has no header row, so today\\'s reminders could not be logged - they will be sent again tomorrow unless it is fixed');\n}\nreturn [{ json: { sheet_id: CFG.sheet_id, headers: { Reminders: T.Reminders.header }, writes,\n  failedCount: failed.length, failedMessage: failed.length ? failed.length + ' reminder(s) failed to send: ' + failed.join('; ') : '' } }];\n"
+      }
+    },
+    {
+      "id": "db42adaf-2e50-479a-a7eb-71ae1f72215e",
+      "name": "Split Writes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        100
+      ],
+      "parameters": {
+        "jsCode": "// ===== Split Writes =====\n// Row updates go in one batchUpdate call. New rows each use values:append, because\n// Google picks the next free row itself - two customers at once can never overwrite\n// each other, which a computed \"next row\" number cannot promise.\n// RAW means nothing a customer types is ever treated as a formula.\nconst out = [];\nconst S = (v) => (v == null ? '' : String(v));\nconst col = (n) => { let s = ''; while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); } return s; };\nconst q = (t) => (/^[A-Za-z0-9_]+$/.test(t) ? t : \"'\" + t.replace(/'/g, \"''\") + \"'\");\nfor (const it of $input.all()) {\n  const o = it.json;\n  if (!o.sheet_id) continue;\n  const base = 'https://sheets.googleapis.com/v4/spreadsheets/' + encodeURIComponent(o.sheet_id);\n  const updates = [];\n  for (const w of (o.writes || [])) {\n    const header = (o.headers || {})[w.tab] || [];\n    if (!header.length) continue;\n    const values = header.map((h) => (h ? S(w.record && w.record[h] !== undefined ? w.record[h] : '').slice(0, 49000) : ''));\n    if (w.op === 'update' && Number(w.row) >= 2) {\n      // Only touch columns that have a header. A column someone added without one\n      // holds notes we know nothing about, and blanking it would lose them.\n      let i = 0;\n      while (i < header.length) {\n        if (!header[i]) { i++; continue; }\n        let j = i;\n        while (j + 1 < header.length && header[j + 1]) j++;\n        updates.push({ range: q(w.tab) + '!' + col(i + 1) + w.row + ':' + col(j + 1) + w.row, values: [values.slice(i, j + 1)] });\n        i = j + 1;\n      }\n    } else if (w.op === 'append') {\n      out.push({ json: { method: 'POST',\n        url: base + '/values/' + encodeURIComponent(q(w.tab) + '!A1') + ':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',\n        body: { values: [values] }, tab: w.tab, op: 'append' } });\n    }\n  }\n  if (updates.length) out.unshift({ json: { method: 'POST', url: base + '/values:batchUpdate',\n    body: { valueInputOption: 'RAW', data: updates }, tab: updates.map((u) => u.range.split('!')[0]).join(','), op: 'update' } });\n}\nreturn out;\n"
+      }
+    },
+    {
+      "id": "1dc6d0c5-35bb-40bd-8c55-5d2387bc004d",
+      "name": "Save to Sheet",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "ad263170-964f-409d-9762-67adcfeb2fd7",
+      "name": "Worth Telling Staff?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1100,
+        440
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "aef1324e-e2a0-4394-9f7d-797695757a85",
+              "leftValue": "={{ $json.worthTelling === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "4e95f503-9c28-45ee-a070-96f9f699c9b5",
+      "name": "Daily Summary",
+      "type": "n8n-nodes-base.pushover",
+      "typeVersion": 1,
+      "position": [
+        1320,
+        420
+      ],
+      "parameters": {
+        "userKey": "={{ $('Config').first().json.pushover_user_key }}",
+        "message": "={{ $json.message }}",
+        "priority": "={{ $json.priority === undefined ? -1 : $json.priority }}",
+        "additionalFields": {
+          "title": "={{ $json.failed ? \"Vaccination reminders DID NOT RUN\" : \"Vaccination reminders today\" }}"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "cf4241ca-144f-4125-a1ba-b9fbbfcbb305",
+      "name": "Any Failures?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1540,
+        280
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "2ad51835-5113-4cdd-9ff2-e5094422964d",
+              "leftValue": "={{ $json.failedCount > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "3f1d628f-8a4f-49ee-b08c-1fd4394054f3",
+      "name": "Alert Failures",
+      "type": "n8n-nodes-base.pushover",
+      "typeVersion": 1,
+      "position": [
+        1760,
+        280
+      ],
+      "parameters": {
+        "userKey": "={{ $('Config').first().json.pushover_user_key }}",
+        "message": "={{ $json.failedMessage }}",
+        "priority": 0,
+        "additionalFields": {
+          "title": "Vaccination reminders: some failed"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "b0ca8f4c-c52a-41e4-9c97-f8a473b84751",
+      "name": "Sticky Note 09667ca2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -60,
+        540
+      ],
+      "parameters": {
+        "content": "## Vaccination reminders, every morning\nReads the Pets tab and works out who is due from **next_vaccination_due**, or from\n**last_vaccination** plus 12 months. Sends at 14 days before, on the day, and 14 days\noverdue (`reminder_offsets`), and catches up if a run was missed in the last 3 days.\n\nIt skips owners who replied STOP, pets already booked in for a vaccination, and anyone\nalready reminded for that due date (the **Reminders** tab is the ledger).\n\n**Template needed:** `vaccination_reminder`, 3 body variables (owner, pet, \"due on Mon 5\nOct\" / \"due today\" / \"overdue...\"), and two quick-reply buttons: **Book now** and\n**Stop reminders**. Book now drops the owner straight into the diary for that pet.\n\nStaff get a morning summary - including any rows whose dates cannot be read.",
+        "color": 6,
+        "width": 760,
+        "height": 340
+      }
+    }
+  ],
+  "connections": {
+    "Every Morning at 9": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Load Reminder Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Reminder Data": {
+      "main": [
+        [
+          {
+            "node": "Find Due Vaccinations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Due Vaccinations": {
+      "main": [
+        [
+          {
+            "node": "Reminder or Summary?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reminder or Summary?": {
+      "main": [
+        [
+          {
+            "node": "Send Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Worth Telling Staff?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Reminder": {
+      "main": [
+        [
+          {
+            "node": "Log Reminders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Reminders": {
+      "main": [
+        [
+          {
+            "node": "Split Writes",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Any Failures?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Writes": {
+      "main": [
+        [
+          {
+            "node": "Save to Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Worth Telling Staff?": {
+      "main": [
+        [
+          {
+            "node": "Daily Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Failures?": {
+      "main": [
+        [
+          {
+            "node": "Alert Failures",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

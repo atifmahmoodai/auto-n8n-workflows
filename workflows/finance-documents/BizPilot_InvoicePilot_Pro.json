@@ -1,0 +1,500 @@
+{
+  "name": "BizPilot - InvoicePilot Pro",
+  "nodes": [
+    {
+      "id": "eee908d2-e341-45c5-98bb-ffae50343e1d",
+      "name": "Invoice Intake Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "bizpilot-invoicepilot-intake",
+        "responseMode": "responseNode",
+        "options": {
+          "binaryData": true,
+          "binaryPropertyName": "data",
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "X-BizPilot",
+                "value": "InvoicePilot"
+              }
+            ]
+          }
+        }
+      },
+      "webhookId": "86a57abd-7f5e-4611-9c3c-5fda14a5ae18"
+    },
+    {
+      "id": "0fcec3c8-bdea-4758-9f57-1753f0627167",
+      "name": "Normalize Invoice Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const out = [];\nfor (const item of $input.all()) {\n  const body = item.json.body || item.json || {};\n  const hasAudio = !!item.binary?.data;\n  out.push({\n    json: {\n      business_id: body.business_id || 'default',\n      owner_phone: String(body.owner_phone || '923000000000').replace(/\\D/g, ''),\n      customer_name: body.customer_name || body.name || '',\n      customer_phone: String(body.customer_phone || body.phone || '').replace(/\\D/g, ''),\n      phone_number_id: body.phone_number_id || 'YOUR_PHONE_NUMBER_ID',\n      transcript: body.transcript || body.text || body.message || '',\n      has_audio: hasAudio ? 'yes' : 'no',\n      idempotency_key: body.idempotency_key || ('invoice-' + Date.now()),\n      received_at: new Date().toISOString()\n    },\n    binary: item.binary\n  });\n}\nreturn out;"
+      }
+    },
+    {
+      "id": "18d01265-827e-4627-8ebc-d50cb244126b",
+      "name": "Has Audio File?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        500,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.has_audio }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "yes"
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "ea47ed0a-8aeb-4ad5-8a58-9cdc4e5af19d",
+      "name": "Transcribe Voice Note",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        760,
+        -160
+      ],
+      "parameters": {
+        "resource": "audio",
+        "operation": "transcribe",
+        "binaryPropertyName": "data",
+        "options": {
+          "language": "en",
+          "temperature": 0
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "d4aa0c36-658f-452e-8e12-6b27bca98acf",
+      "name": "Prepare Voice Transcript",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1020,
+        -160
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const base = $('Normalize Invoice Input').item.json;\nconst text = $input.first().json.text || $input.first().json.transcription || '';\nreturn [{ json: { ...base, transcript: text, source_type: 'audio' } }];"
+      }
+    },
+    {
+      "id": "74139f76-1bc3-464c-9c41-7c9a8d5db682",
+      "name": "AI Extract Invoice",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1280,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'gpt-4o-mini', temperature: 0.1, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: 'You are InvoicePilot. Extract invoice data from mixed English/Roman Urdu text. Return JSON only with keys: customer_name, customer_phone, items array of {name, quantity, unit, unit_price, confidence}, discount number, tax number, payment_method one of cash|card|bank|credit|unknown, notes, needs_review boolean, review_reasons array. Do not calculate final totals. Never guess missing prices or quantities. If unclear set needs_review true.' }, { role: 'user', content: JSON.stringify({ transcript: $json.transcript, customer_name: $json.customer_name, customer_phone: $json.customer_phone }) } ] }) }}"
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "654e2064-5209-41cf-a5b5-7503b5662af7",
+      "name": "Prepare Text Transcript",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1020,
+        120
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const base = $('Normalize Invoice Input').item.json;\nreturn [{ json: { ...base, transcript: base.transcript, source_type: 'text' } }];"
+      }
+    },
+    {
+      "id": "91c4c6b7-ce54-45f2-9146-4ea9c74122db",
+      "name": "Calculate Invoice Totals",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const base = $input.first().json;\nlet ai = {};\ntry { ai = JSON.parse(base.choices?.[0]?.message?.content || '{}'); } catch (e) { ai = {}; }\nconst source = $('Prepare Text Transcript').isExecuted ? $('Prepare Text Transcript').item.json : $('Prepare Voice Transcript').item.json;\nconst items = Array.isArray(ai.items) ? ai.items : [];\nlet subtotal = 0;\nconst cleanItems = items.map((x, i) => {\n  const qty = Number(x.quantity);\n  const price = Number(x.unit_price);\n  const line = Number.isFinite(qty) && Number.isFinite(price) ? qty * price : 0;\n  subtotal += line;\n  return { name: x.name || ('Item ' + (i + 1)), quantity: qty || 0, unit: x.unit || '', unit_price: price || 0, line_total: line, confidence: Number(x.confidence || 0) };\n});\nconst discount = Number(ai.discount || 0);\nconst tax = Number(ai.tax || 0);\nconst total = Math.max(0, subtotal - discount + tax);\nconst lowConfidence = cleanItems.some(x => x.confidence < 0.75 || !x.name || !x.quantity || !x.unit_price);\nconst needsReview = ai.needs_review === true || lowConfidence || cleanItems.length === 0;\nconst invoiceNo = 'INV-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + Math.floor(1000 + Math.random()*9000);\nconst receipt = `Invoice ${invoiceNo}\\nCustomer: ${ai.customer_name || source.customer_name || 'Walk-in'}\\nItems:\\n${cleanItems.map((x, idx) => `${idx+1}. ${x.name} ${x.quantity} ${x.unit} x Rs ${x.unit_price} = Rs ${x.line_total}`).join('\\n')}\\nSubtotal: Rs ${subtotal}\\nDiscount: Rs ${discount}\\nTax: Rs ${tax}\\nTotal: Rs ${total}\\nPayment: ${ai.payment_method || 'unknown'}`;\nreturn [{ json: {\n  business_id: source.business_id,\n  idempotency_key: source.idempotency_key,\n  invoice_no: invoiceNo,\n  customer_name: ai.customer_name || source.customer_name || '',\n  customer_phone: ai.customer_phone || source.customer_phone || '',\n  phone_number_id: source.phone_number_id,\n  owner_phone: source.owner_phone,\n  items: cleanItems,\n  items_json: JSON.stringify(cleanItems),\n  subtotal, discount, tax, total,\n  payment_method: ai.payment_method || 'unknown',\n  needs_review: needsReview ? 'yes' : 'no',\n  review_reasons: JSON.stringify([...(ai.review_reasons || []), ...(lowConfidence ? ['Low confidence or missing item field'] : [])]),\n  receipt_text: receipt,\n  status: needsReview ? 'draft_review_required' : 'final_ready',\n  created_at: new Date().toISOString()\n}}];"
+      }
+    },
+    {
+      "id": "abebbbf9-7e17-4e9b-a770-24d6c6c594bd",
+      "name": "Save Invoice to Supabase",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1800,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "create",
+        "tableId": "bizpilot_invoices",
+        "dataToSend": "autoMapInputData",
+        "inputsToIgnore": "items"
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "4e732ff3-0955-4f1f-8876-d3caf7e72cfa",
+      "name": "Needs Owner Review?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2060,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $('Calculate Invoice Totals').item.json.needs_review }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "yes"
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "85016989-7c51-4faa-a0a7-b3bbf123a131",
+      "name": "Alert Owner Review",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        2320,
+        -160
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "phoneNumberId": "={{ $('Calculate Invoice Totals').item.json.phone_number_id }}",
+        "recipientPhoneNumber": "={{ $('Calculate Invoice Totals').item.json.owner_phone }}",
+        "messageType": "text",
+        "textBody": "=Invoice review needed: {{ $(\"Calculate Invoice Totals\").item.json.invoice_no }}. Reasons: {{ $(\"Calculate Invoice Totals\").item.json.review_reasons }}"
+      },
+      "webhookId": "f250cddb-9e8a-42ea-a75d-045013cfaf40",
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "d23dc983-822a-4f5b-ae82-dc16b4c98917",
+      "name": "Send Customer Receipt",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        2320,
+        140
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "phoneNumberId": "={{ $('Calculate Invoice Totals').item.json.phone_number_id }}",
+        "recipientPhoneNumber": "={{ $('Calculate Invoice Totals').item.json.customer_phone }}",
+        "messageType": "text",
+        "textBody": "={{ $('Calculate Invoice Totals').item.json.receipt_text }}"
+      },
+      "webhookId": "1f97ebdb-af7f-48c9-b660-3ed62a8c1dc9",
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "8eaf1f90-2085-42a1-9cfc-48c6f811bd9d",
+      "name": "Respond Invoice Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2840,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, module: \"InvoicePilot\", invoice_no: $(\"Calculate Invoice Totals\").item.json.invoice_no, total: $(\"Calculate Invoice Totals\").item.json.total, status: $(\"Calculate Invoice Totals\").item.json.status } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "93dd3a5f-f0a3-4a6f-930f-791d04255da5",
+      "name": "Sticky Note e06ed6da",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -50,
+        -50
+      ],
+      "parameters": {
+        "content": "## InvoicePilot Pro\nVoice/text invoice capture, AI extraction, backend-safe deterministic totals, review gate, Supabase log, WhatsApp receipt, and Sheet export. Replace YOUR_GOOGLE_SHEET_ID and connect WhatsApp before publishing.",
+        "color": 5,
+        "width": 2620,
+        "height": 340
+      }
+    },
+    {
+      "id": "ecc20398-ac88-4928-8e1d-069ef63ea81b",
+      "name": "Export Invoice to Sheet (disabled)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1800,
+        220
+      ],
+      "parameters": {
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": [],
+          "schema": [],
+          "value": {}
+        },
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "operation": "append",
+        "options": {},
+        "resource": "sheet",
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        }
+      },
+      "disabled": true,
+      "notes": "Placeholder export. Disabled so it cannot break the run. Add your Google Sheet document + tab, then enable."
+    }
+  ],
+  "connections": {
+    "Invoice Intake Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Invoice Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Invoice Input": {
+      "main": [
+        [
+          {
+            "node": "Has Audio File?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Audio File?": {
+      "main": [
+        [
+          {
+            "node": "Transcribe Voice Note",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Text Transcript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transcribe Voice Note": {
+      "main": [
+        [
+          {
+            "node": "Prepare Voice Transcript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Voice Transcript": {
+      "main": [
+        [
+          {
+            "node": "AI Extract Invoice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Text Transcript": {
+      "main": [
+        [
+          {
+            "node": "AI Extract Invoice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Invoice Totals": {
+      "main": [
+        [
+          {
+            "node": "Save Invoice to Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Invoice to Supabase": {
+      "main": [
+        [
+          {
+            "node": "Needs Owner Review?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Export Invoice to Sheet (disabled)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Owner Review?": {
+      "main": [
+        [
+          {
+            "node": "Alert Owner Review",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Customer Receipt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Owner Review": {
+      "main": [
+        [
+          {
+            "node": "Respond Invoice Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Customer Receipt": {
+      "main": [
+        [
+          {
+            "node": "Respond Invoice Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Extract Invoice": {
+      "main": [
+        [
+          {
+            "node": "Calculate Invoice Totals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

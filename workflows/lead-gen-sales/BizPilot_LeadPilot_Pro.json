@@ -1,0 +1,792 @@
+{
+  "name": "BizPilot - LeadPilot Pro",
+  "nodes": [
+    {
+      "id": "57cc377a-cf42-4e15-87f4-5f4f73a5020b",
+      "name": "WhatsApp Lead Intake",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "bizpilot-leadpilot-inbound",
+        "responseMode": "responseNode",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "X-BizPilot",
+                "value": "LeadPilot"
+              }
+            ]
+          }
+        }
+      },
+      "webhookId": "330f61bf-a6d5-40ca-a2cf-b63c4abdd6f8"
+    },
+    {
+      "id": "3d2b40d0-8c7c-45b5-86df-3d1822f64ea2",
+      "name": "Normalize Lead Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== Normalize Lead Message =====\n// Reads the Meta envelope or a plain JSON post, and builds the idempotency key that\n// Claim Event uses to make repeat deliveries harmless.\nconst c = $('Check Config').first().json;\nconst S = (v) => (v == null ? '' : String(v));\nconst out = [];\nfor (const item of $input.all()) {\n  const body = item.json.body || {};\n  const value = body.entry?.[0]?.changes?.[0]?.value || body;\n  const message = value.messages?.[0] || {};\n  const contact = value.contacts?.[0] || {};\n  const text = S(message.text?.body || body.text || body.message || body.message_text).trim();\n  const from = S(message.from || body.from || body.customer_phone || body.whatsapp).replace(/\\D/g, '');\n  const name = S(contact.profile?.name || body.customer_name || body.name);\n  // Meta sends delivery and read callbacks that carry no message. Emit a marker so the\n  // run still reaches a Respond node instead of leaving Meta to retry.\n  if (!from || !text) { out.push({ json: { skip: true, reason: 'not_a_customer_message' } }); continue; }\n  const businessId = S(body.business_id || c.business_id) || 'default';\n  const waMessageId = S(message.id || body.message_id) || ('manual-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));\n  const key = businessId + ':' + waMessageId;\n  out.push({ json: {\n    business_id: businessId,\n    business_name: S(c.business_name),\n    channel: 'whatsapp',\n    customer_phone: from,\n    customer_name: name,\n    message_text: text.slice(0, 2000),\n    phone_number_id: S(c.phone_number_id),\n    owner_phone: S(c.owner_phone),\n    wa_message_id: waMessageId,\n    event_key: key,\n    idempotency_key: key,\n    received_at: new Date().toISOString()\n  }});\n}\nreturn out;"
+      }
+    },
+    {
+      "id": "56ea9b58-56fb-4314-821f-136084fa6a3f",
+      "name": "AI Classify Lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1680,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $('Check Config').first().json.ai_model, temperature: 0.1, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: 'You are LeadPilot, a professional WhatsApp sales and booking assistant for ' + $('Check Config').first().json.business_name + '. Return JSON only with keys: intent, customer_name, requested_service, urgency, budget, preferred_date, preferred_time, lead_score integer 0-100, human_required boolean, next_action one of ask_question|book_slot|send_price|handoff|follow_up, reply, reason. Ask only one missing question. Never state a price, a discount or an availability slot: you do not have that data, so route those to a human. If the customer is angry, asks for emergency, legal or medical guarantees, or asks for a human, set human_required true and next_action handoff.' }, { role: 'user', content: JSON.stringify({ customer_phone: $('Normalize Lead Message').item.json.customer_phone, customer_name: $('Normalize Lead Message').item.json.customer_name, message: $('Normalize Lead Message').item.json.message_text, received_at: $('Normalize Lead Message').item.json.received_at }) } ] }) }}"
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "b4fa58f5-5e18-436e-beae-590d290c5ea7",
+      "name": "Parse Lead Decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1900,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// ===== Parse Lead Decision =====\n// The model's reply is sent straight to a customer, so it is checked before it leaves.\n// The prompt tells it never to quote prices; this enforces that rather than trusting it.\nconst c = $('Check Config').first().json;\nconst out = [];\nfor (const item of $input.all()) {\n  const base = $('Normalize Lead Message').item.json;\n  const raw = item.json || {};\n  const flags = [];\n  let ai = {};\n  // AI Classify continues on failure, so an error item can arrive here. That must still\n  // produce a polite reply and a handoff, never a dead end.\n  if (raw.error || !raw.choices) { flags.push('AI_UNAVAILABLE'); }\n  else {\n    try { ai = JSON.parse(raw.choices?.[0]?.message?.content || '{}'); }\n    catch (e) { flags.push('AI_OUTPUT_UNREADABLE'); }\n  }\n\n  const score = Number.isFinite(Number(ai.lead_score)) ? Math.max(0, Math.min(100, Number(ai.lead_score))) : 40;\n  let human = ai.human_required === true || ai.next_action === 'handoff' || flags.length > 0;\n  let reply = String(ai.reply || '').replace(/\\*\\*|__|`/g, '').trim();\n\n  if (!reply) {\n    flags.push('EMPTY_REPLY');\n    reply = 'Thanks for your message. Someone from ' + (c.business_name || 'our team') + ' will get back to you shortly.';\n    human = true;\n  }\n  const PRICE = /(?:\\brs\\.?|\\bpkr\\b|\\busd\\b|\\$|\\u00a3|\\u20ac)\\s?\\d|\\d[\\d,]{2,}\\s?(?:rs\\b|pkr\\b|rupees|dollars)|\\b\\d{1,3}\\s?%\\s?(?:off|discount)/i;\n  if (c.allow_ai_pricing !== true && PRICE.test(reply)) {\n    flags.push('PRICE_BLOCKED');\n    reply = 'Thanks for your interest. I will get you exact pricing from the team - someone will confirm shortly.';\n    human = true;\n  }\n  if (reply.length > 900) { reply = reply.slice(0, 897).trim() + '...'; flags.push('REPLY_TRUNCATED'); }\n\n  out.push({ json: {\n    ...base,\n    intent: ai.intent || 'unknown',\n    requested_service: ai.requested_service || null,\n    urgency: ai.urgency || 'medium',\n    budget: ai.budget || null,\n    preferred_date: ai.preferred_date || null,\n    preferred_time: ai.preferred_time || null,\n    lead_score: score,\n    temperature: score >= 75 ? 'hot' : score >= 45 ? 'warm' : 'cold',\n    human_required: human,\n    route: human ? 'handoff' : (ai.next_action || 'ask_question'),\n    reply,\n    guard_flags: flags.join('|'),\n    ai_reason: ai.reason || '',\n    processed_at: new Date().toISOString()\n  }});\n}\nreturn out;"
+      }
+    },
+    {
+      "id": "c268ac01-2d3b-4a7e-be3b-c9a7170d8e63",
+      "name": "Needs Human Handoff?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2120,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.route }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "handoff"
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "2266fb26-eba6-4e64-8479-1aa09404ea64",
+      "name": "Send Customer Reply",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        2340,
+        140
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "phoneNumberId": "={{ $('Parse Lead Decision').item.json.phone_number_id }}",
+        "recipientPhoneNumber": "={{ $('Parse Lead Decision').item.json.customer_phone }}",
+        "messageType": "text",
+        "textBody": "={{ $('Parse Lead Decision').item.json.reply }}"
+      },
+      "webhookId": "699b6be3-8be3-4baa-a6da-425e54aa48a4",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "06f2aa37-1441-477c-a39e-c8ea857c877e",
+      "name": "Build Lead Log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2560,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const p = $('Parse Lead Decision').item.json;\nreturn [{ json: {\n  business_id: p.business_id,\n  idempotency_key: p.idempotency_key,\n  wa_message_id: p.wa_message_id,\n  channel: p.channel,\n  customer_phone: p.customer_phone,\n  customer_name: p.customer_name,\n  message_text: p.message_text,\n  intent: p.intent,\n  requested_service: p.requested_service,\n  urgency: p.urgency,\n  lead_score: p.lead_score,\n  temperature: p.temperature,\n  human_required: p.human_required,\n  reply: p.reply,\n  guard_flags: p.guard_flags,\n  status: p.human_required ? 'handoff_required' : 'ai_replied',\n  created_at: new Date().toISOString()\n}}];"
+      }
+    },
+    {
+      "id": "a953d3fb-b46b-42a2-9538-14b4d492c0bf",
+      "name": "Save Lead to Supabase",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2780,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "create",
+        "tableId": "bizpilot_leads",
+        "dataToSend": "autoMapInputData"
+      }
+    },
+    {
+      "id": "b415b445-f264-45bf-af75-34a633f07f9d",
+      "name": "Respond Accepted",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1460,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, module: 'LeadPilot', accepted: true, business_id: $('Normalize Lead Message').item.json.business_id, wa_message_id: $('Normalize Lead Message').item.json.wa_message_id } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "e39f4565-1bec-4ca1-bfcb-e6ad0277a037",
+      "name": "Sticky Note 693706c4",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -60,
+        -1000
+      ],
+      "parameters": {
+        "color": 4,
+        "content": "## LeadPilot Pro — production\n\n**A client sets exactly two things:** the **Config** node, and the **Verify Token** node. Everything else reads from Config.\n\n**Order of setup**\n1. Run `bizpilot-leadpilot-schema.sql` in Supabase (creates `bizpilot_leads` + `bizpilot_processed_events`).\n2. Create the `lead_handoff_alert` template in Meta and wait for approval — see the templates file.\n3. Fill in **Config**, and put your own token in **Verify Token**.\n4. Attach credentials: WhatsApp Business Cloud, OpenAI, Supabase.\n5. In Meta, subscribe the webhook to the **production URL** of this workflow and the **messages** field. The GET branch answers the challenge.\n6. Activate, then run the payloads in `bizpilot-leadpilot-tests.md`.\n\n**Why it is shaped this way**\n- **Check Config** stops a misconfigured run with a readable list instead of a Meta error later.\n- **Claim Event** inserts into a UNIQUE key first, so a repeat delivery from Meta is acknowledged, not processed twice.\n- **Respond Accepted** answers Meta *before* the AI call, so a slow model never causes a retry storm.\n- **Parse Lead Decision** blocks prices and hands off when the model fails, because its reply goes straight to a customer.\n- The customer reply is free-form text (legal: they messaged first). The owner alert is a **template**, because the owner did not.",
+        "height": 560,
+        "width": 900
+      }
+    },
+    {
+      "id": "aa4e0db4-af30-4650-8a89-8c000f09f06d",
+      "name": "Export Lead to Sheet (disabled)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2780,
+        220
+      ],
+      "parameters": {
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": [],
+          "schema": [],
+          "value": {}
+        },
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "operation": "append",
+        "options": {},
+        "resource": "sheet",
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        }
+      },
+      "disabled": true,
+      "notes": "Placeholder export. Disabled so it cannot break the run. Add your Google Sheet document + tab, then enable."
+    },
+    {
+      "id": "2ca62c50-7aca-4beb-a825-e397e9de3792",
+      "name": "Is a customer message?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1060,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "is-msg",
+              "leftValue": "={{ $json.skip !== true }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": ""
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "38bfca43-969c-4649-b9d3-0a7fbaa30c57",
+      "name": "Ack Ignored Event",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1060,
+        220
+      ],
+      "parameters": {
+        "options": {
+          "responseCode": 200
+        },
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, ignored: true, reason: $json.reason || 'not a customer message' } }}"
+      },
+      "notes": "Delivery and read callbacks are acknowledged here so Meta gets its 200 and stops retrying."
+    },
+    {
+      "id": "fa5be4ad-972f-457c-8ebc-b00a09783dfc",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c1",
+              "name": "business_id",
+              "type": "string",
+              "value": "default"
+            },
+            {
+              "id": "c2",
+              "name": "business_name",
+              "type": "string",
+              "value": "PASTE_BUSINESS_NAME"
+            },
+            {
+              "id": "c3",
+              "name": "phone_number_id",
+              "type": "string",
+              "value": "PASTE_WHATSAPP_PHONE_NUMBER_ID"
+            },
+            {
+              "id": "c4",
+              "name": "owner_phone",
+              "type": "string",
+              "value": "923000000000"
+            },
+            {
+              "id": "c5",
+              "name": "owner_template_name",
+              "type": "string",
+              "value": "lead_handoff_alert"
+            },
+            {
+              "id": "c6",
+              "name": "template_language",
+              "type": "string",
+              "value": "en"
+            },
+            {
+              "id": "c7",
+              "name": "graph_version",
+              "type": "string",
+              "value": "v25.0"
+            },
+            {
+              "id": "c8",
+              "name": "ai_model",
+              "type": "string",
+              "value": "gpt-4o-mini"
+            },
+            {
+              "id": "c9",
+              "name": "allow_ai_pricing",
+              "type": "boolean",
+              "value": false
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "notes": "The only node a client edits. Everything else reads from here."
+    },
+    {
+      "id": "4bdda1a1-a9d0-4b70-8c14-6c9fbbc95e52",
+      "name": "Check Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// ===== Check Config =====\n// Everything a client must set lives in Config. If something is missing this stops here\n// with a readable list, instead of failing three nodes later with a Meta or Supabase error.\nconst c = $json;\nconst body = c.body || {};\nconst S = (v) => (v == null ? '' : String(v));\nconst unset = (v) => !S(v).trim() || /^(YOUR_|PASTE_|CHANGE_ME|<)/i.test(S(v).trim());\nconst problems = [];\nconst phone_number_id = S(body.phone_number_id || c.phone_number_id);\nconst owner_phone = S(body.owner_phone || c.owner_phone).replace(/\\D/g, '');\nif (unset(phone_number_id)) problems.push('phone_number_id: paste the WhatsApp Cloud API phone number ID into the Config node');\nif (!/^[1-9]\\d{7,14}$/.test(owner_phone)) problems.push('owner_phone: international digits, no plus sign, e.g. 923001234567');\nelse if (/^92300000000\\d$/.test(owner_phone)) problems.push('owner_phone: this is still the sample number, set the real owner WhatsApp number');\nif (unset(c.owner_template_name)) problems.push('owner_template_name: the approved Meta template used for handoff alerts');\nif (unset(c.business_name)) problems.push('business_name: shown to customers in fallback replies');\nif (unset(c.ai_model)) problems.push('ai_model: e.g. gpt-4o-mini');\nreturn [{ json: { ...c, phone_number_id, owner_phone, config_ok: problems.length === 0, problems } }];"
+      }
+    },
+    {
+      "id": "1ea34ca1-2cd3-48a7-bd2d-03b5e7a6c370",
+      "name": "Config OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        640,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "cfg-ok",
+              "leftValue": "={{ $json.config_ok }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": ""
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "e24e69dd-dfc1-4b69-b94b-8b4d65ad02d5",
+      "name": "Config Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        640,
+        -200
+      ],
+      "parameters": {
+        "options": {
+          "responseCode": 500
+        },
+        "respondWith": "json",
+        "responseBody": "={{ { ok: false, error: 'LeadPilot configuration incomplete', problems: $json.problems } }}"
+      }
+    },
+    {
+      "id": "fcf1ff55-eea7-4f72-8f79-5aef40525871",
+      "name": "Claim Event",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1260,
+        0
+      ],
+      "parameters": {
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "event_key",
+              "fieldValue": "={{ $json.event_key }}"
+            },
+            {
+              "fieldId": "business_id",
+              "fieldValue": "={{ $json.business_id }}"
+            },
+            {
+              "fieldId": "wa_message_id",
+              "fieldValue": "={{ $json.wa_message_id }}"
+            },
+            {
+              "fieldId": "customer_phone",
+              "fieldValue": "={{ $json.customer_phone }}"
+            }
+          ]
+        },
+        "tableId": "bizpilot_processed_events"
+      },
+      "notes": "bizpilot_processed_events.event_key is UNIQUE. A repeat delivery from Meta fails this insert and is acknowledged as a duplicate instead of being processed twice.",
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1500
+    },
+    {
+      "id": "dd063b2b-21b7-490a-8bde-e685e97c1a2e",
+      "name": "Duplicate or Storage Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1260,
+        220
+      ],
+      "parameters": {
+        "options": {
+          "responseCode": "={{ /duplicate|unique|23505|already exists|conflict/i.test(JSON.stringify($json)) ? 200 : 503 }}"
+        },
+        "respondWith": "json",
+        "responseBody": "={{ /duplicate|unique|23505|already exists|conflict/i.test(JSON.stringify($json)) ? { ok: true, duplicate: true, note: 'Already processed, ignoring repeat delivery.' } : { ok: false, error: 'Could not record the event, returning 503 so WhatsApp retries.' } }}"
+      },
+      "notes": "A unique violation means we already handled this message: answer 200 so Meta stops. Any other database error answers 503 so Meta retries rather than dropping the lead."
+    },
+    {
+      "id": "bdefa456-2a83-40a5-aae1-e6fa6c0ab46c",
+      "name": "Alert Owner (Template)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2340,
+        -160
+      ],
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "jsonBody": "={{ JSON.stringify({ messaging_product: 'whatsapp', to: $('Check Config').first().json.owner_phone, type: 'template', template: { name: $('Check Config').first().json.owner_template_name, language: { code: $('Check Config').first().json.template_language || 'en' }, components: [ { type: 'body', parameters: [ { type: 'text', text: String($('Normalize Lead Message').item.json.customer_name || $('Normalize Lead Message').item.json.customer_phone).replace(/\\s+/g, ' ').slice(0, 60) }, { type: 'text', text: String($('Parse Lead Decision').item.json.intent || 'enquiry').replace(/\\s+/g, ' ').slice(0, 60) }, { type: 'text', text: String($('Normalize Lead Message').item.json.message_text).replace(/\\s+/g, ' ').slice(0, 60) } ] } ] } }) }}",
+        "method": "POST",
+        "nodeCredentialType": "whatsAppApi",
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "=https://graph.facebook.com/{{ $('Check Config').first().json.graph_version }}/{{ $('Check Config').first().json.phone_number_id }}/messages"
+      },
+      "notes": "The owner has not messaged the business number, so this must be an approved template. See bizpilot-leadpilot-templates.md.",
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "689043a0-c9a1-49fc-a34d-4af1d06a44be",
+      "name": "WhatsApp Verify (GET)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        -300
+      ],
+      "parameters": {
+        "httpMethod": "GET",
+        "options": {},
+        "path": "bizpilot-leadpilot-inbound",
+        "responseMode": "responseNode"
+      },
+      "webhookId": "dbd489f3-6058-440e-bd23-857c865f0bc4"
+    },
+    {
+      "id": "237ca2a9-66d0-448d-b58a-e7fef493caa7",
+      "name": "Verify Token",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        -300
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "vt",
+              "name": "verify_token",
+              "type": "string",
+              "value": "CHANGE_ME_verify_token"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "notes": "Must match the Verify Token you type into Meta when subscribing the webhook."
+    },
+    {
+      "id": "2295800a-1d58-4652-b7b4-dd972204d968",
+      "name": "Answer Challenge",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        480,
+        -300
+      ],
+      "parameters": {
+        "options": {
+          "responseCode": "={{ $json.query['hub.verify_token'] === $json.verify_token ? 200 : 403 }}"
+        },
+        "respondWith": "text",
+        "responseBody": "={{ $json.query['hub.verify_token'] === $json.verify_token ? $json.query['hub.challenge'] : 'forbidden' }}"
+      }
+    }
+  ],
+  "connections": {
+    "AI Classify Lead": {
+      "main": [
+        [
+          {
+            "node": "Parse Lead Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Lead Decision": {
+      "main": [
+        [
+          {
+            "node": "Needs Human Handoff?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Human Handoff?": {
+      "main": [
+        [
+          {
+            "node": "Alert Owner (Template)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Customer Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Lead Log": {
+      "main": [
+        [
+          {
+            "node": "Save Lead to Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Customer Reply": {
+      "main": [
+        [
+          {
+            "node": "Build Lead Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Lead to Supabase": {
+      "main": [
+        [
+          {
+            "node": "Export Lead to Sheet (disabled)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Lead Message": {
+      "main": [
+        [
+          {
+            "node": "Is a customer message?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is a customer message?": {
+      "main": [
+        [
+          {
+            "node": "Claim Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ack Ignored Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp Lead Intake": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Check Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Config": {
+      "main": [
+        [
+          {
+            "node": "Config OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config OK?": {
+      "main": [
+        [
+          {
+            "node": "Normalize Lead Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Config Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim Event": {
+      "main": [
+        [
+          {
+            "node": "Respond Accepted",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Duplicate or Storage Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond Accepted": {
+      "main": [
+        [
+          {
+            "node": "AI Classify Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Owner (Template)": {
+      "main": [
+        [
+          {
+            "node": "Send Customer Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp Verify (GET)": {
+      "main": [
+        [
+          {
+            "node": "Verify Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Token": {
+      "main": [
+        [
+          {
+            "node": "Answer Challenge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

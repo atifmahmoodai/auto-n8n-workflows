@@ -1,0 +1,327 @@
+{
+  "name": "Lead Enrichment Engine",
+  "nodes": [
+    {
+      "id": "df452a4f-4dad-44f6-a1d3-01538cec4876",
+      "name": "Lead Intake",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-intake",
+        "responseMode": "onReceived"
+      },
+      "webhookId": "f51eb122-8552-4b5e-b014-2d231b9b0b33"
+    },
+    {
+      "id": "a685812f-11a3-4c98-aa8c-d88530c544f7",
+      "name": "Validate & Parse",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const out = [];\nconst free = ['gmail.com','yahoo.com','outlook.com','hotmail.com','icloud.com','aol.com','proton.me','protonmail.com','gmx.com','live.com','msn.com'];\nfor (const it of $input.all()) {\n  const email = (it.json.email || '').toLowerCase().trim();\n  const message = (it.json.message || '').trim();\n  const domain = email.split('@')[1] || '';\n  if (!email.includes('@') || !domain || !message) continue;\n  out.push({ json: { name: it.json.name || '', email, company: it.json.company || '', role: it.json.role || '', message, domain, is_business_email: !free.includes(domain) } });\n}\nreturn out;"
+      }
+    },
+    {
+      "id": "1e1f62b4-124d-4017-bf21-c20083964343",
+      "name": "Fetch Homepage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        448,
+        0
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://' + $json.domain }}"
+      }
+    },
+    {
+      "id": "8e2e306f-2460-4a19-b76d-a4b8e213e9ec",
+      "name": "Extract Company",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        672,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'gpt-4o-mini', response_format: { type: 'json_object' }, messages: [ { role: 'system', content: 'Extract company info ONLY from the website text provided. Return a JSON object with keys company_name, industry, what_they_do, b2b_or_b2c, size_hint (one of solo, small, medium, large, unknown), and confidence (high, medium, or low). Use null for unknown fields. If the text is empty or unusable set confidence to low. Do not use outside knowledge. Return only JSON.' }, { role: 'user', content: 'Website text: ' + (($('Fetch Homepage').item.json.data || '').toString().slice(0, 4000)) } ] }) }}"
+      }
+    },
+    {
+      "id": "c44a9c14-438d-4219-ab40-420b416cd3fe",
+      "name": "Score Lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        896,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'gpt-4o-mini', response_format: { type: 'json_object' }, messages: [ { role: 'system', content: 'You are a B2B lead scoring assistant. Return a JSON object with keys score (integer 0 to 100), tier (hot, warm, or cold), reasoning (two or three sentences), and suggested_action (one line). Score only from the provided signals and do not invent company data. A free-provider email with a vague message is cold. A business email with a senior role and clear intent is hot.' }, { role: 'user', content: 'Signals: ' + JSON.stringify({ name: $('Validate & Parse').item.json.name, role: $('Validate & Parse').item.json.role, message: $('Validate & Parse').item.json.message, is_business_email: $('Validate & Parse').item.json.is_business_email, company: $('Extract Company').item.json.choices[0].message.content }) } ] }) }}"
+      }
+    },
+    {
+      "id": "7fbe041b-2c1b-47e8-b1a2-51dc8ef5f427",
+      "name": "Assemble Record",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "let company = {}; let score = {};\ntry { company = JSON.parse($('Extract Company').item.json.choices[0].message.content || '{}'); } catch (e) {}\ntry { score = JSON.parse($('Score Lead').item.json.choices[0].message.content || '{}'); } catch (e) {}\nconst p = $('Validate & Parse').item.json;\nreturn { json: {\n  name: p.name, email: p.email, company: p.company, role: p.role, message: p.message,\n  domain: p.domain, is_business_email: p.is_business_email,\n  company_industry: company.industry || null,\n  company_summary: company.what_they_do || null,\n  company_size_hint: company.size_hint || null,\n  score: (typeof score.score === 'number') ? score.score : null,\n  tier: score.tier || 'cold',\n  score_reasoning: score.reasoning || '',\n  suggested_action: score.suggested_action || ''\n} };"
+      }
+    },
+    {
+      "id": "164a85e7-4bab-4ed3-8223-c66c9617bbf1",
+      "name": "Save Lead",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1344,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "create",
+        "tableId": "leads",
+        "dataToSend": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "name",
+              "fieldValue": "={{ $json.name }}"
+            },
+            {
+              "fieldId": "email",
+              "fieldValue": "={{ $json.email }}"
+            },
+            {
+              "fieldId": "company",
+              "fieldValue": "={{ $json.company }}"
+            },
+            {
+              "fieldId": "role",
+              "fieldValue": "={{ $json.role }}"
+            },
+            {
+              "fieldId": "message",
+              "fieldValue": "={{ $json.message }}"
+            },
+            {
+              "fieldId": "domain",
+              "fieldValue": "={{ $json.domain }}"
+            },
+            {
+              "fieldId": "is_business_email",
+              "fieldValue": "={{ $json.is_business_email }}"
+            },
+            {
+              "fieldId": "company_industry",
+              "fieldValue": "={{ $json.company_industry }}"
+            },
+            {
+              "fieldId": "company_summary",
+              "fieldValue": "={{ $json.company_summary }}"
+            },
+            {
+              "fieldId": "company_size_hint",
+              "fieldValue": "={{ $json.company_size_hint }}"
+            },
+            {
+              "fieldId": "score",
+              "fieldValue": "={{ $json.score }}"
+            },
+            {
+              "fieldId": "tier",
+              "fieldValue": "={{ $json.tier }}"
+            },
+            {
+              "fieldId": "score_reasoning",
+              "fieldValue": "={{ $json.score_reasoning }}"
+            },
+            {
+              "fieldId": "suggested_action",
+              "fieldValue": "={{ $json.suggested_action }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "enriched"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "90f93563-602c-4920-ab6e-82d4d6d53ae3",
+      "name": "Push Alert (ntfy)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1568,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://ntfy.sh",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ topic: 'lead-alerts-CHANGEME', title: 'New lead', priority: ($json.tier === 'hot' ? 5 : 3), message: ($json.tier === 'hot' ? 'HOT LEAD: ' : ($json.tier === 'warm' ? 'Warm lead: ' : 'Cold lead: ')) + $json.name + ' (' + $json.email + ') score ' + $json.score + '. ' + $json.suggested_action }) }}"
+      }
+    },
+    {
+      "id": "33cc1d47-5c53-4f6a-a10a-31cb0929bbbc",
+      "name": "Export Lead to Sheet (disabled)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1344,
+        200
+      ],
+      "parameters": {
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": [],
+          "schema": [],
+          "value": {}
+        },
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "operation": "append",
+        "options": {},
+        "resource": "sheet",
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        }
+      },
+      "disabled": true,
+      "notes": "Placeholder export. Disabled so it cannot break the run. Add your Google Sheet document + tab, then enable."
+    }
+  ],
+  "connections": {
+    "Lead Intake": {
+      "main": [
+        [
+          {
+            "node": "Validate & Parse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate & Parse": {
+      "main": [
+        [
+          {
+            "node": "Fetch Homepage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Homepage": {
+      "main": [
+        [
+          {
+            "node": "Extract Company",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Company": {
+      "main": [
+        [
+          {
+            "node": "Score Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score Lead": {
+      "main": [
+        [
+          {
+            "node": "Assemble Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assemble Record": {
+      "main": [
+        [
+          {
+            "node": "Save Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Lead": {
+      "main": [
+        [
+          {
+            "node": "Push Alert (ntfy)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Export Lead to Sheet (disabled)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

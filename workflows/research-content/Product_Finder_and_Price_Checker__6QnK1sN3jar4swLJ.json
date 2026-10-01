@@ -1,0 +1,443 @@
+{
+  "name": "Product Finder and Price Checker",
+  "nodes": [
+    {
+      "id": "6f3c4301-583b-4c44-8807-564c0c61c5c3",
+      "name": "Product Search Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.5,
+      "position": [
+        240,
+        496
+      ],
+      "parameters": {
+        "formTitle": "Product Finder & Price Checker",
+        "formDescription": "Enter your product search criteria to find the best deals",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Product Name",
+              "fieldName": "productName",
+              "placeholder": "e.g. iPhone 15 Pro",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Product Category",
+              "fieldName": "productCategory",
+              "placeholder": "e.g. Electronics, Clothing"
+            },
+            {
+              "fieldLabel": "Price Range",
+              "fieldName": "priceRange",
+              "placeholder": "e.g. $100-$500"
+            },
+            {
+              "fieldLabel": "Country",
+              "fieldName": "country",
+              "placeholder": "e.g. United States",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "City",
+              "fieldName": "city",
+              "placeholder": "e.g. New York (optional)"
+            },
+            {
+              "fieldLabel": "Email",
+              "fieldType": "email",
+              "fieldName": "email",
+              "placeholder": "your@email.com",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Check Availability",
+              "fieldType": "checkbox",
+              "fieldName": "checkAvailability",
+              "fieldOptions": {
+                "values": [
+                  {}
+                ]
+              }
+            }
+          ]
+        },
+        "options": {
+          "respondWithOptions": {
+            "values": {
+              "formSubmittedText": "Thank you! We are searching for your product. You will receive results via email and Pushover notification."
+            }
+          }
+        }
+      },
+      "webhookId": "6f4a7b6e-dc13-4d4a-94ba-14e77462550e"
+    },
+    {
+      "id": "a510ede3-9766-4194-a4ac-79d11cb164f6",
+      "name": "Send Pushover Notification",
+      "type": "n8n-nodes-base.pushover",
+      "typeVersion": 1,
+      "position": [
+        1376,
+        304
+      ],
+      "parameters": {
+        "userKey": "uzfmrnrdxm1mygsf8o65iu5qj8vgs3",
+        "message": "=🛍️ Product Search Results\\n\\nQuery: {{ $json.searchQuery }}\\nCategory: {{ $json.category }}\\nPrice Range: {{ $json.priceRange }}\\nLocation: {{ $json.location }}\\n\\n{{ $json.searchSummary }}\\n\\n{{ $json.products.map((p, i) => `${i + 1}. ${p.name}\\n   💰 ${p.price} ${p.currency}\\n   🏪 ${p.store}\\n   ${p.availability.toLowerCase().includes(\"stock\") || p.availability.toLowerCase().includes(\"available\") ? \"✅\" : \"⚠️\"} ${p.availability}\\n   🔗 ${p.url}`).join(\"\\n\\n\") }}",
+        "priority": 0,
+        "additionalFields": {
+          "url": "={{ $json.firstProductUrl }}",
+          "url_title": "View Product"
+        }
+      }
+    },
+    {
+      "id": "a70d0ee3-886b-496c-8a28-45a852377510",
+      "name": "Send Email Notification",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1376,
+        496
+      ],
+      "parameters": {
+        "sendTo": "=atifmah428@gmail.com",
+        "subject": "=🛍️ Product Search Results: {{ $json.searchQuery }} ({{ $json.productCount }} products found)",
+        "message": "=<h2>🛍️ Product Search Results</h2><p>Here are the results for your product search:</p><ul><li><strong>Search Query:</strong> {{ $json.searchQuery }}</li><li><strong>Category:</strong> {{ $json.category }}</li><li><strong>Price Range:</strong> {{ $json.priceRange }}</li><li><strong>Location:</strong> {{ $json.location }}</li></ul><h3>{{ $json.searchSummary }}</h3>{{ $json.products.map((p, i) => `<div style=\"margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 8px;\"><h4>${i + 1}. ${p.name}</h4><p><strong>Price:</strong> ${p.price} ${p.currency}<br><strong>Store:</strong> ${p.store}<br><strong>Availability:</strong> ${p.availability.toLowerCase().includes(\"stock\") || p.availability.toLowerCase().includes(\"available\") ? \"✅\" : \"⚠️\"} ${p.availability}<br><a href=\"${p.url}\" style=\"color: #0066cc; text-decoration: none;\">View Product →</a></p></div>`).join(\"\") }}<p style=\"margin-top: 30px; color: #666;\">Happy shopping! 🎉</p>",
+        "options": {}
+      },
+      "webhookId": "b772ccd1-fe26-4200-a6b7-6fc97702eeaa"
+    },
+    {
+      "id": "84564ef8-14e1-49f4-9d6e-aad30c9860eb",
+      "name": "Search Product Online",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        520,
+        496
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Find products matching these criteria:\nProduct: {{ $json.productName }}\nCategory: {{ $json.productCategory }}\nPrice Range: {{ $json.priceRange }}\nLocation: {{ $json.city ? $json.city + \", \" + $json.country : $json.country }}\n{{ $json.checkAvailability ? \"Check availability status\" : \"\" }}\n\nSearch online and return 1-3 real products with actual prices, store names, purchase links, and availability status. Be specific and include exact URLs.",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a product search assistant. Use the Google Search tool to find real products online. Return results with product names, prices, URLs, stores, and availability status.",
+          "maxIterations": 20
+        }
+      }
+    },
+    {
+      "id": "e9f86bb2-4a32-454d-be02-45b671644d54",
+      "name": "OpenAI Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        464,
+        720
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "f3204644-d98e-488c-89c3-a9cf116c7158",
+      "name": "Google Search",
+      "type": "@n8n/n8n-nodes-langchain.toolSerpApi",
+      "typeVersion": 1,
+      "position": [
+        592,
+        720
+      ],
+      "parameters": {
+        "options": {}
+      }
+    },
+    {
+      "id": "9993b31e-d641-4a3f-b0d7-573c44a03979",
+      "name": "Structured Output",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        720,
+        720
+      ],
+      "parameters": {
+        "jsonSchemaExample": "{ \"products\": [{ \"name\": \"Product Name\", \"price\": \"$99.99\", \"currency\": \"USD\", \"store\": \"Store Name\", \"url\": \"https://example.com/product\", \"availability\": \"In Stock\" }], \"searchSummary\": \"Found 3 products matching criteria\" }"
+      }
+    },
+    {
+      "id": "85891c7d-947e-44f6-9069-9f3129a5a7c0",
+      "name": "Validate Results",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        928,
+        496
+      ],
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.output.products }}",
+              "operator": {
+                "type": "array",
+                "operation": "notEmpty"
+              },
+              "rightValue": ""
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "3e360808-2e1f-483c-8f01-de44540a9a9f",
+      "name": "Format Product Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1152,
+        400
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "searchQuery",
+              "value": "={{ $(\"Product Search Form\").item.json.productName }}",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "category",
+              "value": "={{ $(\"Product Search Form\").item.json.productCategory }}",
+              "type": "string"
+            },
+            {
+              "id": "3",
+              "name": "priceRange",
+              "value": "={{ $(\"Product Search Form\").item.json.priceRange }}",
+              "type": "string"
+            },
+            {
+              "id": "4",
+              "name": "location",
+              "value": "={{ $(\"Product Search Form\").item.json.city ? $(\"Product Search Form\").item.json.city + \", \" + $(\"Product Search Form\").item.json.country : $(\"Product Search Form\").item.json.country }}",
+              "type": "string"
+            },
+            {
+              "id": "5",
+              "name": "email",
+              "value": "={{ $(\"Product Search Form\").item.json.email }}",
+              "type": "string"
+            },
+            {
+              "id": "6",
+              "name": "products",
+              "value": "={{ $json.output.products }}",
+              "type": "array"
+            },
+            {
+              "id": "7",
+              "name": "searchSummary",
+              "value": "={{ $json.output.searchSummary }}",
+              "type": "string"
+            },
+            {
+              "id": "8",
+              "name": "productCount",
+              "value": "={{ $json.output.products.length }}",
+              "type": "number"
+            },
+            {
+              "id": "9",
+              "name": "firstProductUrl",
+              "value": "={{ $json.output.products[0]?.url || \"No URL available\" }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "6f901a16-12a0-476f-9446-a4610acbb0dd",
+      "name": "No Results Found",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1152,
+        688
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "searchQuery",
+              "value": "={{ $(\"Product Search Form\").item.json.productName }}",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "email",
+              "value": "={{ $(\"Product Search Form\").item.json.email }}",
+              "type": "string"
+            },
+            {
+              "id": "3",
+              "name": "errorMessage",
+              "value": "No products found matching your criteria. Please try different search terms.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "481c1201-3bd1-41f9-9371-f751463dbf92",
+      "name": "Send Error Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1376,
+        688
+      ],
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "=⚠️ Product Search - No Results Found",
+        "message": "=<h2>⚠️ No Products Found</h2><p>We could not find any products matching your search criteria:</p><ul><li><strong>Search Query:</strong> {{ $json.searchQuery }}</li></ul><p>{{ $json.errorMessage }}</p><p>Please try:</p><ul><li>Using different keywords</li><li>Broadening your price range</li><li>Checking the spelling</li><li>Trying a different category</li></ul><p>Thank you for using our Product Finder service.</p>",
+        "options": {}
+      },
+      "webhookId": "31c3b965-4a85-42e4-bb47-3c62cb78e2a8"
+    }
+  ],
+  "connections": {
+    "Product Search Form": {
+      "main": [
+        [
+          {
+            "node": "Search Product Online",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Product Online": {
+      "main": [
+        [
+          {
+            "node": "Validate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Search Product Online",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Search": {
+      "ai_tool": [
+        [
+          {
+            "node": "Search Product Online",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Search Product Online",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Results": {
+      "main": [
+        [
+          {
+            "node": "Format Product Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Results Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Product Data": {
+      "main": [
+        [
+          {
+            "node": "Send Pushover Notification",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Email Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No Results Found": {
+      "main": [
+        [
+          {
+            "node": "Send Error Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

@@ -1,0 +1,472 @@
+{
+  "name": "CRM New Lead: Webhook -> SMS -> HubSpot -> Sheet",
+  "nodes": [
+    {
+      "id": "4c228fde-437e-42af-a3fe-af28999879ca",
+      "name": "Sticky Note 56c80e53",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        100,
+        300
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "Instant Touch Architecture",
+            "position": [
+              -220,
+              60
+            ],
+            "parameters": {
+              "width": 540,
+              "height": 280,
+              "content": "CRM NEW LEAD INSTANT TOUCH\n\n1. Webhook POST crm/new-lead (form or CRM integration)\n2. Normalize lead fields\n3. Instant Twilio SMS within 60 seconds\n4. HubSpot contact upsert + deal create\n5. Google Sheets CRM_Pipeline appendOrUpdate (phone/email match)\n6. Slack alert to sales rep\n\nHuman QA: review sheet before bulk activation."
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "6ae5d3f7-80e4-4e5a-8990-df26e59432a7",
+      "name": "Webhook: New CRM Lead",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "crm/new-lead",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": false
+        }
+      },
+      "webhookId": "f08094a2-a5aa-4120-8916-3eebd9af96f7"
+    },
+    {
+      "id": "a2b0064a-3ab7-4d5e-a0da-ad865a3b8448",
+      "name": "Normalize Lead Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const p = $input.item.json;\nconst body = p.body || p;\nconst phone = (body.phone || body.caller_phone || body.mobile || body.Phone || '').trim();\nconst email = (body.email || body.Email || '').trim().toLowerCase();\nconst firstName = (body.first_name || body.firstName || body.FirstName || '').trim();\nconst lastName = (body.last_name || body.lastName || body.LastName || '').trim();\nconst source = (body.lead_source || body.source || body.utm_source || 'webhook').trim();\nconst company = (body.company || body.company_name || '').trim();\nconst leadId = 'CRM-' + $now.toFormat('yyyyLLdd-HHmmss') + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();\nconst hubspotEmail = email || (phone.replace(/[^0-9]/g, '') + '@crm-lead.local');\nconst smsBody = 'Hi' + (firstName ? ' ' + firstName : '') + '! Thanks for reaching out. A specialist will contact you shortly. Reply STOP to opt out.';\nreturn {\n  json: {\n    lead_id: leadId,\n    created_at: $now.toISO(),\n    first_name: firstName,\n    last_name: lastName,\n    email: email,\n    caller_phone: phone,\n    company_name: company,\n    lead_source: source,\n    pipeline_status: 'new',\n    sequence_step: 0,\n    last_touch_at: $now.toISO(),\n    hubspot_email: hubspotEmail,\n    hubspot_contact_id: '',\n    hubspot_deal_id: '',\n    estimated_deal_value: Number(body.deal_value || body.estimated_value) || 2500,\n    notes: (body.notes || 'Auto-created from new lead webhook').trim(),\n    sms_body: smsBody,\n    sms_sent_at: '',\n  },\n};"
+      }
+    },
+    {
+      "id": "1ad9a6ef-3aa8-4a98-8254-4c2ccfcc94a1",
+      "name": "Twilio: Instant Touch SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "resource": "sms",
+        "operation": "send",
+        "from": "REPLACE_WITH_TWILIO_FROM_NUMBER",
+        "to": "={{ $json.caller_phone }}",
+        "message": "={{ $json.sms_body }}"
+      }
+    },
+    {
+      "id": "7df1d0af-4941-456a-94e5-1724e53381ac",
+      "name": "Mark SMS Sent",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "sms-sent",
+              "name": "sms_sent_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "pipeline",
+              "name": "pipeline_status",
+              "value": "sms_sent",
+              "type": "string"
+            },
+            {
+              "id": "touch",
+              "name": "last_touch_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "step",
+              "name": "sequence_step",
+              "value": 1,
+              "type": "number"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "4b68beb1-4aca-4306-b89e-2291c5b9c3c3",
+      "name": "HubSpot: Upsert Contact",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        960,
+        300
+      ],
+      "parameters": {
+        "resource": "contact",
+        "operation": "upsert",
+        "email": "={{ $json.hubspot_email }}",
+        "additionalFields": {
+          "firstName": "={{ $json.first_name }}",
+          "lastName": "={{ $json.last_name }}",
+          "phoneNumber": "={{ $json.caller_phone }}",
+          "companyName": "={{ $json.company_name }}",
+          "lifeCycleStage": "lead",
+          "leadStatus": "NEW",
+          "message": "={{ \"Source: \" + $json.lead_source + \" | Notes: \" + $json.notes }}"
+        }
+      }
+    },
+    {
+      "id": "06335a6a-63f2-41ac-b1e1-06dc5c0362a7",
+      "name": "HubSpot: Create Deal",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        1200,
+        300
+      ],
+      "parameters": {
+        "resource": "deal",
+        "operation": "create",
+        "stage": "REPLACE_WITH_HUBSPOT_DEAL_STAGE_ID",
+        "additionalFields": {
+          "dealName": "={{ ($json.company_name || $json.first_name || \"Lead\") + \" - \" + $json.caller_phone }}",
+          "amount": "={{ String($json.estimated_deal_value || 2500) }}",
+          "description": "={{ \"Source: \" + $json.lead_source + \" | Email: \" + $json.email }}",
+          "pipeline": "default"
+        }
+      }
+    },
+    {
+      "id": "85c0a59b-d3a4-4778-820a-8762d641c75f",
+      "name": "Attach CRM IDs",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1440,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "hs-contact",
+              "name": "hubspot_contact_id",
+              "value": "={{ $(\"HubSpot: Upsert Contact\").item.json.id || $(\"HubSpot: Upsert Contact\").item.json.vid || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "hs-deal",
+              "name": "hubspot_deal_id",
+              "value": "={{ $(\"HubSpot: Create Deal\").item.json.id || \"\" }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "d9ed84ea-d964-4c5a-b614-def0b6477d5b",
+      "name": "Sheet: Upsert Lead",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1680,
+        300
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "CRM_Pipeline"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": [
+            "caller_phone",
+            "email"
+          ],
+          "value": {},
+          "schema": [
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "type": "string"
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "type": "string"
+            },
+            {
+              "id": "first_name",
+              "displayName": "first_name",
+              "type": "string"
+            },
+            {
+              "id": "last_name",
+              "displayName": "last_name",
+              "type": "string"
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "caller_phone",
+              "displayName": "caller_phone",
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "company_name",
+              "displayName": "company_name",
+              "type": "string"
+            },
+            {
+              "id": "lead_source",
+              "displayName": "lead_source",
+              "type": "string"
+            },
+            {
+              "id": "pipeline_status",
+              "displayName": "pipeline_status",
+              "type": "string"
+            },
+            {
+              "id": "sequence_step",
+              "displayName": "sequence_step",
+              "type": "number"
+            },
+            {
+              "id": "last_touch_at",
+              "displayName": "last_touch_at",
+              "type": "string"
+            },
+            {
+              "id": "sms_sent_at",
+              "displayName": "sms_sent_at",
+              "type": "string"
+            },
+            {
+              "id": "hubspot_contact_id",
+              "displayName": "hubspot_contact_id",
+              "type": "string"
+            },
+            {
+              "id": "hubspot_deal_id",
+              "displayName": "hubspot_deal_id",
+              "type": "string"
+            },
+            {
+              "id": "estimated_deal_value",
+              "displayName": "estimated_deal_value",
+              "type": "number"
+            },
+            {
+              "id": "notes",
+              "displayName": "notes",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "7898bae2-f7af-42b9-94c6-c9a099d58a7b",
+      "name": "Slack: New Lead Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.5,
+      "position": [
+        1920,
+        300
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SLACK_CHANNEL_ID"
+        },
+        "messageType": "text",
+        "text": "={{ \":zap: NEW CRM LEAD\\n*Name:* \" + ($json.first_name || \"\") + \" \" + ($json.last_name || \"\") + \"\\n*Phone:* \" + $json.caller_phone + \"\\n*Email:* \" + ($json.email || \"n/a\") + \"\\n*Source:* \" + $json.lead_source + \"\\n*Instant SMS sent*\\n*Deal:* \" + ($json.hubspot_deal_id || \"pending\") + \"\\n*Lead ID:* \" + $json.lead_id }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": true,
+          "mrkdwn": true
+        }
+      },
+      "webhookId": "db970121-639e-45d8-a8d5-a31331f2cb32"
+    },
+    {
+      "id": "a600d590-fbce-460e-9d9d-6f4e290ad12f",
+      "name": "Respond 200 OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2160,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, lead_id: $json.lead_id, status: \"sms_sent\" } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook: New CRM Lead": {
+      "main": [
+        [
+          {
+            "node": "Normalize Lead Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Lead Payload": {
+      "main": [
+        [
+          {
+            "node": "Twilio: Instant Touch SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Twilio: Instant Touch SMS": {
+      "main": [
+        [
+          {
+            "node": "Mark SMS Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark SMS Sent": {
+      "main": [
+        [
+          {
+            "node": "HubSpot: Upsert Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot: Upsert Contact": {
+      "main": [
+        [
+          {
+            "node": "HubSpot: Create Deal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot: Create Deal": {
+      "main": [
+        [
+          {
+            "node": "Attach CRM IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attach CRM IDs": {
+      "main": [
+        [
+          {
+            "node": "Sheet: Upsert Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheet: Upsert Lead": {
+      "main": [
+        [
+          {
+            "node": "Slack: New Lead Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack: New Lead Alert": {
+      "main": [
+        [
+          {
+            "node": "Respond 200 OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

@@ -1,0 +1,551 @@
+{
+  "name": "Cleaning RFP Intake: PDF -> AI Checklist -> RFP_QA",
+  "nodes": [
+    {
+      "id": "90aec506-41bf-45af-a69b-3a87d9a0bd1b",
+      "name": "Sticky Note 72a40edc",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        688
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "RFP Intake Architecture",
+            "position": [
+              -220,
+              60
+            ],
+            "parameters": {
+              "width": 560,
+              "height": 300,
+              "content": "CLEANING RFP INTAKE\n\n1. Webhook POST cleaning/rfp (multipart PDF)\n2. Extract PDF text\n3. AI outputs bid checklist + scope summary\n4. Append RFP_QA sheet status=pending_review\n5. Slack deficiency alert if scope gaps found\n\nHuman QA gate before bid submission."
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "8d63a4d3-128b-4886-84d7-d20907ea5ac8",
+      "name": "Sticky Note b0857e61",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        688
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "No PDF Path",
+            "position": [
+              720,
+              520
+            ],
+            "parameters": {
+              "width": 280,
+              "height": 100,
+              "content": "Uploads without PDF binary are rejected.\nReturn 400 manually if needed."
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "15ffdede-db81-44ef-a925-0af3e1c0f005",
+      "name": "Webhook: Cleaning RFP",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cleaning/rfp",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": false,
+          "binaryData": true
+        }
+      },
+      "webhookId": "4719672e-db4e-4472-af6d-2afdd8413eb2"
+    },
+    {
+      "id": "daa65a77-5b02-4d52-8629-db7b44c87663",
+      "name": "Normalize RFP Upload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const item = $input.item;\nconst json = item.json;\nconst body = json.body || json;\nconst binary = item.binary || {};\nconst keys = Object.keys(binary);\nconst fileKey = keys.find((k) => k === 'data' || k === 'file' || k.startsWith('attachment')) || keys[0];\nconst file = fileKey ? binary[fileKey] : null;\nreturn {\n  json: {\n    rfp_id: 'RFP-' + $now.toFormat('yyyyLLdd-HHmmss') + '-' + Math.random().toString(36).slice(2, 6).toUpperCase(),\n    received_at: $now.toISO(),\n    client_name: String(body.client_name || body.company || json.client_name || '').trim(),\n    site_address: String(body.site_address || body.address || '').trim(),\n    bid_due_date: String(body.bid_due_date || body.due_date || '').trim(),\n    square_footage: Number(body.square_footage || body.sqft || 0) || 0,\n    contact_email: String(body.contact_email || body.email || '').trim(),\n    file_name: file ? (file.fileName || fileKey) : 'unknown.pdf',\n    has_binary: Boolean(file),\n    company_name: 'REPLACE_WITH_CLEANING_COMPANY_NAME',\n  },\n  binary: file ? { data: file } : {},\n};"
+      }
+    },
+    {
+      "id": "a9c61151-41fe-4eba-acdd-019f31fbc984",
+      "name": "Has PDF Attachment?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.has_binary }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "d7230fba-5f0e-44a0-b371-0ff382aa81e3",
+      "name": "Extract PDF Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "data",
+        "options": {
+          "joinPages": true
+        }
+      }
+    },
+    {
+      "id": "5f4c2d01-d740-407a-ae74-83d9f5be9fee",
+      "name": "Set PDF Context",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        960,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "extracted-text",
+              "name": "extractedText",
+              "value": "={{ $json.text || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "ai-prompt",
+              "name": "aiPrompt",
+              "value": "={{ \"CLIENT: \" + ($json.client_name || \"\") + \"\\nSITE: \" + ($json.site_address || \"\") + \"\\nDUE: \" + ($json.bid_due_date || \"\") + \"\\nSQFT: \" + ($json.square_footage || 0) + \"\\nFILE: \" + ($json.file_name || \"\") + \"\\n\\nRFP DOCUMENT TEXT:\\n\" + ($json.extractedText || \"\") }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "1a9b8ee4-8d2f-432a-ad9a-ec7e04e3c90a",
+      "name": "AI: Bid Checklist & Scope",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1200,
+        300
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.aiPrompt }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a commercial cleaning bid analyst. Extract scope summary and a structured bid preparation checklist from RFP documents. Flag deficiencies (missing scope details, unclear frequencies, access constraints). Estimate weekly labor hours if possible. Return only valid JSON. Never invent site details not in the document.",
+          "maxIterations": 3
+        }
+      }
+    },
+    {
+      "id": "ea7f9144-86f3-4074-9a05-3ee0a8715876",
+      "name": "GPT-5 Mini",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1200,
+        640
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "60c9b1df-03e4-4dd2-b23d-88b8a943c69d",
+      "name": "RFP Bid Checklist Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1232,
+        432
+      ],
+      "parameters": {
+        "schemaType": "fromJson",
+        "autoFix": true,
+        "jsonSchemaExample": {
+          "scope_summary": "Nightly janitorial for 45,000 sqft office building. Restrooms, break rooms, common areas.",
+          "bid_checklist": [
+            "Confirm square footage and floor types",
+            "Identify restroom count and fixture types",
+            "Note frequency: daily vs weekly deep clean",
+            "List specialty services: carpet, window, floor wax",
+            "Verify insurance/COI requirements",
+            "Confirm bid submission format and deadline"
+          ],
+          "deficiencies": [
+            "Window cleaning frequency not specified",
+            "No after-hours access details"
+          ],
+          "estimated_labor_hours_weekly": 120,
+          "confidence_score": 0.87,
+          "has_deficiencies": true
+        }
+      }
+    },
+    {
+      "id": "317d3315-b8fb-4f3f-9d03-784b945da095",
+      "name": "Build RFP QA Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const src = $('Set PDF Context').item.json;\nconst out = $input.item.json.output || $input.item.json;\nconst checklist = Array.isArray(out.bid_checklist) ? out.bid_checklist : [];\nconst deficiencies = Array.isArray(out.deficiencies) ? out.deficiencies : [];\nlet confidence = Number(out.confidence_score);\nif (Number.isNaN(confidence)) confidence = 0.5;\nconst hasDeficiencies = deficiencies.length > 0 || Boolean(out.has_deficiencies);\nreturn {\n  json: {\n    rfp_id: src.rfp_id,\n    received_at: src.received_at,\n    client_name: src.client_name,\n    site_address: src.site_address,\n    bid_due_date: src.bid_due_date,\n    square_footage: src.square_footage,\n    contact_email: src.contact_email,\n    file_name: src.file_name,\n    scope_summary: out.scope_summary || '',\n    bid_checklist: checklist.join(' | '),\n    deficiencies: deficiencies,\n    deficiency_text: deficiencies.join('; '),\n    has_deficiencies: hasDeficiencies,\n    estimated_labor_hours_weekly: Number(out.estimated_labor_hours_weekly) || 0,\n    confidence_score: confidence,\n    status: 'pending_review',\n    reviewed_by: '',\n    reviewed_at: '',\n    bid_submitted_at: '',\n    company_name: src.company_name || 'REPLACE_WITH_CLEANING_COMPANY_NAME',\n    slack_text: (hasDeficiencies ? ':warning: RFP DEFICIENCIES FOUND\\n' : ':broom: New Cleaning RFP Parsed\\n') + '*RFP ID:* ' + src.rfp_id + '\\n*Client:* ' + (src.client_name || 'n/a') + '\\n*Site:* ' + (src.site_address || 'n/a') + '\\n*Due:* ' + (src.bid_due_date || 'n/a') + (hasDeficiencies ? '\\n*Gaps:* ' + deficiencies.join('; ') : '') + '\\nReview RFP_QA sheet before bidding.',\n  },\n};"
+      }
+    },
+    {
+      "id": "911b3229-fe67-4bb8-907f-122ae837b14d",
+      "name": "Sheet: Append RFP_QA",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1680,
+        300
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "RFP_QA"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "schema": [
+            {
+              "id": "rfp_id",
+              "displayName": "rfp_id",
+              "type": "string"
+            },
+            {
+              "id": "received_at",
+              "displayName": "received_at",
+              "type": "string"
+            },
+            {
+              "id": "client_name",
+              "displayName": "client_name",
+              "type": "string"
+            },
+            {
+              "id": "site_address",
+              "displayName": "site_address",
+              "type": "string"
+            },
+            {
+              "id": "bid_due_date",
+              "displayName": "bid_due_date",
+              "type": "string"
+            },
+            {
+              "id": "square_footage",
+              "displayName": "square_footage",
+              "type": "number"
+            },
+            {
+              "id": "contact_email",
+              "displayName": "contact_email",
+              "type": "string"
+            },
+            {
+              "id": "file_name",
+              "displayName": "file_name",
+              "type": "string"
+            },
+            {
+              "id": "scope_summary",
+              "displayName": "scope_summary",
+              "type": "string"
+            },
+            {
+              "id": "bid_checklist",
+              "displayName": "bid_checklist",
+              "type": "string"
+            },
+            {
+              "id": "deficiency_text",
+              "displayName": "deficiency_text",
+              "type": "string"
+            },
+            {
+              "id": "has_deficiencies",
+              "displayName": "has_deficiencies",
+              "type": "boolean"
+            },
+            {
+              "id": "estimated_labor_hours_weekly",
+              "displayName": "estimated_labor_hours_weekly",
+              "type": "number"
+            },
+            {
+              "id": "confidence_score",
+              "displayName": "confidence_score",
+              "type": "number"
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "cebbdc09-48b8-4ee7-8ccc-21305a94b67c",
+      "name": "Slack: RFP Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.5,
+      "position": [
+        1920,
+        300
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SLACK_CHANNEL_ID"
+        },
+        "messageType": "text",
+        "text": "={{ $json.slack_text }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": true,
+          "mrkdwn": true
+        }
+      },
+      "webhookId": "3631117d-5f49-4c7d-adc8-44b0e77975bb"
+    },
+    {
+      "id": "506c0935-9176-45cd-8168-b69950b5f6b9",
+      "name": "Respond 200 OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2160,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, rfp_id: $json.rfp_id, has_deficiencies: $json.has_deficiencies, deficiencies: $json.deficiencies, status: $json.status } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook: Cleaning RFP": {
+      "main": [
+        [
+          {
+            "node": "Normalize RFP Upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize RFP Upload": {
+      "main": [
+        [
+          {
+            "node": "Has PDF Attachment?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has PDF Attachment?": {
+      "main": [
+        [
+          {
+            "node": "Extract PDF Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract PDF Text": {
+      "main": [
+        [
+          {
+            "node": "Set PDF Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set PDF Context": {
+      "main": [
+        [
+          {
+            "node": "AI: Bid Checklist & Scope",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Bid Checklist & Scope": {
+      "main": [
+        [
+          {
+            "node": "Build RFP QA Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT-5 Mini": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI: Bid Checklist & Scope",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "RFP Bid Checklist Schema",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RFP Bid Checklist Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI: Bid Checklist & Scope",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build RFP QA Row": {
+      "main": [
+        [
+          {
+            "node": "Sheet: Append RFP_QA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheet: Append RFP_QA": {
+      "main": [
+        [
+          {
+            "node": "Slack: RFP Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack: RFP Alert": {
+      "main": [
+        [
+          {
+            "node": "Respond 200 OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

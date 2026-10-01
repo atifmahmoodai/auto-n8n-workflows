@@ -1,0 +1,537 @@
+{
+  "name": "Lease Upload Abstract: PDF -> AI -> Lease_QA",
+  "nodes": [
+    {
+      "id": "f32e2c7e-0883-4e41-86eb-df570ab221e4",
+      "name": "Sticky Note 22bf8b2f",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1424,
+        688
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "Enterprise Buyer Warning",
+            "position": [
+              -240,
+              40
+            ],
+            "parameters": {
+              "width": 560,
+              "height": 320,
+              "content": "RANK 16 — COMMERCIAL LEASE ABSTRACTION (5.5/10 WEAK)\n\nEnterprise buyers only. Long sales cycles, legal liability, incumbent tools.\nDo NOT pitch to SMB agencies without CRE broker relationships.\n\n1. Webhook POST lease/upload (multipart PDF)\n2. Extract PDF text AFTER upload only\n3. AI structured abstract (gpt-5-mini, retryOnFail)\n4. Append Lease_QA sheet — status=pending_review\n5. Mandatory human QA before broker delivery\n\nConfigure credentials before activating."
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "b3483f8b-46f7-4d70-adc8-e5186c30bf43",
+      "name": "Webhook: Lease Upload",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lease/upload",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": false,
+          "binaryData": true
+        }
+      },
+      "webhookId": "e4622383-ca9e-4655-b6e3-a6b429b632db"
+    },
+    {
+      "id": "6a7b7803-85be-4d7a-b1ab-67482238cf74",
+      "name": "Normalize Upload Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const item = $input.item;\nconst json = item.json;\nconst body = json.body || json;\nconst binary = item.binary || {};\nconst keys = Object.keys(binary);\nconst fileKey = keys.find((k) => k === 'data' || k === 'file' || k.startsWith('attachment')) || keys[0];\nconst file = fileKey ? binary[fileKey] : null;\nconst brokerEmail = (body.broker_email || body.email || json.broker_email || '').trim();\nconst brokerName = (body.broker_name || json.broker_name || '').trim();\nconst tenantName = (body.tenant_name || body.tenant || '').trim();\nconst propertyAddress = (body.property_address || body.address || '').trim();\nreturn {\n  json: {\n    abstract_id: 'LEASE-' + $now.toFormat('yyyyLLdd-HHmmss') + '-' + Math.random().toString(36).slice(2, 6).toUpperCase(),\n    received_at: $now.toISO(),\n    broker_name: brokerName,\n    broker_email: brokerEmail,\n    tenant_name: tenantName,\n    property_address: propertyAddress,\n    file_name: file ? (file.fileName || fileKey) : 'unknown.pdf',\n    mime_type: file ? (file.mimeType || 'application/pdf') : '',\n    has_binary: Boolean(file),\n  },\n  binary: file ? { data: file } : {},\n};"
+      }
+    },
+    {
+      "id": "5ed5d805-f423-41a0-b377-2df2b5b8765e",
+      "name": "Has PDF Attachment?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.has_binary }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "2f8bb90e-f15e-4f27-a5e6-ee39f6b5b492",
+      "name": "Extract PDF Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "data",
+        "options": {
+          "joinPages": true
+        }
+      }
+    },
+    {
+      "id": "38d95ba9-2e99-4f22-ae1f-bbc4a8490df7",
+      "name": "Set PDF Context",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        960,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "extracted-text",
+              "name": "extractedText",
+              "value": "={{ $json.text || \"\" }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "217241e6-8e0b-48ec-b433-a4c73a0247c3",
+      "name": "Prepare AI Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1200,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ai-prompt",
+              "name": "aiPrompt",
+              "value": "={{ \"BROKER: \" + ($json.broker_name || \"\") + \"\\nTENANT: \" + ($json.tenant_name || \"\") + \"\\nPROPERTY: \" + ($json.property_address || \"\") + \"\\nFILE: \" + ($json.file_name || \"\") + \"\\n\\nLEASE DOCUMENT TEXT:\\n\" + ($json.extractedText || \"\") }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "90fbb4e5-7f3e-461d-bf92-4430b205ac37",
+      "name": "AI Lease Abstractor",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1440,
+        300
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.aiPrompt }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a commercial real estate lease abstraction specialist. Extract tenant_name, landlord_name, property_address, base_rent_monthly, rent_escalation, lease_term_months, commencement_date, expiration_date, renewal_options, cam_charges, and termination_clauses from the lease text. Return only valid JSON matching the schema. Use ISO dates YYYY-MM-DD. Summarize options, CAM, and termination in plain English. If any field is unclear, note it in extraction_notes and lower confidence_score. Never invent dollar amounts or dates not supported by the document.",
+          "maxIterations": 3
+        }
+      }
+    },
+    {
+      "id": "ea1df98d-96b1-4b0b-b27d-97f28a82d497",
+      "name": "GPT-5 Mini",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1424,
+        640
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "options": {
+          "temperature": 0.1
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "7fd23453-e981-4659-a32c-0d9887828b60",
+      "name": "Lease Abstract JSON Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1456,
+        432
+      ],
+      "parameters": {
+        "schemaType": "fromJson",
+        "autoFix": true,
+        "jsonSchemaExample": {
+          "tenant_name": "Acme Retail LLC",
+          "landlord_name": "Metro Properties Inc",
+          "property_address": "1200 Commerce Blvd, Suite 400, Dallas TX 75201",
+          "base_rent_monthly": 12500,
+          "rent_escalation": "3% annual increase on anniversary",
+          "lease_term_months": 60,
+          "commencement_date": "2026-03-01",
+          "expiration_date": "2031-02-28",
+          "renewal_options": "One 5-year renewal at FMV with 6-month notice",
+          "cam_charges": "Tenant pays pro-rata share of taxes, insurance, CAM; est. $4.20/sf/yr",
+          "termination_clauses": "Early termination after year 3 with 6-month penalty rent",
+          "confidence_score": 0.88,
+          "extraction_notes": "Rent schedule on Exhibit B; CAM reconciled annually."
+        }
+      }
+    },
+    {
+      "id": "6979ae0b-8a2d-4d9e-adf8-a4d65d1866d3",
+      "name": "Normalize Abstract for QA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const src = $input.item.json;\nconst out = src.output || src;\nlet confidence = Number(out.confidence_score);\nif (Number.isNaN(confidence)) confidence = 0.5;\nconst abstractSummary = [\n  'TENANT: ' + (out.tenant_name || src.tenant_name || 'n/a'),\n  'LANDLORD: ' + (out.landlord_name || 'n/a'),\n  'PROPERTY: ' + (out.property_address || src.property_address || 'n/a'),\n  '',\n  'RENT: $' + (Number(out.base_rent_monthly) || 0).toLocaleString() + '/mo',\n  'ESCALATION: ' + (out.rent_escalation || 'n/a'),\n  'TERM: ' + (out.lease_term_months || 'n/a') + ' months',\n  'COMMENCEMENT: ' + (out.commencement_date || 'n/a'),\n  'EXPIRATION: ' + (out.expiration_date || 'n/a'),\n  '',\n  'OPTIONS: ' + (out.renewal_options || 'n/a'),\n  'CAM: ' + (out.cam_charges || 'n/a'),\n  'TERMINATION: ' + (out.termination_clauses || 'n/a'),\n].join('\\n');\nreturn {\n  json: {\n    abstract_id: src.abstract_id,\n    received_at: src.received_at,\n    broker_name: src.broker_name || '',\n    broker_email: src.broker_email || '',\n    tenant_name: out.tenant_name || src.tenant_name || '',\n    landlord_name: out.landlord_name || '',\n    property_address: out.property_address || src.property_address || '',\n    base_rent_monthly: Number(out.base_rent_monthly) || 0,\n    rent_escalation: out.rent_escalation || '',\n    lease_term_months: Number(out.lease_term_months) || 0,\n    commencement_date: out.commencement_date || '',\n    expiration_date: out.expiration_date || '',\n    renewal_options: out.renewal_options || '',\n    cam_charges: out.cam_charges || '',\n    termination_clauses: out.termination_clauses || '',\n    confidence_score: confidence,\n    extraction_notes: out.extraction_notes || '',\n    abstract_summary: abstractSummary,\n    file_name: src.file_name || '',\n    status: 'pending_review',\n    reviewed_at: '',\n    delivered_at: '',\n    brokerage_firm: 'REPLACE_WITH_BROKERAGE_FIRM_NAME',\n  },\n};"
+      }
+    },
+    {
+      "id": "42c34e8f-fd17-41cc-bd03-cb17d97c016a",
+      "name": "Sheet: Append Lease_QA",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1920,
+        300
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Lease_QA"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "schema": [
+            {
+              "id": "abstract_id",
+              "displayName": "abstract_id",
+              "type": "string"
+            },
+            {
+              "id": "received_at",
+              "displayName": "received_at",
+              "type": "string"
+            },
+            {
+              "id": "broker_name",
+              "displayName": "broker_name",
+              "type": "string"
+            },
+            {
+              "id": "broker_email",
+              "displayName": "broker_email",
+              "type": "string"
+            },
+            {
+              "id": "tenant_name",
+              "displayName": "tenant_name",
+              "type": "string"
+            },
+            {
+              "id": "landlord_name",
+              "displayName": "landlord_name",
+              "type": "string"
+            },
+            {
+              "id": "property_address",
+              "displayName": "property_address",
+              "type": "string"
+            },
+            {
+              "id": "base_rent_monthly",
+              "displayName": "base_rent_monthly",
+              "type": "number"
+            },
+            {
+              "id": "rent_escalation",
+              "displayName": "rent_escalation",
+              "type": "string"
+            },
+            {
+              "id": "lease_term_months",
+              "displayName": "lease_term_months",
+              "type": "number"
+            },
+            {
+              "id": "commencement_date",
+              "displayName": "commencement_date",
+              "type": "string"
+            },
+            {
+              "id": "expiration_date",
+              "displayName": "expiration_date",
+              "type": "string"
+            },
+            {
+              "id": "renewal_options",
+              "displayName": "renewal_options",
+              "type": "string"
+            },
+            {
+              "id": "cam_charges",
+              "displayName": "cam_charges",
+              "type": "string"
+            },
+            {
+              "id": "termination_clauses",
+              "displayName": "termination_clauses",
+              "type": "string"
+            },
+            {
+              "id": "confidence_score",
+              "displayName": "confidence_score",
+              "type": "number"
+            },
+            {
+              "id": "extraction_notes",
+              "displayName": "extraction_notes",
+              "type": "string"
+            },
+            {
+              "id": "abstract_summary",
+              "displayName": "abstract_summary",
+              "type": "string"
+            },
+            {
+              "id": "file_name",
+              "displayName": "file_name",
+              "type": "string"
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "8cd36c87-aa36-41ce-a7b3-f3041b91771e",
+      "name": "Respond 200 OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2160,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, abstract_id: $json.abstract_id, status: $json.status, message: \"Lease abstract queued for human QA review\" } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook: Lease Upload": {
+      "main": [
+        [
+          {
+            "node": "Normalize Upload Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Upload Payload": {
+      "main": [
+        [
+          {
+            "node": "Has PDF Attachment?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has PDF Attachment?": {
+      "main": [
+        [
+          {
+            "node": "Extract PDF Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract PDF Text": {
+      "main": [
+        [
+          {
+            "node": "Set PDF Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set PDF Context": {
+      "main": [
+        [
+          {
+            "node": "Prepare AI Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare AI Input": {
+      "main": [
+        [
+          {
+            "node": "AI Lease Abstractor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Lease Abstractor": {
+      "main": [
+        [
+          {
+            "node": "Normalize Abstract for QA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT-5 Mini": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Lease Abstractor",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Lease Abstract JSON Schema",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lease Abstract JSON Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Lease Abstractor",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Abstract for QA": {
+      "main": [
+        [
+          {
+            "node": "Sheet: Append Lease_QA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheet: Append Lease_QA": {
+      "main": [
+        [
+          {
+            "node": "Respond 200 OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

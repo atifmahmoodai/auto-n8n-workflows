@@ -1,0 +1,621 @@
+{
+  "name": "COI Upload: Webhook -> AI Extract -> Sheet -> Gmail",
+  "nodes": [
+    {
+      "id": "d27f79dd-ccfc-4c78-9483-1acfecdeecf2",
+      "name": "Sticky Note 4fa733eb",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1424,
+        688
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "COI Upload Architecture",
+            "position": [
+              -220,
+              60
+            ],
+            "parameters": {
+              "width": 540,
+              "height": 300,
+              "content": "COI UPLOAD & EXTRACT\n\n1. Webhook POST coi/upload (multipart PDF)\n2. Extract PDF text\n3. AI structured extraction (human QA required)\n4. Code validates GL/WC limits + expiry rules\n5. AppendOrUpdate COI_Register sheet\n6. IF deficiencies -> Gmail deficiency notice to subcontractor\n\nConfigure credentials before activating."
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "8c89a3ee-577a-4f38-a9bc-029002c1c588",
+      "name": "Webhook: COI Upload",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "coi/upload",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": false,
+          "binaryData": true
+        }
+      },
+      "webhookId": "cb4c32da-9ba1-49fa-9ed3-daec076b29b7"
+    },
+    {
+      "id": "c38cf58c-552f-4efa-af15-aeffc57754c4",
+      "name": "Normalize Upload Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const item = $input.item;\nconst json = item.json;\nconst body = json.body || json;\nconst binary = item.binary || {};\nconst keys = Object.keys(binary);\nconst fileKey = keys.find((k) => k === 'data' || k === 'file' || k.startsWith('attachment')) || keys[0];\nconst file = fileKey ? binary[fileKey] : null;\nconst subEmail = (body.subcontractor_email || body.email || json.subcontractor_email || '').trim();\nconst subName = (body.subcontractor_name || body.insured_name || json.subcontractor_name || '').trim();\nconst trade = (body.trade || body.scope || '').trim();\nreturn {\n  json: {\n    upload_id: 'COI-' + $now.toFormat('yyyyLLdd-HHmmss') + '-' + Math.random().toString(36).slice(2, 6).toUpperCase(),\n    received_at: $now.toISO(),\n    subcontractor_name: subName,\n    subcontractor_email: subEmail,\n    trade: trade,\n    file_name: file ? (file.fileName || fileKey) : 'unknown.pdf',\n    mime_type: file ? (file.mimeType || 'application/pdf') : '',\n    has_binary: Boolean(file),\n  },\n  binary: file ? { data: file } : {},\n};"
+      }
+    },
+    {
+      "id": "2d6112cc-ca4a-4304-aab5-57fc4a4eba64",
+      "name": "Has PDF Attachment?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.has_binary }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "19270e7a-d0af-4676-82ff-b7861830afb1",
+      "name": "Extract PDF Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "data",
+        "options": {
+          "joinPages": true
+        }
+      }
+    },
+    {
+      "id": "8adcce1a-26ca-4b6a-9efd-ccb238c1fc9d",
+      "name": "Set PDF Context",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        960,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "extracted-text",
+              "name": "extractedText",
+              "value": "={{ $json.text || \"\" }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "6e4d9c4c-39e2-4405-971f-5a59f52d3f7f",
+      "name": "Prepare AI Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1200,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ai-prompt",
+              "name": "aiPrompt",
+              "value": "={{ \"SUBCONTRACTOR: \" + ($json.subcontractor_name || \"\") + \"\\nTRADE: \" + ($json.trade || \"\") + \"\\nFILE: \" + ($json.file_name || \"\") + \"\\n\\nCOI DOCUMENT TEXT:\\n\" + ($json.extractedText || \"\") }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "91f99238-881d-4cfd-9755-6edbda87c29e",
+      "name": "AI COI Extractor",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1440,
+        300
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.aiPrompt }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a construction COI (Certificate of Insurance) extraction specialist. Extract policy_number, carrier, gl_limit, wc_limit, effective_date, expiry_date, and insured_name from the document text. Return only valid JSON matching the schema. Use ISO dates YYYY-MM-DD. If any field is unclear, note it in extraction_notes and lower confidence_score. Never invent policy numbers.",
+          "maxIterations": 3
+        }
+      }
+    },
+    {
+      "id": "d6c83cb3-f60b-4931-b273-aa1139a8a9a5",
+      "name": "GPT-5 Mini",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1424,
+        640
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "options": {
+          "temperature": 0.1
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "b8ddbba9-2868-4b2e-a93a-e65bb5b4475e",
+      "name": "COI JSON Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1456,
+        432
+      ],
+      "parameters": {
+        "schemaType": "fromJson",
+        "autoFix": true,
+        "jsonSchemaExample": {
+          "policy_number": "GL-88421",
+          "carrier": "Hartford Insurance",
+          "gl_limit": 1000000,
+          "wc_limit": 1000000,
+          "effective_date": "2026-01-01",
+          "expiry_date": "2027-01-01",
+          "insured_name": "ABC Electric LLC",
+          "confidence_score": 0.91,
+          "extraction_notes": "All fields clearly visible."
+        }
+      }
+    },
+    {
+      "id": "ad609ee3-d7bf-4338-8e49-2ef175bff75a",
+      "name": "Validate COI Rules",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const src = $input.item.json;\nconst out = src.output || src;\nconst glMin = 1000000;\nconst wcMin = 1000000;\nconst glLimit = Number(out.gl_limit) || 0;\nconst wcLimit = Number(out.wc_limit) || 0;\nconst expiry = out.expiry_date || '';\nconst expiryDt = DateTime.fromISO(expiry);\nconst daysToExpiry = expiryDt.isValid ? Math.floor(expiryDt.diff($now, 'days').days * -1) : -1;\nconst deficiencies = [];\nif (glLimit < glMin) deficiencies.push('GL limit below $1M minimum (found $' + glLimit.toLocaleString() + ')');\nif (wcLimit < wcMin) deficiencies.push('WC limit below $1M minimum (found $' + wcLimit.toLocaleString() + ')');\nif (!expiryDt.isValid) deficiencies.push('Expiry date missing or invalid');\nelse if (daysToExpiry < 0) deficiencies.push('Policy expired on ' + expiry);\nelse if (daysToExpiry <= 30) deficiencies.push('Policy expires within 30 days (' + expiry + ')');\nif (!out.policy_number) deficiencies.push('Policy number missing');\nif (!out.carrier) deficiencies.push('Carrier missing');\nif (!out.insured_name) deficiencies.push('Insured name missing');\nlet confidence = Number(out.confidence_score);\nif (Number.isNaN(confidence)) confidence = 0.5;\nif (deficiencies.length) confidence = Math.min(confidence, 0.7);\nconst needsReview = deficiencies.length > 0 || confidence < 0.85;\nreturn {\n  json: {\n    upload_id: src.upload_id,\n    received_at: src.received_at,\n    subcontractor_name: src.subcontractor_name || out.insured_name || '',\n    subcontractor_email: src.subcontractor_email || '',\n    trade: src.trade || '',\n    file_name: src.file_name || '',\n    policy_number: out.policy_number || '',\n    carrier: out.carrier || '',\n    gl_limit: glLimit,\n    wc_limit: wcLimit,\n    effective_date: out.effective_date || '',\n    expiry_date: expiry,\n    insured_name: out.insured_name || '',\n    confidence_score: confidence,\n    extraction_notes: out.extraction_notes || '',\n    deficiencies: deficiencies,\n    deficiency_text: deficiencies.join('; '),\n    has_deficiencies: deficiencies.length > 0,\n    compliance_status: deficiencies.length ? 'deficient' : 'compliant',\n    status: needsReview ? 'pending_review' : 'pending_review',\n    days_to_expiry: daysToExpiry,\n    gc_company: 'REPLACE_WITH_GC_COMPANY_NAME',\n    deficiency_email_subject: 'COI Deficiency Notice - ' + (out.insured_name || src.subcontractor_name || 'Subcontractor'),\n    deficiency_email_body: 'Hello,\\n\\n' + (src.subcontractor_name || 'Subcontractor') + ',\\n\\nWe reviewed your Certificate of Insurance and found the following deficiencies:\\n\\n' + deficiencies.map((d) => '- ' + d).join('\\n') + '\\n\\nPlease upload a corrected COI at your earliest convenience.\\n\\nThank you,\\n' + 'REPLACE_WITH_GC_COMPANY_NAME' + ' Compliance Team',\n  },\n};"
+      }
+    },
+    {
+      "id": "8d591ca6-4772-4145-b7ed-901ffbdef6d9",
+      "name": "Sheet: Upsert COI Record",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1920,
+        300
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "COI_Register"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": [
+            "policy_number",
+            "insured_name"
+          ],
+          "value": {},
+          "schema": [
+            {
+              "id": "upload_id",
+              "displayName": "upload_id",
+              "type": "string"
+            },
+            {
+              "id": "received_at",
+              "displayName": "received_at",
+              "type": "string"
+            },
+            {
+              "id": "subcontractor_name",
+              "displayName": "subcontractor_name",
+              "type": "string"
+            },
+            {
+              "id": "subcontractor_email",
+              "displayName": "subcontractor_email",
+              "type": "string"
+            },
+            {
+              "id": "trade",
+              "displayName": "trade",
+              "type": "string"
+            },
+            {
+              "id": "file_name",
+              "displayName": "file_name",
+              "type": "string"
+            },
+            {
+              "id": "policy_number",
+              "displayName": "policy_number",
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "carrier",
+              "displayName": "carrier",
+              "type": "string"
+            },
+            {
+              "id": "gl_limit",
+              "displayName": "gl_limit",
+              "type": "number"
+            },
+            {
+              "id": "wc_limit",
+              "displayName": "wc_limit",
+              "type": "number"
+            },
+            {
+              "id": "effective_date",
+              "displayName": "effective_date",
+              "type": "string"
+            },
+            {
+              "id": "expiry_date",
+              "displayName": "expiry_date",
+              "type": "string"
+            },
+            {
+              "id": "insured_name",
+              "displayName": "insured_name",
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "confidence_score",
+              "displayName": "confidence_score",
+              "type": "number"
+            },
+            {
+              "id": "extraction_notes",
+              "displayName": "extraction_notes",
+              "type": "string"
+            },
+            {
+              "id": "deficiency_text",
+              "displayName": "deficiency_text",
+              "type": "string"
+            },
+            {
+              "id": "compliance_status",
+              "displayName": "compliance_status",
+              "type": "string"
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "type": "string"
+            },
+            {
+              "id": "days_to_expiry",
+              "displayName": "days_to_expiry",
+              "type": "number"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "93e54a01-3849-4155-9205-393a0a49e5b8",
+      "name": "Has Deficiencies?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2160,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.has_deficiencies }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            },
+            {
+              "leftValue": "={{ $json.subcontractor_email }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "80c71c2f-c8b2-497e-9a56-625db9d3bd5c",
+      "name": "Gmail: Deficiency Notice",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        2400,
+        200
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.subcontractor_email }}",
+        "subject": "={{ $json.deficiency_email_subject }}",
+        "emailType": "text",
+        "message": "={{ $json.deficiency_email_body }}",
+        "options": {}
+      },
+      "webhookId": "5ae623d8-6bff-4e0e-b4ad-f6c24c427b38"
+    },
+    {
+      "id": "739c7ed1-4b52-4bb4-88f2-63eb15843f2d",
+      "name": "Respond 200 OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2640,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, upload_id: $json.upload_id, compliance_status: $json.compliance_status, deficiencies: $json.deficiencies } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook: COI Upload": {
+      "main": [
+        [
+          {
+            "node": "Normalize Upload Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Upload Payload": {
+      "main": [
+        [
+          {
+            "node": "Has PDF Attachment?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has PDF Attachment?": {
+      "main": [
+        [
+          {
+            "node": "Extract PDF Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract PDF Text": {
+      "main": [
+        [
+          {
+            "node": "Set PDF Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set PDF Context": {
+      "main": [
+        [
+          {
+            "node": "Prepare AI Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare AI Input": {
+      "main": [
+        [
+          {
+            "node": "AI COI Extractor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI COI Extractor": {
+      "main": [
+        [
+          {
+            "node": "Validate COI Rules",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT-5 Mini": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI COI Extractor",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "COI JSON Schema",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "COI JSON Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI COI Extractor",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate COI Rules": {
+      "main": [
+        [
+          {
+            "node": "Sheet: Upsert COI Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheet: Upsert COI Record": {
+      "main": [
+        [
+          {
+            "node": "Has Deficiencies?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Deficiencies?": {
+      "main": [
+        [
+          {
+            "node": "Gmail: Deficiency Notice",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 200 OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: Deficiency Notice": {
+      "main": [
+        [
+          {
+            "node": "Respond 200 OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

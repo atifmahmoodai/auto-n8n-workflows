@@ -1,0 +1,450 @@
+{
+  "name": "Order Engine — Slip + Sheet",
+  "nodes": [
+    {
+      "id": "ce04c01a-a1b8-42e3-bdcb-773d7ae0841b",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "order-engine",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "eb245434-e89b-46b3-a26c-0b2a03d8bde9"
+    },
+    {
+      "id": "5f9b6900-1391-447e-aa43-21cd3318330c",
+      "name": "Read Products",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "1UZHNhPcuSpsAMPfkLoLXTgrmpMZzjZ2rqw2ReEsRgUc",
+          "cachedResultName": "Mobile Accessories"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": 95283406,
+          "cachedResultName": "Products"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "654de7e5-0f15-4b0f-82e1-87f358dcfc2c",
+      "name": "Match & Validate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\nconst body = ($('Webhook').first().json.body) || {};\nconst customerName = (body.customerName || '').toString().trim();\nconst requested = (body.item || '').toString().trim();\nconst rows = $input.all().map(i => i.json);\nconst norm = (s) => (s || '').toString().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();\nconst orderDate = $now;\nconst deliveryDate = $now.plus({ days: 2 });\nconst orderDateFmt = orderDate.toFormat('dd LLL yyyy, HH:mm');\nconst deliveryDateFmt = deliveryDate.toFormat('dd LLL yyyy');\nconst rand = Math.floor(1000 + Math.random() * 9000);\nconst orderId = 'ORD-' + orderDate.toFormat('yyyyLLdd') + '-' + rand;\nconst availableItems = rows.map(r => r.name).filter(Boolean);\nconst base = (extra) => Object.assign({ customerName, requestedItem: requested, orderId, orderDateFmt, deliveryDateFmt, availableItems }, extra);\nif (!customerName || !requested) { return [{ json: base({ status: 'missing_input', message: 'I still need both your name and the item you want.' }) }]; }\nconst rq = norm(requested);\nlet best = null, bestScore = 0;\nfor (const r of rows) {\n  const nm = norm(r.name);\n  if (!nm) continue;\n  let score = 0;\n  if (nm === rq) score = 100;\n  else if (nm.indexOf(rq) >= 0 || rq.indexOf(nm) >= 0) score = 80;\n  else { const a = rq.split(' ').filter(Boolean); const b = nm.split(' ').filter(Boolean); let overlap = 0; for (const t of a) if (b.indexOf(t) >= 0) overlap++; if (a.length) score = Math.round((overlap / a.length) * 70); }\n  if (score > bestScore) { bestScore = score; best = r; }\n}\nif (!best || bestScore < 40) { return [{ json: base({ status: 'not_found', message: 'I could not find that item in the catalog.' }) }]; }\nconst stock = Number(best.stock);\nconst price = best.price_pkr;\nif (!isNaN(stock) && stock <= 0) { return [{ json: base({ status: 'out_of_stock', productName: best.name, sku: best.sku, price, message: best.name + ' is out of stock right now.' }) }]; }\nreturn [{ json: base({ status: 'ok', productName: best.name, sku: best.sku, price, stock, matchScore: bestScore, message: 'Order confirmed.' }) }];\n"
+      }
+    },
+    {
+      "id": "aba170d2-7ca7-46a8-916d-dc3ce9d3b8ce",
+      "name": "Orderable?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        660,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "ok",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "6be3dde7-7d90-4c3b-851a-07bf94bf0efc",
+      "name": "Build Slip HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        180
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\nconst d = $input.first().json;\nconst esc = (s) => (s == null ? '' : String(s)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nlet h = '';\nh += '<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">';\nh += '<title>Order Slip ' + esc(d.orderId) + '</title></head>';\nh += '<body style=\"margin:0;background:#f4f5f7;font-family:Arial,Helvetica,sans-serif;color:#1a1a2e;\">';\nh += '<div style=\"max-width:560px;margin:24px auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 6px 24px rgba(0,0,0,.08);\">';\nh += '<div style=\"background:#1a1a2e;color:#fff;padding:22px 26px;\"><div style=\"font-size:20px;font-weight:700;\">Mobile Accessories</div>';\nh += '<div style=\"opacity:.75;font-size:13px;margin-top:2px;\">Order Confirmation Slip</div></div>';\nh += '<div style=\"padding:24px 26px;\"><table style=\"width:100%;border-collapse:collapse;font-size:14px;\">';\nh += '<tr><td style=\"padding:8px 0;color:#6b7280;\">Order ID</td><td style=\"padding:8px 0;text-align:right;font-weight:600;\">' + esc(d.orderId) + '</td></tr>';\nh += '<tr><td style=\"padding:8px 0;color:#6b7280;\">Customer</td><td style=\"padding:8px 0;text-align:right;font-weight:600;\">' + esc(d.customerName) + '</td></tr>';\nh += '<tr><td style=\"padding:8px 0;color:#6b7280;\">Order Date</td><td style=\"padding:8px 0;text-align:right;\">' + esc(d.orderDateFmt) + '</td></tr></table>';\nh += '<div style=\"border-top:1px dashed #d1d5db;margin:14px 0;\"></div><table style=\"width:100%;border-collapse:collapse;font-size:14px;\">';\nh += '<tr><td style=\"padding:8px 0;color:#6b7280;\">Item</td><td style=\"padding:8px 0;text-align:right;font-weight:600;\">' + esc(d.productName) + '</td></tr>';\nh += '<tr><td style=\"padding:8px 0;color:#6b7280;\">SKU</td><td style=\"padding:8px 0;text-align:right;\">' + esc(d.sku) + '</td></tr>';\nh += '<tr><td style=\"padding:8px 0;color:#6b7280;\">Quantity</td><td style=\"padding:8px 0;text-align:right;\">1</td></tr></table>';\nh += '<div style=\"border-top:1px dashed #d1d5db;margin:14px 0;\"></div><table style=\"width:100%;border-collapse:collapse;font-size:15px;\">';\nh += '<tr><td style=\"padding:10px 0;font-weight:700;\">Total</td><td style=\"padding:10px 0;text-align:right;font-weight:700;color:#16a34a;\">PKR ' + esc(d.price) + '</td></tr></table>';\nh += '<div style=\"background:#eef2ff;border-radius:10px;padding:14px 16px;margin-top:14px;font-size:14px;\">Estimated delivery<span style=\"float:right;font-weight:700;\">' + esc(d.deliveryDateFmt) + ' (2 days)</span></div>';\nh += '</div><div style=\"padding:14px 26px;background:#fafafa;color:#9ca3af;font-size:12px;text-align:center;\">Thank you for your order!</div></div></body></html>';\nreturn [{ json: Object.assign({}, d, { slipHtml: h }) }];\n"
+      }
+    },
+    {
+      "id": "04a3fb40-cd55-440c-908f-a5135906cf6d",
+      "name": "Create Slip File",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1100,
+        180
+      ],
+      "parameters": {
+        "resource": "file",
+        "operation": "createFromText",
+        "content": "={{ $json.slipHtml }}",
+        "name": "=Order-Slip-{{ $json.orderId }}.html",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "root",
+          "cachedResultName": "/ (Root folder)"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "437dfc75-882b-40cc-80db-0846be8156f0",
+      "name": "Share Slip",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1320,
+        180
+      ],
+      "parameters": {
+        "resource": "file",
+        "operation": "share",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.id }}"
+        },
+        "permissionsUi": {
+          "permissionsValues": {
+            "role": "reader",
+            "type": "anyone"
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "c7e7e747-e85a-4f6a-b10c-76448882a0a8",
+      "name": "Append Order",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1540,
+        180
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "1MOuAiSaoU2PuqYpu2qkc6-sJIoaWYQHaANBcbhSNVNc",
+          "cachedResultName": "Orders — Mobile Accessories Bot"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": 164666973,
+          "cachedResultName": "Orders"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Order ID": "={{ $(\"Match & Validate\").item.json.orderId }}",
+            "Order Date": "={{ $(\"Match & Validate\").item.json.orderDateFmt }}",
+            "Customer Name": "={{ $(\"Match & Validate\").item.json.customerName }}",
+            "Item": "={{ $(\"Match & Validate\").item.json.productName }}",
+            "SKU": "={{ $(\"Match & Validate\").item.json.sku }}",
+            "Price (PKR)": "={{ $(\"Match & Validate\").item.json.price }}",
+            "Delivery Date": "={{ $(\"Match & Validate\").item.json.deliveryDateFmt }}",
+            "Status": "Confirmed",
+            "Slip URL": "={{ \"https://drive.google.com/file/d/\" + $(\"Create Slip File\").item.json.id + \"/view\" }}"
+          },
+          "schema": [
+            {
+              "id": "Order ID",
+              "displayName": "Order ID",
+              "type": "string",
+              "display": true,
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Order Date",
+              "displayName": "Order Date",
+              "type": "string",
+              "display": true,
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Customer Name",
+              "displayName": "Customer Name",
+              "type": "string",
+              "display": true,
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Item",
+              "displayName": "Item",
+              "type": "string",
+              "display": true,
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "SKU",
+              "displayName": "SKU",
+              "type": "string",
+              "display": true,
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Price (PKR)",
+              "displayName": "Price (PKR)",
+              "type": "string",
+              "display": true,
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Delivery Date",
+              "displayName": "Delivery Date",
+              "type": "string",
+              "display": true,
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "type": "string",
+              "display": true,
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Slip URL",
+              "displayName": "Slip URL",
+              "type": "string",
+              "display": true,
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ce7c3a27-f71e-40ec-8e21-d8dcc41ccf98",
+      "name": "Build Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        180
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "\nconst d = $('Match & Validate').first().json;\nconst slipId = $('Create Slip File').first().json.id;\nreturn [{ json: { status: 'ok', orderId: d.orderId, customerName: d.customerName, productName: d.productName, sku: d.sku, price: d.price, currency: 'PKR', orderDate: d.orderDateFmt, deliveryDate: d.deliveryDateFmt, slipViewUrl: 'https://drive.google.com/file/d/' + slipId + '/view', slipDownloadUrl: 'https://drive.google.com/uc?export=download&id=' + slipId, message: 'Order ' + d.orderId + ' confirmed for ' + d.customerName + '. Delivery by ' + d.deliveryDateFmt + '.' } }];\n"
+      }
+    },
+    {
+      "id": "8bf873be-5407-4fde-ab5a-72362665cceb",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1980,
+        180
+      ],
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {}
+      }
+    },
+    {
+      "id": "d146ad38-1776-414d-990e-67383a5c6f20",
+      "name": "Respond Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        880,
+        420
+      ],
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Read Products",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Products": {
+      "main": [
+        [
+          {
+            "node": "Match & Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Match & Validate": {
+      "main": [
+        [
+          {
+            "node": "Orderable?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Orderable?": {
+      "main": [
+        [
+          {
+            "node": "Build Slip HTML",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Slip HTML": {
+      "main": [
+        [
+          {
+            "node": "Create Slip File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Slip File": {
+      "main": [
+        [
+          {
+            "node": "Share Slip",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Share Slip": {
+      "main": [
+        [
+          {
+            "node": "Append Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append Order": {
+      "main": [
+        [
+          {
+            "node": "Build Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Response": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

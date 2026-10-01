@@ -1,0 +1,356 @@
+{
+  "name": "9- Multi-Agent Research Assistant with Automated Report Generation",
+  "nodes": [
+    {
+      "id": "676db96f-92fc-48c3-a70f-537fb771bac0",
+      "name": "Research Query Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        256,
+        304
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "research",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "webhookId": "0b4a9f7e-c93a-4711-998b-2aeb813825d9"
+    },
+    {
+      "id": "d0b345a5-c7e0-45be-96c1-ad0b8bafa951",
+      "name": "Agent 1: Web Researcher",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        480,
+        304
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.body.query }}",
+        "options": {
+          "systemMessage": "You are a web research specialist. Your task is to search the web for comprehensive information about the given research query. Use the Google Search tool to find relevant sources, gather key facts, statistics, and insights. Provide a detailed summary of your findings with source URLs."
+        }
+      }
+    },
+    {
+      "id": "2f8e238b-9ad7-43e4-b7c1-ee8e52fe9ea6",
+      "name": "Researcher Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        488,
+        528
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gpt-4o"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "a58da3ff-1237-43fe-b96d-af7e75f0bedb",
+      "name": "Google Search Tool",
+      "type": "@n8n/n8n-nodes-langchain.toolSerpApi",
+      "typeVersion": 1,
+      "position": [
+        616,
+        528
+      ],
+      "parameters": {
+        "options": {}
+      }
+    },
+    {
+      "id": "88542dcd-c2f0-403c-830d-753983a7a2c3",
+      "name": "Agent 2: Data Analyzer",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        832,
+        304
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.output }}",
+        "options": {
+          "systemMessage": "You are a data analysis expert. Your task is to analyze the research findings from the web researcher, identify key patterns, trends, and insights. Synthesize the information, evaluate credibility, highlight important statistics, and organize findings into logical themes. Provide a structured analysis that will be used for report writing."
+        }
+      }
+    },
+    {
+      "id": "52c63f7b-445e-4b14-8bad-aff9b5a0d99c",
+      "name": "Analyzer Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        904,
+        528
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gpt-4o"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "5da9cb03-9869-4beb-958e-f1cee26dbd35",
+      "name": "Agent 3: Report Writer",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1184,
+        304
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.output }}",
+        "options": {
+          "systemMessage": "You are a professional report writer. Your task is to create a comprehensive, well-structured research report based on the analysis provided. Write in a clear, professional tone with proper sections: Executive Summary, Introduction, Key Findings, Detailed Analysis, Conclusions, and Recommendations. Format the report in markdown with proper headings, bullet points, and emphasis where appropriate."
+        }
+      }
+    },
+    {
+      "id": "fffb037e-e1de-4fe2-b899-72aeb3cc4a3c",
+      "name": "Writer Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1256,
+        528
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gpt-4o"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "f91caf9a-cd36-4937-8ca1-b5dbfec60fe7",
+      "name": "Save to Supabase",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1536,
+        304
+      ],
+      "parameters": {
+        "tableId": "research_reports",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "query",
+              "fieldValue": "={{ $('Research Query Trigger').item.json.body.query }}"
+            },
+            {
+              "fieldId": "report",
+              "fieldValue": "={{ $json.output }}"
+            },
+            {
+              "fieldId": "created_at",
+              "fieldValue": "={{ $now.toISO() }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "b8e221dd-fc42-4c47-9287-00473b77d1cc",
+      "name": "Convert to PDF",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        1760,
+        304
+      ],
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "output",
+        "options": {
+          "fileName": "=Research_Report_{{ $now.format('yyyy-MM-dd') }}.pdf"
+        }
+      }
+    },
+    {
+      "id": "5a1a73d1-4c25-4289-a6c4-dfeeafb63879",
+      "name": "Email Report",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1984,
+        304
+      ],
+      "parameters": {
+        "sendTo": "<__PLACEHOLDER_VALUE__recipient_email__>",
+        "subject": "=Research Report: {{ $('Research Query Trigger').item.json.body.query }}",
+        "message": "Please find attached the comprehensive research report generated by our multi-agent research assistant.",
+        "options": {
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {}
+            ]
+          }
+        }
+      },
+      "webhookId": "0bcd1240-12ab-4143-880b-0d7f965595c6"
+    }
+  ],
+  "connections": {
+    "Research Query Trigger": {
+      "main": [
+        [
+          {
+            "node": "Agent 1: Web Researcher",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Researcher Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent 1: Web Researcher",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Search Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agent 1: Web Researcher",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent 1: Web Researcher": {
+      "main": [
+        [
+          {
+            "node": "Agent 2: Data Analyzer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyzer Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent 2: Data Analyzer",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent 2: Data Analyzer": {
+      "main": [
+        [
+          {
+            "node": "Agent 3: Report Writer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Writer Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent 3: Report Writer",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent 3: Report Writer": {
+      "main": [
+        [
+          {
+            "node": "Save to Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Supabase": {
+      "main": [
+        [
+          {
+            "node": "Convert to PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to PDF": {
+      "main": [
+        [
+          {
+            "node": "Email Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

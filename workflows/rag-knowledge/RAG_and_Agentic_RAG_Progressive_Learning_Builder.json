@@ -1,0 +1,850 @@
+{
+  "name": "RAG and Agentic RAG Progressive Learning Builder",
+  "nodes": [
+    {
+      "id": "5211892b-0634-498d-b6eb-a422e5d18791",
+      "name": "Start Workflow 1",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        304,
+        408
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "161f8668-1ab3-4874-870e-08742e83b201",
+      "name": "Store Documents in Memory",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.3,
+      "position": [
+        952,
+        304
+      ],
+      "parameters": {
+        "mode": "insert",
+        "memoryKey": {
+          "__rl": true,
+          "mode": "list",
+          "value": "rag_workflow_1"
+        }
+      }
+    },
+    {
+      "id": "a2a2e4b4-da80-44f0-99f1-1f6d97e31648",
+      "name": "OpenAI Embeddings",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        960,
+        528
+      ],
+      "parameters": {
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "1a300357-d933-427c-8264-4dbb2dded5d1",
+      "name": "Load Sample Documents",
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        1088,
+        528
+      ],
+      "parameters": {
+        "jsonMode": "expressionData",
+        "jsonData": "={{ [{\"text\": \"RAG stands for Retrieval-Augmented Generation. It is a technique that combines information retrieval with text generation to provide more accurate and contextual AI responses.\"}, {\"text\": \"Vector stores are databases optimized for storing and searching high-dimensional vectors, commonly used in RAG systems to find relevant documents.\"}, {\"text\": \"Embeddings are numerical representations of text that capture semantic meaning, allowing AI to understand similarity between documents.\"}] }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "2b223d8e-1a85-4c22-93ad-89987ee94fac",
+      "name": "Basic RAG Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1696,
+        408
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $(\"Start Workflow 1\").item.json.chatInput }}",
+        "options": {
+          "systemMessage": "You are a helpful assistant that answers questions using the Document Search Tool. Always search the documents first before answering questions about RAG, vector stores, or embeddings."
+        }
+      }
+    },
+    {
+      "id": "3dc8dfa8-c76d-4a2b-b80c-c9b931623f17",
+      "name": "OpenAI Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1664,
+        632
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "dcc525a3-6ba9-4321-8435-26d082214f7a",
+      "name": "Document Search Tool",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.3,
+      "position": [
+        1792,
+        632
+      ],
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolDescription": "Use this tool to search through stored documents about RAG, vector stores, and embeddings. Always use this tool to answer questions about these topics.",
+        "memoryKey": {
+          "__rl": true,
+          "mode": "list",
+          "value": "rag_workflow_1"
+        },
+        "topK": 3
+      }
+    },
+    {
+      "id": "fbef738a-7619-4925-9cc1-04899103706d",
+      "name": "Store Documents in Memory 1",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.3,
+      "position": [
+        240,
+        808
+      ],
+      "parameters": {
+        "mode": "insert",
+        "memoryKey": {
+          "__rl": true,
+          "mode": "list",
+          "value": "rag_workflow_2"
+        }
+      }
+    },
+    {
+      "id": "06a3baf7-bac9-4b16-b288-213dbf3f5f3e",
+      "name": "RAG Agent with Memory",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        952,
+        704
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $(\"Start Workflow 2\").item.json.chatInput }}",
+        "options": {
+          "systemMessage": "You are a helpful assistant that answers questions using the Document Search Tool. Always search the documents first before answering questions about RAG, vector stores, or embeddings. You can remember previous messages in the conversation."
+        }
+      }
+    },
+    {
+      "id": "421e6d21-9dbd-438f-a7a9-280c725b2376",
+      "name": "Conversation Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        1024,
+        928
+      ],
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.sessionId }}"
+      }
+    },
+    {
+      "id": "c79db8b1-03c7-40ff-b8d9-5332db281768",
+      "name": "Store Documents in Memory 2",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.3,
+      "position": [
+        240,
+        1208
+      ],
+      "parameters": {
+        "mode": "insert",
+        "memoryKey": {
+          "__rl": true,
+          "mode": "list",
+          "value": "rag_workflow_3"
+        }
+      }
+    },
+    {
+      "id": "8cd66b59-36bf-46c7-a89d-c2aa7eeca940",
+      "name": "Agentic RAG Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        952,
+        1104
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $(\"Start Workflow 3\").item.json.chatInput }}",
+        "options": {
+          "systemMessage": "You are a helpful assistant with access to multiple tools: Document Search Tool for RAG information, Calculator for math, and Web Search for current information. Choose the appropriate tool based on the question."
+        }
+      }
+    },
+    {
+      "id": "f1071511-c2ce-4870-9fdf-39d6c9ad3ad5",
+      "name": "Calculator",
+      "type": "@n8n/n8n-nodes-langchain.toolCalculator",
+      "typeVersion": 1,
+      "position": [
+        960,
+        1328
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "5d4e7ef0-df4a-4036-a8c6-808b9163900a",
+      "name": "Web Search",
+      "type": "@n8n/n8n-nodes-langchain.toolSerpApi",
+      "typeVersion": 1,
+      "position": [
+        1088,
+        1328
+      ],
+      "parameters": {
+        "options": {}
+      }
+    },
+    {
+      "id": "05c512a9-070a-4cfd-8565-8309cd0c5721",
+      "name": "Store Documents in Memory 3",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.3,
+      "position": [
+        240,
+        1608
+      ],
+      "parameters": {
+        "mode": "insert",
+        "memoryKey": {
+          "__rl": true,
+          "mode": "list",
+          "value": "rag_workflow_4"
+        }
+      }
+    },
+    {
+      "id": "efc8fdc7-4e1a-4f35-8cc7-b4caf3294bf5",
+      "name": "Multi-Step RAG Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        952,
+        1504
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $(\"Start Workflow 4\").item.json.chatInput }}",
+        "options": {
+          "systemMessage": "You are a helpful assistant with access to multiple tools: Document Search Tool for RAG information, Calculator for math, Web Search for current information, and Weather API Tool for weather data. Choose the appropriate tool based on the question and combine information from multiple tools if needed."
+        }
+      }
+    },
+    {
+      "id": "1e1239f2-9e6c-4170-8112-55279b1cbbac",
+      "name": "Weather API Tool",
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        1024,
+        1728
+      ],
+      "parameters": {
+        "url": "<__PLACEHOLDER_VALUE__Weather API URL (e.g., https://api.weatherapi.com/v1/current.json?key=YOUR_KEY&q={{city}})__>",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "<__PLACEHOLDER_VALUE__City name parameter__>"
+            }
+          ]
+        },
+        "options": {},
+        "optimizeResponse": true,
+        "fieldsToInclude": "selected",
+        "fields": "location.name, current.temp_c, current.condition.text"
+      }
+    },
+    {
+      "id": "5c494da1-c9b6-4409-9fdb-0d6b733a811a",
+      "name": "Store Documents in Memory 4",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.3,
+      "position": [
+        240,
+        2112
+      ],
+      "parameters": {
+        "mode": "insert",
+        "memoryKey": {
+          "__rl": true,
+          "mode": "list",
+          "value": "rag_workflow_5"
+        }
+      }
+    },
+    {
+      "id": "ee48f849-9ded-4b82-9333-7e65f8c34f37",
+      "name": "Supervisor Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        872,
+        2112
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $(\"Start Workflow 5\").item.json.chatInput }}",
+        "options": {
+          "systemMessage": "You are a supervisor agent that coordinates specialized sub-agents. You have access to:\n\n1. Document Research Agent - for questions about RAG, vector stores, and embeddings from stored documents\n2. Math Specialist Agent - for mathematical calculations and problem solving\n3. Web Research Agent - for current information from the internet\n\nAnalyze the user question and delegate tasks to the appropriate specialist agents. You can use multiple agents if the question requires different types of expertise. Combine their responses into a comprehensive answer."
+        }
+      }
+    },
+    {
+      "id": "f6173890-1b53-4db0-8c87-705f53561037",
+      "name": "Supervisor Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        592,
+        2336
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "5583af1d-20e8-4a01-adee-53363043de15",
+      "name": "Document Research Agent",
+      "type": "@n8n/n8n-nodes-langchain.agentTool",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        2336
+      ],
+      "parameters": {
+        "toolDescription": "Specialized agent for researching information from stored documents about RAG, vector stores, and embeddings. Use this agent when you need to answer questions about these topics.",
+        "text": "={{ $json.input }}",
+        "options": {
+          "systemMessage": "You are a document research specialist. Use the Document Search Tool to find accurate information from stored documents. Always cite the documents you find."
+        }
+      }
+    },
+    {
+      "id": "47d97ea1-096c-4438-b173-0927a48a60ad",
+      "name": "Research Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        800,
+        2544
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "efee4225-03c3-4a7b-bb8f-76aecd90a3fc",
+      "name": "Math Specialist Agent",
+      "type": "@n8n/n8n-nodes-langchain.agentTool",
+      "typeVersion": 2.2,
+      "position": [
+        1008,
+        2336
+      ],
+      "parameters": {
+        "toolDescription": "Specialized agent for performing mathematical calculations and solving math problems. Use this agent when you need to calculate numbers, percentages, or solve equations.",
+        "text": "={{ $json.input }}",
+        "options": {
+          "systemMessage": "You are a math specialist. Use the Calculator tool to perform accurate calculations. Always show your work step by step."
+        }
+      }
+    },
+    {
+      "id": "733f1a5c-a18c-49cb-aebb-0cbb69b2c217",
+      "name": "Math Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1088,
+        2544
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "f22f8005-eeb0-4d84-b08e-6d285a3e173e",
+      "name": "Web Research Agent",
+      "type": "@n8n/n8n-nodes-langchain.agentTool",
+      "typeVersion": 2.2,
+      "position": [
+        1296,
+        2336
+      ],
+      "parameters": {
+        "toolDescription": "Specialized agent for searching the web for current information, news, and real-time data. Use this agent when you need up-to-date information not available in stored documents.",
+        "text": "={{ $json.input }}",
+        "options": {
+          "systemMessage": "You are a web research specialist. Use the Web Search tool to find current information from the internet. Always verify and cite your sources."
+        }
+      }
+    },
+    {
+      "id": "937353e0-bc6f-4dbb-aa63-03351fca6551",
+      "name": "Web Research Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1376,
+        2544
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Start Workflow 1": {
+      "main": [
+        [
+          {
+            "node": "Store Documents in Memory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Documents in Memory": {
+      "main": [
+        [
+          {
+            "node": "Basic RAG Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Embeddings": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Store Documents in Memory",
+            "type": "ai_embedding",
+            "index": 0
+          },
+          {
+            "node": "Document Search Tool",
+            "type": "ai_embedding",
+            "index": 0
+          },
+          {
+            "node": "Store Documents in Memory 1",
+            "type": "ai_embedding",
+            "index": 0
+          },
+          {
+            "node": "Store Documents in Memory 2",
+            "type": "ai_embedding",
+            "index": 0
+          },
+          {
+            "node": "Store Documents in Memory 3",
+            "type": "ai_embedding",
+            "index": 0
+          },
+          {
+            "node": "Store Documents in Memory 4",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Sample Documents": {
+      "ai_document": [
+        [
+          {
+            "node": "Store Documents in Memory",
+            "type": "ai_document",
+            "index": 0
+          },
+          {
+            "node": "Store Documents in Memory 1",
+            "type": "ai_document",
+            "index": 0
+          },
+          {
+            "node": "Store Documents in Memory 2",
+            "type": "ai_document",
+            "index": 0
+          },
+          {
+            "node": "Store Documents in Memory 3",
+            "type": "ai_document",
+            "index": 0
+          },
+          {
+            "node": "Store Documents in Memory 4",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic RAG Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "RAG Agent with Memory",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Agentic RAG Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Multi-Step RAG Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Document Search Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "Basic RAG Agent",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "RAG Agent with Memory",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "Agentic RAG Agent",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "Multi-Step RAG Agent",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "Document Research Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Documents in Memory 1": {
+      "main": [
+        [
+          {
+            "node": "RAG Agent with Memory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Conversation Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "RAG Agent with Memory",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "Agentic RAG Agent",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "Multi-Step RAG Agent",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "Supervisor Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Documents in Memory 2": {
+      "main": [
+        [
+          {
+            "node": "Agentic RAG Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculator": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agentic RAG Agent",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "Multi-Step RAG Agent",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "Math Specialist Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Web Search": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agentic RAG Agent",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "Multi-Step RAG Agent",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "Web Research Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Documents in Memory 3": {
+      "main": [
+        [
+          {
+            "node": "Multi-Step RAG Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Weather API Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "Multi-Step RAG Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Documents in Memory 4": {
+      "main": [
+        [
+          {
+            "node": "Supervisor Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supervisor Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Supervisor Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Document Research Agent": {
+      "ai_tool": [
+        [
+          {
+            "node": "Supervisor Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Research Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Document Research Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Math Specialist Agent": {
+      "ai_tool": [
+        [
+          {
+            "node": "Supervisor Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Math Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Math Specialist Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Web Research Agent": {
+      "ai_tool": [
+        [
+          {
+            "node": "Supervisor Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Web Research Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Web Research Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

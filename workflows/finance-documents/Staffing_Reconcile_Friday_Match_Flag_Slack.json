@@ -1,0 +1,345 @@
+{
+  "name": "Staffing Reconcile: Friday Match -> Flag -> Slack",
+  "nodes": [
+    {
+      "id": "eb681ed7-2e94-444f-83f6-4014495ac132",
+      "name": "Sticky Note 3c594797",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        100,
+        300
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "Reconcile Architecture",
+            "position": [
+              -200,
+              80
+            ],
+            "parameters": {
+              "width": 500,
+              "height": 220,
+              "content": "TIMESHEET RECONCILIATION\n\n1. Runs every Friday at 2 PM\n2. Reads Timesheet_Intake + Worker_Export sheets\n3. Matches workers and compares hours\n4. Flags discrepancies > 0.25 hr\n5. Updates sheet status + Slack coordinator summary"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "16590b5f-259f-47e1-9796-172cbdf2d636",
+      "name": "Friday 2 PM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 14 * * 5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "3f13b183-f99d-484e-ace9-2541091e0abe",
+      "name": "Sheet: Read Timesheet_Intake",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Timesheet_Intake"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "266f3eb7-7d0e-438c-b86f-d48c946d814b",
+      "name": "Sheet: Read Worker_Export",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Worker_Export"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a3938ddc-02c7-4b19-a0e3-eba2f789c18b",
+      "name": "Match & Flag Discrepancies",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const intakeRows = $('Sheet: Read Timesheet_Intake').all().map((i) => i.json);\nconst exportRows = $('Sheet: Read Worker_Export').all().map((i) => i.json);\nconst threshold = 0.25;\n\nfunction norm(name) {\n  return (name || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();\n}\n\nfunction score(a, b) {\n  if (!a || !b) return 0;\n  if (a === b) return 100;\n  if (a.includes(b) || b.includes(a)) return 80;\n  const aw = new Set(a.split(' ').filter(Boolean));\n  const bw = new Set(b.split(' ').filter(Boolean));\n  let overlap = 0;\n  for (const w of aw) if (bw.has(w)) overlap++;\n  return overlap * 15;\n}\n\nconst results = [];\nlet flaggedCount = 0;\nlet matchedCount = 0;\nlet unmatchedCount = 0;\n\nfor (const row of intakeRows) {\n  const status = (row.status || '').toLowerCase();\n  if (status === 'flagged' || status === 'reconciled') continue;\n\n  const worker = norm(row.worker_name);\n  let best = null;\n  let bestScore = 0;\n  for (const exp of exportRows) {\n    const s = score(worker, norm(exp.worker_name || exp.name));\n    if (s > bestScore) {\n      bestScore = s;\n      best = exp;\n    }\n  }\n\n  const intakeHours = Number(row.total_hours) || 0;\n  const exportHours = best ? (Number(best.total_hours || best.hours) || 0) : 0;\n  const diff = Math.abs(intakeHours - exportHours);\n\n  if (!best || bestScore < 40) {\n    unmatchedCount++;\n    results.push({\n      json: {\n        ...row,\n        status: 'flagged',\n        flagged_reason: 'No matching worker in Worker_Export',\n        export_hours: 0,\n        hour_difference: intakeHours,\n        match_score: bestScore,\n        reconciled_at: $now.toISO(),\n      },\n    });\n    flaggedCount++;\n    continue;\n  }\n\n  matchedCount++;\n  if (diff > threshold) {\n    flaggedCount++;\n    results.push({\n      json: {\n        ...row,\n        status: 'flagged',\n        flagged_reason: 'Hour discrepancy ' + diff.toFixed(2) + ' hr (intake ' + intakeHours + ' vs export ' + exportHours + ')',\n        export_hours: exportHours,\n        hour_difference: diff,\n        match_score: bestScore,\n        reconciled_at: $now.toISO(),\n      },\n    });\n  } else {\n    results.push({\n      json: {\n        ...row,\n        status: 'reconciled',\n        flagged_reason: '',\n        export_hours: exportHours,\n        hour_difference: diff,\n        match_score: bestScore,\n        reconciled_at: $now.toISO(),\n      },\n    });\n  }\n}\n\nif (!results.length) {\n  return [{\n    json: {\n      summary_text: '*Staffing Reconciliation* — No pending intake rows to reconcile.',\n      flagged_count: 0,\n      matched_count: 0,\n      unmatched_count: 0,\n      has_updates: false,\n    },\n  }];\n}\n\nconst summaryLines = [\n  '*Staffing Timesheet Reconciliation* (' + $now.toFormat('yyyy-MM-dd HH:mm') + ')',\n  'Reviewed: ' + results.length,\n  'Matched: ' + matchedCount,\n  'Flagged: ' + flaggedCount,\n  'Unmatched workers: ' + unmatchedCount,\n  '',\n];\n\nconst flagged = results.filter((r) => r.json.status === 'flagged');\nfor (const r of flagged.slice(0, 10)) {\n  summaryLines.push('- ' + (r.json.worker_name || 'unknown') + ': ' + (r.json.flagged_reason || 'flagged'));\n}\nif (flagged.length > 10) summaryLines.push('...and ' + (flagged.length - 10) + ' more');\n\nresults[0].json.summary_text = summaryLines.join('\\n');\nresults[0].json.flagged_count = flaggedCount;\nresults[0].json.matched_count = matchedCount;\nresults[0].json.unmatched_count = unmatchedCount;\nresults[0].json.has_updates = true;\n\nreturn results;"
+      }
+    },
+    {
+      "id": "e4020ec9-3d8c-4e8f-ae9e-34ece059203e",
+      "name": "Has Rows to Update?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        960,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.has_updates !== false && $json.intake_id }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "8f77ad8e-b245-4dc2-bd0a-2dd565902f49",
+      "name": "Sheet: Update Flagged Status",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1200,
+        220
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Timesheet_Intake"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": [
+            "intake_id"
+          ],
+          "value": {
+            "intake_id": "={{ $json.intake_id }}",
+            "status": "={{ $json.status }}",
+            "flagged_reason": "={{ $json.flagged_reason || \"\" }}",
+            "reconciled_at": "={{ $json.reconciled_at }}"
+          },
+          "schema": [
+            {
+              "id": "intake_id",
+              "displayName": "intake_id",
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "type": "string"
+            },
+            {
+              "id": "flagged_reason",
+              "displayName": "flagged_reason",
+              "type": "string"
+            },
+            {
+              "id": "reconciled_at",
+              "displayName": "reconciled_at",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "03542eec-3ac1-424d-a1bb-1e0d29b27f95",
+      "name": "Build Slack Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        420
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const first = $('Match & Flag Discrepancies').first().json;\nreturn [{\n  json: {\n    summary_text: first.summary_text || 'Staffing reconciliation complete.',\n    flagged_count: first.flagged_count || 0,\n  },\n}];"
+      }
+    },
+    {
+      "id": "163316c8-af85-4938-9dbf-d7f8881a38df",
+      "name": "Slack: Coordinator Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.5,
+      "position": [
+        1440,
+        300
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SLACK_CHANNEL_ID"
+        },
+        "messageType": "text",
+        "text": "={{ $json.summary_text }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": true,
+          "mrkdwn": true
+        }
+      },
+      "webhookId": "baab0864-da0f-4823-b477-535b984b4f4d"
+    }
+  ],
+  "connections": {
+    "Friday 2 PM": {
+      "main": [
+        [
+          {
+            "node": "Sheet: Read Timesheet_Intake",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheet: Read Timesheet_Intake": {
+      "main": [
+        [
+          {
+            "node": "Sheet: Read Worker_Export",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheet: Read Worker_Export": {
+      "main": [
+        [
+          {
+            "node": "Match & Flag Discrepancies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Match & Flag Discrepancies": {
+      "main": [
+        [
+          {
+            "node": "Has Rows to Update?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Rows to Update?": {
+      "main": [
+        [
+          {
+            "node": "Sheet: Update Flagged Status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Slack Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheet: Update Flagged Status": {
+      "main": [
+        [
+          {
+            "node": "Build Slack Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Slack Summary": {
+      "main": [
+        [
+          {
+            "node": "Slack: Coordinator Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

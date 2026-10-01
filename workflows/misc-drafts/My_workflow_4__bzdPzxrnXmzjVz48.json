@@ -1,0 +1,606 @@
+{
+  "name": "My workflow 4",
+  "nodes": [
+    {
+      "id": "356aa662-0c31-46cb-a494-f3c82260788c",
+      "name": "Chat Interface",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        240,
+        304
+      ],
+      "parameters": {
+        "options": {}
+      },
+      "webhookId": "f06373c2-574d-45dd-8995-6124515ac622"
+    },
+    {
+      "id": "91a58fe0-0089-4afb-a8e6-694d1b0d1c5d",
+      "name": "Stock Analysis Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        584,
+        304
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.chatInput }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a professional stock market analyst with expertise in fundamental and technical analysis. Your role is to analyze stock tickers and provide comprehensive investment insights.\n\nYou have access to the \"Stock Market Data\" tool which provides real-time end-of-day stock data. Use this tool to fetch current market information for any requested ticker symbol.\n\nFor each analysis, you must provide:\n1. Current stock price\n2. Investment recommendation (buy/hold/sell)\n3. Confidence level (low/medium/high)\n4. Detailed reasoning for your recommendation\n5. Risk assessment (low/medium/high)\n6. Target price projection\n\nAlways structure your response according to the output parser schema with fields: ticker, currentPrice, recommendation, confidence, reasoning, riskLevel, and targetPrice."
+        }
+      }
+    },
+    {
+      "id": "78d46cc5-dd79-4b28-9c1f-452b2448959b",
+      "name": "OpenAI GPT Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        464,
+        528
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "68cf0957-86db-4295-840b-0c9692e66e31",
+      "name": "Conversation Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        592,
+        528
+      ],
+      "parameters": {
+        "contextWindowLength": 10
+      }
+    },
+    {
+      "id": "3aca054d-740e-4d88-b08f-4b42a1cbf258",
+      "name": "Stock Market Data",
+      "type": "n8n-nodes-base.marketstackTool",
+      "typeVersion": 1,
+      "position": [
+        720,
+        528
+      ],
+      "parameters": {
+        "symbols": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('ticker', 'Stock ticker symbol (e.g., GOOGL, AAPL, MSFT)') }}",
+        "limit": 30,
+        "filters": {
+          "latest": true
+        }
+      }
+    },
+    {
+      "id": "f60e22b3-7c40-40a7-8502-b0075b01a192",
+      "name": "Structured Analysis Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        848,
+        528
+      ],
+      "parameters": {
+        "jsonSchemaExample": "{ \"ticker\": \"AAPL\", \"currentPrice\": 150.25, \"recommendation\": \"buy\", \"confidence\": \"high\", \"reasoning\": \"Strong fundamentals and positive momentum\", \"riskLevel\": \"medium\", \"targetPrice\": 165.00 }"
+      }
+    },
+    {
+      "id": "ffe6bc26-8598-43d5-8cc8-dbc272142652",
+      "name": "Extract Analysis Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1056,
+        304
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "ticker",
+              "value": "={{ $json.output.ticker }}",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "currentPrice",
+              "value": "={{ $json.output.currentPrice }}",
+              "type": "number"
+            },
+            {
+              "id": "3",
+              "name": "recommendation",
+              "value": "={{ $json.output.recommendation }}",
+              "type": "string"
+            },
+            {
+              "id": "4",
+              "name": "confidence",
+              "value": "={{ $json.output.confidence }}",
+              "type": "string"
+            },
+            {
+              "id": "5",
+              "name": "reasoning",
+              "value": "={{ $json.output.reasoning }}",
+              "type": "string"
+            },
+            {
+              "id": "6",
+              "name": "riskLevel",
+              "value": "={{ $json.output.riskLevel }}",
+              "type": "string"
+            },
+            {
+              "id": "7",
+              "name": "targetPrice",
+              "value": "={{ $json.output.targetPrice }}",
+              "type": "number"
+            },
+            {
+              "id": "8",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "9",
+              "name": "sessionId",
+              "value": "={{ $json.sessionId }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "364aa2da-b8ab-427d-a9d2-01b11db89ea5",
+      "name": "Analyze Sentiment",
+      "type": "@n8n/n8n-nodes-langchain.sentimentAnalysis",
+      "typeVersion": 1.1,
+      "position": [
+        1280,
+        304
+      ],
+      "parameters": {
+        "inputText": "={{ $json.reasoning }}",
+        "options": {
+          "categories": "Very Positive, Positive, Neutral, Negative, Very Negative",
+          "includeDetailedResults": true
+        }
+      }
+    },
+    {
+      "id": "a902c91b-f3b7-440d-a92b-f3678e4010d0",
+      "name": "Sentiment Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1352,
+        624
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "beaab45a-2acd-44e2-9775-d2e428192133",
+      "name": "Route by Recommendation",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1632,
+        272
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.recommendation }}",
+                    "rightValue": "buy",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Strong Buy Signal"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.recommendation }}",
+                    "rightValue": "hold",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Hold Position"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.recommendation }}",
+                    "rightValue": "sell",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Sell Alert"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      }
+    },
+    {
+      "id": "3fcdc254-9369-4eeb-a9e1-22afc4b9e005",
+      "name": "Save to Database",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1856,
+        208
+      ],
+      "parameters": {
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "ticker",
+              "keyValue": "={{ $json.ticker }}"
+            },
+            {
+              "keyName": "timestamp",
+              "keyValue": "={{ $json.timestamp }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ticker": "={{ $json.ticker }}",
+            "currentPrice": "={{ $json.currentPrice }}",
+            "recommendation": "={{ $json.recommendation }}",
+            "confidence": "={{ $json.confidence }}",
+            "reasoning": "={{ $json.reasoning }}",
+            "riskLevel": "={{ $json.riskLevel }}",
+            "targetPrice": "={{ $json.targetPrice }}",
+            "sentiment": "={{ $json.sentiment }}",
+            "sentimentScore": "={{ $json.sentimentScore }}",
+            "timestamp": "={{ $json.timestamp }}",
+            "sessionId": "={{ $json.sessionId }}"
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ef5e9aba-53fe-4590-bad0-41e072312235",
+      "name": "Notify Slack - Buy Signal",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        2080,
+        112
+      ],
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "messageType": "block",
+        "blocksUi": "=[\n  {\n    \"type\": \"header\",\n    \"text\": {\n      \"type\": \"plain_text\",\n      \"text\": \"🚀 Strong Buy Signal: {{ $json.ticker }}\"\n    }\n  },\n  {\n    \"type\": \"section\",\n    \"fields\": [\n      {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*Current Price:*\\n${{ $json.currentPrice }}\"\n      },\n      {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*Target Price:*\\n${{ $json.targetPrice }}\"\n      },\n      {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*Confidence:*\\n{{ $json.confidence }}\"\n      },\n      {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*Risk Level:*\\n{{ $json.riskLevel }}\"\n      }\n    ]\n  },\n  {\n    \"type\": \"section\",\n    \"text\": {\n      \"type\": \"mrkdwn\",\n      \"text\": \"*Analysis:*\\n{{ $json.reasoning }}\"\n    }\n  },\n  {\n    \"type\": \"section\",\n    \"text\": {\n      \"type\": \"mrkdwn\",\n      \"text\": \"*Sentiment:* {{ $json.sentiment }} (Score: {{ $json.sentimentScore }})\"\n    }\n  }\n]",
+        "text": "=🚀 Strong Buy Signal for {{ $json.ticker }}",
+        "otherOptions": {}
+      },
+      "webhookId": "7af81f7d-d38b-4da2-8744-1a14ea0716a5"
+    },
+    {
+      "id": "7f6f7d93-8d99-4af5-8dce-1aab465d134d",
+      "name": "Send Email Alert - Sell",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        2080,
+        304
+      ],
+      "parameters": {
+        "sendTo": "<__PLACEHOLDER_VALUE__your-email@example.com__>",
+        "subject": "=⚠️ Sell Alert: {{ $json.ticker }} Stock Analysis",
+        "message": "=<h2>⚠️ Sell Alert for {{ $json.ticker }}</h2>\n<p><strong>Current Price:</strong> ${{ $json.currentPrice }}</p>\n<p><strong>Recommendation:</strong> {{ $json.recommendation }}</p>\n<p><strong>Confidence:</strong> {{ $json.confidence }}</p>\n<p><strong>Risk Level:</strong> {{ $json.riskLevel }}</p>\n<p><strong>Target Price:</strong> ${{ $json.targetPrice }}</p>\n<hr>\n<p><strong>Analysis:</strong></p>\n<p>{{ $json.reasoning }}</p>\n<hr>\n<p><strong>Sentiment Analysis:</strong> {{ $json.sentiment }} (Score: {{ $json.sentimentScore }})</p>\n<p><em>Generated at {{ $json.timestamp }}</em></p>",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "webhookId": "7089823f-8012-4142-8589-9991b527f6c4"
+    },
+    {
+      "id": "62a06b14-c105-4246-8535-68ca823484a2",
+      "name": "Save to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1856,
+        496
+      ],
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        }
+      }
+    },
+    {
+      "id": "96aea5b5-e105-4ad9-836f-94a11fcc2990",
+      "name": "Log Hold Position",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2080,
+        496
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "action",
+              "value": "hold_logged",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "message",
+              "value": "=Hold position maintained for {{ $json.ticker }} at ${{ $json.currentPrice }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Chat Interface": {
+      "main": [
+        [
+          {
+            "node": "Stock Analysis Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI GPT Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Stock Analysis Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Conversation Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Stock Analysis Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stock Market Data": {
+      "ai_tool": [
+        [
+          {
+            "node": "Stock Analysis Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stock Analysis Agent": {
+      "main": [
+        [
+          {
+            "node": "Extract Analysis Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Analysis Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Stock Analysis Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Analysis Data": {
+      "main": [
+        [
+          {
+            "node": "Analyze Sentiment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Sentiment": {
+      "main": [
+        [
+          {
+            "node": "Route by Recommendation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sentiment Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Analyze Sentiment",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Recommendation": {
+      "main": [
+        [
+          {
+            "node": "Save to Database",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Save to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Save to Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Database": {
+      "main": [
+        [
+          {
+            "node": "Notify Slack - Buy Signal",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Email Alert - Sell",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "Log Hold Position",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

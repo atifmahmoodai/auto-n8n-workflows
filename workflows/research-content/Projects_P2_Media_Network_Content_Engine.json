@@ -1,0 +1,426 @@
+{
+  "name": "Projects P2: Media Network Content Engine",
+  "nodes": [
+    {
+      "id": "60e42694-e2d7-43c1-a157-b0873b6e1e25",
+      "name": "Sticky Note 82328f32",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        752,
+        688
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "Media Network Content Engine",
+            "position": [
+              -220,
+              60
+            ],
+            "parameters": {
+              "width": 580,
+              "height": 300,
+              "content": "MEDIA NETWORK CONTENT ENGINE\n\n1. Webhook POST /media/repurpose with YouTube transcript\n2. Firecrawl/Perplexity research placeholder for trending topics\n3. AI generates LinkedIn article, X thread, IG carousel copy, podcast notes\n4. Logs to Content_Queue sheet for human review\n5. Gmail notifies reviewer (Slack placeholder)\n\nPipeline 1 from $6500 Media Network project."
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "0a040146-83a5-439e-bfeb-8a184fc34772",
+      "name": "Webhook: Repurpose Content",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "media/repurpose",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "450c1b25-eaf5-4064-bf72-a80030431815"
+    },
+    {
+      "id": "85580363-89e5-4dc9-9eaf-d694ab02baa2",
+      "name": "Normalize Transcript Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "title",
+              "name": "video_title",
+              "value": "={{ $json.title || $json.body?.title || \"Untitled Video\" }}",
+              "type": "string"
+            },
+            {
+              "id": "url",
+              "name": "video_url",
+              "value": "={{ $json.url || $json.body?.url || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "trans",
+              "name": "transcript",
+              "value": "={{ $json.transcript || $json.body?.transcript || \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "aud",
+              "name": "audience",
+              "value": "={{ $json.audience || $json.body?.audience || \"tax firm owners\" }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "2ac28d89-5fbf-42aa-b9a0-edb4892bbbbb",
+      "name": "Perplexity: Trend Research",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        500,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.perplexity.ai/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n        model: \"sonar\",\n        messages: [{\n          role: \"user\",\n          content: \"What are 3 trending bottlenecks for \" + $(\"Normalize Transcript Input\").item.json.audience + \" this week? Return JSON array topics.\"\n        }]\n      } }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json",
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "cdbec80a-e4aa-434f-9894-30196c43cf80",
+      "name": "AI: Omnipresent Repurpose",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        760,
+        300
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ \"Repurpose this YouTube content for a tax firm growth expert media network. Audience: \" + $(\"Normalize Transcript Input\").item.json.audience + \"\\nTitle: \" + $(\"Normalize Transcript Input\").item.json.video_title + \"\\nTranscript:\\n\" + $(\"Normalize Transcript Input\").item.json.transcript + \"\\n\\nTrend research (if any): \" + JSON.stringify($json) }}",
+        "hasOutputParser": true
+      }
+    },
+    {
+      "id": "17259af4-e8ce-4e20-ac46-87c341be33a1",
+      "name": "GPT-4o Mini",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        752,
+        640
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "options": {
+          "temperature": 0.5
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "ba8db185-383d-4436-8434-caa5f25224d0",
+      "name": "Repurpose Content Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        784,
+        432
+      ],
+      "parameters": {
+        "schemaType": "fromJson",
+        "autoFix": true,
+        "jsonSchemaExample": {
+          "linkedin_article": "Long-form authority article...",
+          "x_thread": [
+            "Tweet 1",
+            "Tweet 2",
+            "Tweet 3"
+          ],
+          "instagram_carousel": [
+            "Slide 1 headline",
+            "Slide 2 tip",
+            "Slide 3 CTA"
+          ],
+          "reddit_post": "Community-style post...",
+          "podcast_show_notes": "Episode summary and timestamps",
+          "seo_title": "How Tax Firms Scale EBITDA"
+        }
+      }
+    },
+    {
+      "id": "782b4b24-6ebc-4ca6-9c4f-61e10e0dd5de",
+      "name": "Prepare Content Queue Row",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1020,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "vt",
+              "name": "video_title",
+              "value": "={{ $(\"Normalize Transcript Input\").item.json.video_title }}",
+              "type": "string"
+            },
+            {
+              "id": "vu",
+              "name": "video_url",
+              "value": "={{ $(\"Normalize Transcript Input\").item.json.video_url }}",
+              "type": "string"
+            },
+            {
+              "id": "st",
+              "name": "status",
+              "value": "pending_review",
+              "type": "string"
+            },
+            {
+              "id": "cj",
+              "name": "content_json",
+              "value": "={{ JSON.stringify($json.output || $json) }}",
+              "type": "string"
+            },
+            {
+              "id": "ts",
+              "name": "created_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "f24aaa8a-5006-454e-91b4-7d9e2cc2bc9f",
+      "name": "Log to Content Queue",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1280,
+        300
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Content_Queue"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "created_at": "={{ $json.created_at }}",
+            "video_title": "={{ $json.video_title }}",
+            "video_url": "={{ $json.video_url }}",
+            "status": "={{ $json.status }}",
+            "content_json": "={{ $json.content_json }}"
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ae5b55ce-3734-42cf-afba-c0569263329a",
+      "name": "Gmail: Review Notification",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1540,
+        300
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "REPLACE_REVIEWER_EMAIL",
+        "subject": "={{ \"Content ready for review: \" + $json.video_title }}",
+        "emailType": "text",
+        "message": "={{ \"New repurposed content is in Content_Queue sheet (status=pending_review).\\nVideo: \" + $json.video_url }}",
+        "options": {}
+      },
+      "webhookId": "20f3cc73-7175-4be6-a40f-006e44457575"
+    },
+    {
+      "id": "203e4d6e-c0e7-4578-9ac0-636359cbe817",
+      "name": "Respond Content Package",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1800,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, video_title: $json.video_title, status: $json.status, message: \"Content queued for human review\" } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook: Repurpose Content": {
+      "main": [
+        [
+          {
+            "node": "Normalize Transcript Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Transcript Input": {
+      "main": [
+        [
+          {
+            "node": "Perplexity: Trend Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Perplexity: Trend Research": {
+      "main": [
+        [
+          {
+            "node": "AI: Omnipresent Repurpose",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Omnipresent Repurpose": {
+      "main": [
+        [
+          {
+            "node": "Prepare Content Queue Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT-4o Mini": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI: Omnipresent Repurpose",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Repurpose Content Schema",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Repurpose Content Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI: Omnipresent Repurpose",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Content Queue Row": {
+      "main": [
+        [
+          {
+            "node": "Log to Content Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Content Queue": {
+      "main": [
+        [
+          {
+            "node": "Gmail: Review Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: Review Notification": {
+      "main": [
+        [
+          {
+            "node": "Respond Content Package",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

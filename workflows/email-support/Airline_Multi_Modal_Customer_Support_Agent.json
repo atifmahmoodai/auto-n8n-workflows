@@ -1,0 +1,237 @@
+{
+  "name": "Airline Multi-Modal Customer Support Agent",
+  "nodes": [
+    {
+      "id": "bc6a5422-61fd-4f5c-854c-370588658382",
+      "name": "Airline Support Chat",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        256,
+        304
+      ],
+      "parameters": {
+        "public": true,
+        "initialMessages": "Hello! I'm your airline support assistant. I can help you with flight bookings, check-ins, baggage questions, flight status, and more. How can I assist you today?",
+        "options": {
+          "loadPreviousSession": "memory"
+        }
+      },
+      "webhookId": "3421a421-a241-43ba-8003-c675b8538156"
+    },
+    {
+      "id": "e3896492-bd00-496c-ae88-bc0ae9ab3031",
+      "name": "Customer Support Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        792,
+        304
+      ],
+      "parameters": {
+        "options": {
+          "systemMessage": "You are a helpful airline customer support agent. You assist customers with flight bookings, check-ins, baggage inquiries, flight status, cancellations, refunds, and general travel questions. Be professional, empathetic, and efficient. Use the available tools to help customers with their requests."
+        }
+      }
+    },
+    {
+      "id": "fd32ed90-203d-4629-ba98-89c4469bc217",
+      "name": "GPT-4 Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        608,
+        528
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gpt-4o"
+        },
+        "builtInTools": {},
+        "options": {
+          "temperature": 0.7
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "Gateway credits",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "id": "f5928927-5279-4857-beb7-db5f3fa88b97",
+      "name": "Conversation Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        328,
+        528
+      ],
+      "parameters": {
+        "contextWindowLength": 10
+      }
+    },
+    {
+      "id": "8330138d-dcb1-4037-b529-5ea4f6e2f16d",
+      "name": "Flight Status API",
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        736,
+        528
+      ],
+      "parameters": {
+        "toolDescription": "Check the real-time status of a flight including departure time, arrival time, gate information, and delays. Requires flight number and date.",
+        "url": "<__PLACEHOLDER_VALUE__flight_status_api_endpoint__>",
+        "options": {}
+      }
+    },
+    {
+      "id": "39e6a8f0-f4f1-4098-a307-d7f36e680a64",
+      "name": "Booking System API",
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        864,
+        528
+      ],
+      "parameters": {
+        "toolDescription": "Search for existing flight bookings using confirmation number, passenger name, or email address. Returns booking details, flight information, and passenger data.",
+        "url": "=<__PLACEHOLDER_VALUE__booking_api_endpoint__>",
+        "options": {}
+      }
+    },
+    {
+      "id": "81b2571f-1ba9-40fb-93ac-ceab9fa14690",
+      "name": "Fare Calculator",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.3,
+      "position": [
+        992,
+        528
+      ],
+      "parameters": {
+        "description": "Calculate flight fare including base price, taxes, baggage fees, and total cost. Supports different cabin classes and passenger types.",
+        "jsCode": "const baseFare = $fromAI('base_fare', 'Base ticket price', 'number', 200);\nconst cabinClass = $fromAI('cabin_class', 'Cabin class: economy, premium, business, or first', 'string', 'economy');\nconst checkedBags = $fromAI('checked_bags', 'Number of checked bags', 'number', 0);\n\n// Cabin multipliers\nconst multipliers = {\n  economy: 1.0,\n  premium: 1.5,\n  business: 2.5,\n  first: 4.0\n};\n\nconst multiplier = multipliers[cabinClass.toLowerCase()] || 1.0;\nconst adjustedFare = baseFare * multiplier;\n\n// Taxes and fees (15% of fare)\nconst taxes = adjustedFare * 0.15;\n\n// Baggage fees ($35 per bag)\nconst baggageFees = checkedBags * 35;\n\n// Total\nconst total = adjustedFare + taxes + baggageFees;\n\nreturn {\n  baseFare: baseFare.toFixed(2),\n  cabinClass: cabinClass,\n  adjustedFare: adjustedFare.toFixed(2),\n  taxes: taxes.toFixed(2),\n  baggageFees: baggageFees.toFixed(2),\n  checkedBags: checkedBags,\n  totalFare: total.toFixed(2),\n  currency: 'USD'\n};"
+      }
+    },
+    {
+      "id": "bbf60fb9-fd96-4a3d-89f6-7851a020cd4c",
+      "name": "Email Confirmation Tool",
+      "type": "n8n-nodes-base.gmailTool",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        528
+      ],
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Send booking confirmation or itinerary email to the customer with flight details, booking reference, and travel information.",
+        "sendTo": "={{ $fromAI('recipient_email', 'Customer email address', 'string') }}",
+        "subject": "={{ $fromAI('email_subject', 'Email subject line', 'string', 'Your Flight Confirmation') }}",
+        "message": "={{ $fromAI('email_body', 'Email body with booking details and flight information', 'string') }}",
+        "options": {}
+      },
+      "webhookId": "797608c6-317d-461f-9c63-66bd61654146"
+    }
+  ],
+  "connections": {
+    "Airline Support Chat": {
+      "main": [
+        [
+          {
+            "node": "Customer Support Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT-4 Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Customer Support Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Conversation Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Customer Support Agent",
+            "type": "ai_memory",
+            "index": 0
+          },
+          {
+            "node": "Airline Support Chat",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flight Status API": {
+      "ai_tool": [
+        [
+          {
+            "node": "Customer Support Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Booking System API": {
+      "ai_tool": [
+        [
+          {
+            "node": "Customer Support Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fare Calculator": {
+      "ai_tool": [
+        [
+          {
+            "node": "Customer Support Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Confirmation Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "Customer Support Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

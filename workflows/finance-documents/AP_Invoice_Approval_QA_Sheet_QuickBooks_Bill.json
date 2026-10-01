@@ -1,0 +1,476 @@
+{
+  "name": "AP Invoice Approval: QA Sheet -> QuickBooks Bill",
+  "nodes": [
+    {
+      "id": "e91fb64c-ee35-4654-a837-a403bb63b3b1",
+      "name": "Sticky Note c3bc4cb5",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        100,
+        300
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "Approval Architecture",
+            "position": [
+              -200,
+              80
+            ],
+            "parameters": {
+              "width": 480,
+              "height": 220,
+              "content": "APPROVAL WORKFLOW\n\n1. Watches Invoice_QA sheet Status column\n2. When bookkeeper sets status=Approved\n3. Fuzzy-matches vendor in QuickBooks\n4. Creates DRAFT bill (human posts payment in QBO)\n5. Writes qbo_bill_id back to sheet\n6. Slack confirmation"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "446298b7-6433-4d20-9ca0-bee4659335a3",
+      "name": "Sheet: Status Changed",
+      "type": "n8n-nodes-base.googleSheetsTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_YOUR_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Invoice_QA"
+        },
+        "event": "rowUpdate",
+        "includeInOutput": "new",
+        "options": {
+          "columnsToWatch": [
+            "status"
+          ]
+        }
+      }
+    },
+    {
+      "id": "0df2f20b-de31-4387-97f5-2583bd24c3af",
+      "name": "Approved & Not Posted",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ ($json.status || \"\").toString().trim().toLowerCase() }}",
+              "rightValue": "approved",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "leftValue": "={{ ($json.qbo_bill_id || \"\").toString().trim() }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "leftValue": "={{ Number($json.total) || 0 }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "db06e010-e369-4ca4-948c-c37b31088253",
+      "name": "QBO: Get Vendors",
+      "type": "n8n-nodes-base.quickbooks",
+      "typeVersion": 1,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "resource": "vendor",
+        "operation": "getAll",
+        "returnAll": true
+      }
+    },
+    {
+      "id": "4b496157-9875-4963-a582-70790796dd88",
+      "name": "Match Vendor & Build Bill Lines",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const row = $input.item.json;\nconst vendors = $('QBO: Get Vendors').all().map((i) => i.json);\nconst target = (row.vendor_name || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();\n\nfunction score(v) {\n  const name = (v.DisplayName || v.CompanyName || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();\n  if (!name || !target) return 0;\n  if (name === target) return 100;\n  if (name.includes(target) || target.includes(name)) return 80;\n  const a = new Set(target.split(' ').filter(Boolean));\n  const b = new Set(name.split(' ').filter(Boolean));\n  let overlap = 0;\n  for (const t of a) if (b.has(t)) overlap++;\n  return overlap * 10;\n}\n\nlet best = null;\nlet bestScore = 0;\nfor (const v of vendors) {\n  const s = score(v);\n  if (s > bestScore) {\n    bestScore = s;\n    best = v;\n  }\n}\n\nlet lineItems = [];\ntry {\n  lineItems = JSON.parse(row.line_items_json || '[]');\n} catch (e) {\n  lineItems = [];\n}\n\nconst qboLines = (lineItems.length ? lineItems : [{ description: row.invoice_number || 'Invoice', amount: Number(row.total) || 0 }])\n  .map((li, idx) => ({\n    Amount: Number(li.amount) || Number(row.total) || 0,\n    Description: li.description || row.invoice_number || 'Invoice line',\n    DetailType: 'AccountBasedExpenseLineDetail',\n    LineNum: idx + 1,\n    accountId: 'REPLACE_WITH_DEFAULT_EXPENSE_ACCOUNT_ID',\n  }));\n\nreturn {\n  json: {\n    ...row,\n    vendorMatchScore: bestScore,\n    qbo_vendor_id: best && bestScore >= 50 ? String(best.Id) : '',\n    qbo_vendor_name: best ? (best.DisplayName || best.CompanyName || '') : '',\n    vendor_match_ok: Boolean(best && bestScore >= 50),\n    qbo_lines: qboLines,\n  },\n};"
+      }
+    },
+    {
+      "id": "20ce12a2-2059-4a53-81df-9f3c4eb813bc",
+      "name": "Vendor Matched?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        960,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.vendor_match_ok }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "41f13f37-01da-434c-97bb-a5f656cff0e2",
+      "name": "QBO: Create Draft Bill",
+      "type": "n8n-nodes-base.quickbooks",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        220
+      ],
+      "parameters": {
+        "resource": "bill",
+        "operation": "create",
+        "VendorRef": "={{ $json.qbo_vendor_id }}",
+        "Line": "={{ $json.qbo_lines }}",
+        "additionalFields": {
+          "TxnDate": "={{ $json.invoice_date || $now.toFormat(\"yyyy-MM-dd\") }}",
+          "DueDate": "={{ $json.due_date || \"\" }}",
+          "TotalAmt": "={{ Number($json.total) }}"
+        }
+      }
+    },
+    {
+      "id": "ec00c708-ee51-4472-b26e-12720c171e23",
+      "name": "Sheet: Mark Posted",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1440,
+        220
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_YOUR_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Invoice_QA"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": [
+            "processing_id"
+          ],
+          "value": {
+            "processing_id": "={{ $json.processing_id }}",
+            "status": "posted",
+            "qbo_bill_id": "={{ $(\"QBO: Create Draft Bill\").item.json.Id || $(\"QBO: Create Draft Bill\").item.json.id }}",
+            "qbo_vendor_id": "={{ $json.qbo_vendor_id }}",
+            "reviewed_at": "={{ $now.toISO() }}"
+          },
+          "schema": [
+            {
+              "id": "processing_id",
+              "displayName": "processing_id",
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "type": "string"
+            },
+            {
+              "id": "qbo_bill_id",
+              "displayName": "qbo_bill_id",
+              "type": "string"
+            },
+            {
+              "id": "qbo_vendor_id",
+              "displayName": "qbo_vendor_id",
+              "type": "string"
+            },
+            {
+              "id": "reviewed_at",
+              "displayName": "reviewed_at",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "097ff592-aeed-4b65-a0c3-70cd1d864980",
+      "name": "Slack: Bill Created",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.5,
+      "position": [
+        1680,
+        220
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SLACK_CHANNEL_ID"
+        },
+        "messageType": "text",
+        "text": "={{ \"QBO draft bill created\\n*Vendor:* \" + $json.vendor_name + \"\\n*Invoice #:* \" + $json.invoice_number + \"\\n*Total:* \" + $json.total + \"\\n*QBO Bill ID:* \" + ($(\"QBO: Create Draft Bill\").item.json.Id || \"\") + \"\\n\\nReview and approve payment in QuickBooks.\" }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": true,
+          "mrkdwn": true
+        }
+      },
+      "webhookId": "34b7f1ea-adb1-4537-9008-a1fb36c017f4"
+    },
+    {
+      "id": "3e100ee3-5849-46dc-94c8-411c500fde75",
+      "name": "Sheet: Vendor Match Error",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1200,
+        420
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_YOUR_SPREADSHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Invoice_QA"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": [
+            "processing_id"
+          ],
+          "value": {
+            "processing_id": "={{ $json.processing_id }}",
+            "status": "error",
+            "extraction_notes": "={{ ($json.extraction_notes || \"\") + \" | Vendor not found in QBO. Create vendor manually then re-approve.\" }}"
+          },
+          "schema": [
+            {
+              "id": "processing_id",
+              "displayName": "processing_id",
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "type": "string"
+            },
+            {
+              "id": "extraction_notes",
+              "displayName": "extraction_notes",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "30a7d29a-4f18-4b8f-9e35-0eefd4c04a2d",
+      "name": "Slack: Vendor Match Failed",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.5,
+      "position": [
+        1440,
+        420
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_WITH_SLACK_CHANNEL_ID"
+        },
+        "messageType": "text",
+        "text": "={{ \"AP ERROR: Vendor match failed for \" + $json.vendor_name + \" (ID \" + $json.processing_id + \"). Create vendor in QBO, then set status back to Approved.\" }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": true,
+          "mrkdwn": true
+        }
+      },
+      "webhookId": "6d97d0a7-8c74-4f80-ba33-da231f53d3b2"
+    }
+  ],
+  "connections": {
+    "Sheet: Status Changed": {
+      "main": [
+        [
+          {
+            "node": "Approved & Not Posted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approved & Not Posted": {
+      "main": [
+        [
+          {
+            "node": "QBO: Get Vendors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "QBO: Get Vendors": {
+      "main": [
+        [
+          {
+            "node": "Match Vendor & Build Bill Lines",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Match Vendor & Build Bill Lines": {
+      "main": [
+        [
+          {
+            "node": "Vendor Matched?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vendor Matched?": {
+      "main": [
+        [
+          {
+            "node": "QBO: Create Draft Bill",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sheet: Vendor Match Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "QBO: Create Draft Bill": {
+      "main": [
+        [
+          {
+            "node": "Sheet: Mark Posted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheet: Mark Posted": {
+      "main": [
+        [
+          {
+            "node": "Slack: Bill Created",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheet: Vendor Match Error": {
+      "main": [
+        [
+          {
+            "node": "Slack: Vendor Match Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}

@@ -1,0 +1,297 @@
+{
+  "name": "Scenario 2: Competitor & Market Intelligence",
+  "nodes": [
+    {
+      "id": "fc9330e1-dc1a-49d7-ab55-de4e1d155fac",
+      "name": "Sticky Note 8b32b5d9",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        100,
+        300
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "Setup",
+            "position": [
+              -220,
+              40
+            ],
+            "parameters": {
+              "width": 540,
+              "height": 220,
+              "content": "SCENARIO 2 — Competitor Intelligence\n\n1. Add competitor URLs to Google Sheet tab `competitor_watchlist` (columns: name, url)\n2. Firecrawl + OpenAI credentials\n3. Supabase table `competitor_snapshots` (competitor, url, raw_markdown, analysis, created_at)\n4. Set Sheet ID in Read Watchlist node\n5. Schedule: Mon 8AM. Calls Scenario 5 for high-priority insights."
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "621c70bb-6cad-4032-82e4-74c620c6ce99",
+      "name": "Monday 8 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "314fafbe-2403-498e-9487-758e0b576331",
+      "name": "Read Watchlist",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_COMPETITOR_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "competitor_watchlist"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "1139c526-65c7-4221-8496-ef7226a1d520",
+      "name": "Build Weekly Digest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const rows = $input.all();\nconst lines = rows.map((r,i) => {\n  let a = {}; try { a = JSON.parse(r.json.choices?.[0]?.message?.content || r.json.analysis || '{}'); } catch(e) {}\n  return (i+1) + '. ' + (a.executive_summary || 'No summary');\n}).join('\\n');\nreturn [{ json: { digest: lines || 'No competitor updates this run.', count: rows.length } }];"
+      }
+    },
+    {
+      "id": "48382682-52bb-45a6-97b0-cbb89c2a49e2",
+      "name": "Push Weekly Digest",
+      "type": "n8n-nodes-base.pushover",
+      "typeVersion": 1,
+      "position": [
+        1680,
+        300
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "push",
+        "userKey": "ubyhbyuai8zi9qemokb1dyour151f9",
+        "message": "={{ \"Competitor Intel Weekly\\n\\n\" + $json.digest }}",
+        "additionalFields": {
+          "title": "Market Intelligence"
+        }
+      }
+    },
+    {
+      "id": "870dfe53-3c1c-4c41-a6e3-050e0b4d5a29",
+      "name": "Firecrawl Scrape",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.firecrawl.dev/v1/scrape",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "firecrawlApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ url: $json.url || $json.Website || $json.website, formats: ['markdown'], onlyMainContent: true }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      }
+    },
+    {
+      "id": "062974b2-3016-409b-93a1-15ac635ba120",
+      "name": "AI Analyze Competitor",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        960,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'gpt-4o-mini', response_format: { type: 'json_object' }, messages: [ { role: 'system', content: 'Analyze competitor website content. Return JSON: executive_summary, top_insights (array 3-5), pricing_moves, new_features, threats, opportunities, priority (low|normal|high).' }, { role: 'user', content: 'Competitor: ' + ($('Each Competitor').item.json.name || $('Each Competitor').item.json.Competitor || 'unknown') + '\\n\\nContent:\\n' + String($json.data?.markdown || '').slice(0,10000) } ] }) }}"
+      }
+    },
+    {
+      "id": "c0298ce1-3409-46b1-abd3-3d60b9a39b81",
+      "name": "Save Snapshot",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        300
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "create",
+        "tableId": "competitor_snapshots",
+        "dataToSend": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "competitor",
+              "fieldValue": "={{ $(\"Each Competitor\").item.json.name || $(\"Each Competitor\").item.json.Competitor }}"
+            },
+            {
+              "fieldId": "url",
+              "fieldValue": "={{ $(\"Each Competitor\").item.json.url || $(\"Each Competitor\").item.json.Website }}"
+            },
+            {
+              "fieldId": "analysis",
+              "fieldValue": "={{ $json.choices[0].message.content }}"
+            },
+            {
+              "fieldId": "created_at",
+              "fieldValue": "={{ $now.toISO() }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "a18a0b92-4e3e-4707-a935-729a813c095d",
+      "name": "Each Competitor",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "batchSize": 1
+      }
+    }
+  ],
+  "connections": {
+    "Monday 8 AM": {
+      "main": [
+        [
+          {
+            "node": "Read Watchlist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Watchlist": {
+      "main": [
+        [
+          {
+            "node": "Each Competitor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Weekly Digest": {
+      "main": [
+        [
+          {
+            "node": "Push Weekly Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Firecrawl Scrape": {
+      "main": [
+        [
+          {
+            "node": "AI Analyze Competitor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Analyze Competitor": {
+      "main": [
+        [
+          {
+            "node": "Save Snapshot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Snapshot": {
+      "main": [
+        [
+          {
+            "node": "Each Competitor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Each Competitor": {
+      "main": [
+        [
+          {
+            "node": "Build Weekly Digest",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Firecrawl Scrape",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 0,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  }
+}
