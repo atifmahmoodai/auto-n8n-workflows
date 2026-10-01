@@ -62,7 +62,14 @@ foreach ($m in $map) {
 foreach ($r in 'web-apps','power-bi','lovable') { Run gh repo delete "$U/$r" --yes }
 
 # Profile README repo
-if ($Apply) { gh repo view "$U/$U" *> $null; $exists = ($LASTEXITCODE -eq 0) } else { $exists = $false }
+$exists = $false
+if ($Apply) {
+  # Windows PowerShell 5.1 turns native stderr into a terminating error under 'Stop'
+  $ErrorActionPreference = 'Continue'
+  gh repo view "$U/$U" *> $null
+  $exists = ($LASTEXITCODE -eq 0)
+  $ErrorActionPreference = 'Stop'
+}
 if ($exists) { Write-Host "Profile repo already exists, skipping create" }
 else { Run gh repo create "$U/$U" --public --description "Profile README" }
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ("profile-" + [guid]::NewGuid())
