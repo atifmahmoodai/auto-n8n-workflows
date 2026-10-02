@@ -1,0 +1,14 @@
+{
+  "name": "detailing-crm",
+  "version": "1.0.0",
+  "description": "Car detailing booking & CRM web app: customers, calendar, SMS/email reminders, inventory, photos, roles, reports.",
+  "private": true,
+  "main": "src/server.js",
+  "engines": { "node": ">=22.5" },
+  "scripts": {
+    "start": "node src/server.js",
+    "seed": "node scripts/seed.js",
+    "test": "node --test test/*.test.js"
+  },
+  "license": "UNLICENSED"
+}
