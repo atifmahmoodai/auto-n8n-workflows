@@ -1,14 +1,38 @@
 {
-  "name": "detailing-crm",
-  "version": "1.0.0",
-  "description": "Car detailing booking & CRM web app: customers, calendar, SMS/email reminders, inventory, photos, roles, reports.",
+  "name": "web-car-detailing-crm",
+  "version": "2.0.0",
   "private": true,
-  "main": "src/server.js",
-  "engines": { "node": ">=22.5" },
-  "scripts": {
-    "start": "node src/server.js",
-    "seed": "node scripts/seed.js",
-    "test": "node --test test/*.test.js"
+  "description": "Booking, CRM and operations platform for car detailing businesses.",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.12"
   },
-  "license": "UNLICENSED"
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c blue,magenta \"npm -w server run dev\" \"npm -w web run dev\"",
+    "build": "npm -w web run build && npm -w server run build",
+    "start": "npm -w server run start",
+    "migrate": "npm -w server run migrate",
+    "seed": "npm -w server run seed",
+    "typecheck": "npm -w server run typecheck && npm -w web run typecheck",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "test": "npm -w server run test",
+    "test:e2e": "playwright test -c e2e/playwright.config.ts"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "1.56.1",
+    "concurrently": "^9.2.1",
+    "eslint": "^10.11.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^16.5.0",
+    "prettier": "^3.6.2",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.71.0"
+  },
+  "type": "module"
 }
